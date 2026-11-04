@@ -183,6 +183,35 @@ function readDb() {
         saveDb(migrated);
         return migrated;
       }
+
+      // Auto-fix labels if equipments have original spreadsheet fields
+      if (Array.isArray(data.hospitals)) {
+        let changed = false;
+        data.hospitals.forEach(h => {
+          if (Array.isArray(h.equipments)) {
+            h.equipments.forEach(eq => {
+              if (eq._originalRow) {
+                if ((eq.equipamento === 'Ativo' || !eq.equipamento) && eq._originalRow['TIPO']) {
+                  eq.equipamento = String(eq._originalRow['TIPO']).trim();
+                  changed = true;
+                }
+                if ((!eq.tag || eq.tag.startsWith('TAG-')) && eq._originalRow['Identificação']) {
+                  eq.tag = String(eq._originalRow['Identificação']).trim();
+                  changed = true;
+                }
+                if (eq.codigoBarras === 'BOMBA DE INFUSAO VOLUMETRICA' && eq.serie) {
+                  eq.codigoBarras = eq.serie;
+                  changed = true;
+                }
+              }
+            });
+          }
+        });
+        if (changed) {
+          saveDb(data);
+        }
+      }
+
       return data;
     }
   } catch (err) {
@@ -535,6 +564,62 @@ app.post('/api/toggle-check', (req, res) => {
   res.json({
     success: true,
     item: list[idx],
+    equipments: list,
+    lastUpdated: db.lastUpdated,
+    lastUpdatedBy: inspectorLabel
+  });
+});
+
+// Batch Check multiple equipments at once
+app.post('/api/batch-check', (req, res) => {
+  const { ids, hospitalId, userEmail, userName } = req.body || {};
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ success: false, message: 'Nenhum equipamento informado para checagem em lote.' });
+  }
+
+  const db = readDb();
+  const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
+  const hospIdx = (db.hospitals || []).findIndex(h => h.id === targetId);
+
+  if (hospIdx === -1) {
+    return res.status(404).json({ success: false, message: 'Hospital não encontrado.' });
+  }
+
+  const inspectorLabel = userName ? `${userName} (${userEmail || ''})` : (userEmail || 'Usuário');
+  const nowIso = new Date().toISOString();
+  const list = db.hospitals[hospIdx].equipments || [];
+  let checkedCount = 0;
+
+  const idSet = new Set(ids.map(x => String(x).toLowerCase()));
+
+  for (let i = 0; i < list.length; i++) {
+    const item = list[i];
+    const itemId = String(item.id || '').toLowerCase();
+    const itemBarcode = String(item.codigoBarras || '').toLowerCase();
+    const itemTag = String(item.tag || '').toLowerCase();
+    const itemSerie = String(item.serie || '').toLowerCase();
+
+    if (idSet.has(itemId) || idSet.has(itemBarcode) || idSet.has(itemTag) || idSet.has(itemSerie)) {
+      list[i] = {
+        ...item,
+        checado: true,
+        dataCheck: nowIso,
+        conferidoPor: inspectorLabel
+      };
+      checkedCount++;
+    }
+  }
+
+  db.hospitals[hospIdx].equipments = list;
+  db.hospitals[hospIdx].lastUpdated = Date.now();
+  db.hospitals[hospIdx].lastUpdatedBy = inspectorLabel;
+  db.lastUpdated = Date.now();
+  saveDb(db);
+
+  res.json({
+    success: true,
+    message: `${checkedCount} equipamentos conferidos com sucesso!`,
+    checkedCount,
     equipments: list,
     lastUpdated: db.lastUpdated,
     lastUpdatedBy: inspectorLabel

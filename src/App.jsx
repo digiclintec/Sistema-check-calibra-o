@@ -31,6 +31,7 @@ import PlansModal from './components/PlansModal';
 import { parseSpreadsheetFile, exportToExcel } from './utils/sheetParser';
 import { SAMPLE_EQUIPMENT } from './utils/sampleData';
 import { playSuccessSound, playWarningSound, playErrorSound } from './utils/audio';
+import { findBestEquipmentMatches } from './utils/fuzzyMatch';
 
 export default function App() {
   // LocalStorage keys
@@ -410,7 +411,64 @@ export default function App() {
     );
   };
 
-  // Main barcode lookup & check logic
+  // Conferência em Lote (Staging / Batch Check)
+  const handleBatchCheck = async (ids) => {
+    if (!ids || ids.length === 0) return;
+
+    const idSet = new Set(ids.map(x => String(x).toLowerCase()));
+    const nowIso = new Date().toISOString();
+    const inspector = currentUser?.name ? `${currentUser.name} (${currentUser.email})` : (currentUser?.email || 'Operador');
+
+    let checkedCount = 0;
+    const updated = equipments.map(item => {
+      const id = String(item.id || '').toLowerCase();
+      const code = String(item.codigoBarras || '').toLowerCase();
+      const tag = String(item.tag || '').toLowerCase();
+      const serie = String(item.serie || '').toLowerCase();
+
+      if (idSet.has(id) || idSet.has(code) || idSet.has(tag) || idSet.has(serie)) {
+        checkedCount++;
+        return {
+          ...item,
+          checado: true,
+          dataCheck: nowIso,
+          conferidoPor: inspector
+        };
+      }
+      return item;
+    });
+
+    setEquipments(updated);
+
+    // Envia ao servidor via endpoint em lote
+    try {
+      fetch('/api/batch-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ids,
+          hospitalId: activeHospitalId,
+          userEmail: currentUser?.email,
+          userName: currentUser?.name
+        })
+      }).then(res => res.json()).then(data => {
+        if (data.success && data.lastUpdated) {
+          lastUpdatedServerRef.current = data.lastUpdated;
+        }
+      }).catch(() => {});
+    } catch (e) {}
+
+    await pushServerUpdate(
+      updated, 
+      activeSheetName, 
+      `Check em lote: ${checkedCount} equipamentos conferidos com sucesso`
+    );
+
+    if (soundEnabled) playSuccessSound();
+    showToast('success', `🎉 ${checkedCount} equipamentos conferidos com sucesso!`);
+  };
+
+  // Main barcode lookup & check logic com busca inteligente (maior quantidade de números parecidos)
   const handleScanCode = async (code) => {
     if (!code || !equipments || equipments.length === 0) {
       if (soundEnabled) playErrorSound();
@@ -418,17 +476,10 @@ export default function App() {
       return { status: 'not_found', message: 'Nenhuma planilha carregada' };
     }
 
-    const clean = code.trim().toLowerCase();
+    // Busca inteligente com algoritmo de similaridade de dígitos e caracteres
+    const matches = findBestEquipmentMatches(code, equipments);
 
-    const foundIndex = equipments.findIndex(e => {
-      const b = String(e.codigoBarras || '').trim().toLowerCase();
-      const t = String(e.tag || '').trim().toLowerCase();
-      const id = String(e.id || '').trim().toLowerCase();
-      const s = String(e.serie || '').trim().toLowerCase();
-      return b === clean || t === clean || id === clean || s === clean;
-    });
-
-    if (foundIndex === -1) {
+    if (!matches || matches.length === 0) {
       if (soundEnabled) playErrorSound();
       showToast('error', `Aparelho não encontrado para o código: "${code}"`);
       return {
@@ -437,15 +488,24 @@ export default function App() {
       };
     }
 
-    const targetItem = equipments[foundIndex];
+    // Seleciona o melhor candidato (maior score / números mais próximos)
+    const bestMatch = matches[0];
+    const targetItem = bestMatch.equipment;
+    const targetIndex = equipments.findIndex(e => e.id === targetItem.id);
+
+    if (targetIndex === -1) {
+      return { status: 'not_found', message: 'Item não localizado' };
+    }
+
     setLastScannedId(targetItem.id);
 
     if (targetItem.checado) {
       if (soundEnabled) playWarningSound();
-      showToast('warning', `Equipamento já estava checado: ${targetItem.equipamento} (${targetItem.tag})`);
+      showToast('warning', `Equipamento já estava checado: ${targetItem.equipamento} (${targetItem.tag || targetItem.serie})`);
       return {
         status: 'already_checked',
         equipment: targetItem,
+        match: bestMatch,
         message: `Já estava conferido: ${targetItem.equipamento}`
       };
     }
@@ -455,21 +515,23 @@ export default function App() {
 
     const inspector = currentUser?.name ? `${currentUser.name} (${currentUser.email})` : (currentUser?.email || 'Operador');
     const updated = [...equipments];
-    updated[foundIndex] = {
-      ...updated[foundIndex],
+    updated[targetIndex] = {
+      ...updated[targetIndex],
       checado: true,
       dataCheck: new Date().toISOString(),
       conferidoPor: inspector
     };
 
     setEquipments(updated);
-    showToast('success', `Check confirmado: ${targetItem.equipamento} (${targetItem.tag})`);
+    const reasonLabel = bestMatch.isExact ? '100% Exato' : `${bestMatch.matchingDigits} dígitos iguais`;
+    showToast('success', `Check confirmado: ${targetItem.equipamento} (${targetItem.tag || targetItem.serie}) [${reasonLabel}]`);
 
     await pushServerUpdate(updated, activeSheetName, `Check: ${targetItem.equipamento}`);
 
     return {
       status: 'found',
       equipment: targetItem,
+      match: bestMatch,
       message: `Check OK: ${targetItem.equipamento}`
     };
   };
@@ -734,11 +796,13 @@ export default function App() {
 
       </main>
 
-      {/* Scanner Modal */}
+      {/* Scanner Modal com Conferência em Lote e Fuzzy Matching */}
       <ScannerModal
         isOpen={isScannerOpen}
         onClose={() => setIsScannerOpen(false)}
         onScan={handleScanCode}
+        onBatchCheck={handleBatchCheck}
+        equipments={equipments}
         soundEnabled={soundEnabled}
       />
 

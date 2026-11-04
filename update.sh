@@ -26,3 +26,4 @@ echo "✅ CalibraCheck atualizado com sucesso!"
 echo "🌐 Acesse: https://calibracao.helpclintec.com.br"
 echo "=========================================="
 pm2 status
+

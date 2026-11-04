@@ -422,6 +422,63 @@ function apiServerPlugin() {
             }));
           }
 
+          // Batch Check
+          if (req.url === '/api/batch-check' && req.method === 'POST') {
+            const { ids, hospitalId, userEmail, userName } = parsedBody;
+            if (!Array.isArray(ids) || ids.length === 0) {
+              res.statusCode = 400;
+              return res.end(JSON.stringify({ success: false, message: 'Nenhum equipamento informado para checagem em lote.' }));
+            }
+
+            const db = readDb();
+            const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
+            const hospIdx = (db.hospitals || []).findIndex(h => h.id === targetId);
+
+            if (hospIdx === -1) {
+              res.statusCode = 404;
+              return res.end(JSON.stringify({ success: false, message: 'Hospital não encontrado.' }));
+            }
+
+            const label = userName ? `${userName} (${userEmail || ''})` : (userEmail || 'Usuário');
+            const nowIso = new Date().toISOString();
+            const list = db.hospitals[hospIdx].equipments || [];
+            let checkedCount = 0;
+            const idSet = new Set(ids.map(x => String(x).toLowerCase()));
+
+            for (let i = 0; i < list.length; i++) {
+              const item = list[i];
+              const itemId = String(item.id || '').toLowerCase();
+              const itemBarcode = String(item.codigoBarras || '').toLowerCase();
+              const itemTag = String(item.tag || '').toLowerCase();
+              const itemSerie = String(item.serie || '').toLowerCase();
+
+              if (idSet.has(itemId) || idSet.has(itemBarcode) || idSet.has(itemTag) || idSet.has(itemSerie)) {
+                list[i] = {
+                  ...item,
+                  checado: true,
+                  dataCheck: nowIso,
+                  conferidoPor: label
+                };
+                checkedCount++;
+              }
+            }
+
+            db.hospitals[hospIdx].equipments = list;
+            db.hospitals[hospIdx].lastUpdated = Date.now();
+            db.hospitals[hospIdx].lastUpdatedBy = label;
+            db.lastUpdated = Date.now();
+            saveDb(db);
+
+            return res.end(JSON.stringify({
+              success: true,
+              message: `${checkedCount} equipamentos conferidos com sucesso!`,
+              checkedCount,
+              equipments: list,
+              lastUpdated: db.lastUpdated,
+              lastUpdatedBy: label
+            }));
+          }
+
           // Reset hospital data
           if (req.url === '/api/reset' && req.method === 'POST') {
             const { hospitalId } = parsedBody;

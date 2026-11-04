@@ -33,29 +33,36 @@ export function identifyColumns(headers) {
   headers.forEach((h) => {
     const norm = normalizeHeader(h);
 
-    // Código de barras / Patrimônio
-    if (!mapping.codigoBarras && (
+    // Tag / Identificador / Identificação
+    if (!mapping.tag && (
+      norm.includes('tag') || 
+      norm.includes('identifica') || 
+      norm.includes('identificador') || 
+      norm.includes('codigoequipamento')
+    )) {
+      mapping.tag = h;
+    }
+    // Código de barras / Patrimônio / Tombamento
+    else if (!mapping.codigoBarras && (
       norm.includes('codigobarras') ||
       norm.includes('codbarras') ||
       norm.includes('barcode') ||
       norm.includes('ean') ||
       norm.includes('patrimonio') ||
+      norm.includes('tombamento') ||
       norm.includes('cod') ||
       norm === 'id'
     )) {
       mapping.codigoBarras = h;
     }
-    // Tag / Identificador
-    else if (!mapping.tag && (norm.includes('tag') || norm.includes('identificador') || norm.includes('codigoequipamento'))) {
-      mapping.tag = h;
-    }
-    // Equipamento / Descrição / Instrumento
+    // Equipamento / Descrição / Instrumento / Tipo
     else if (!mapping.equipamento && (
       norm.includes('equipamento') ||
       norm.includes('instrumento') ||
       norm.includes('aparelho') ||
       norm.includes('descricao') ||
       norm.includes('nome') ||
+      norm.includes('tipo') ||
       norm.includes('item')
     )) {
       mapping.equipamento = h;
@@ -166,13 +173,25 @@ export function normalizeRows(rows, mapping) {
       }
     }
 
-    const uniqueId = rawBarcode || rawTag || `EQP-${idx + 1}`;
+    // Resolve nome do equipamento com inteligência se a coluna veio como status ou valor genérico (ex: "Ativo")
+    let resolvedEquip = rawEquipamento;
+    if (resolvedEquip.toLowerCase() === 'ativo' || resolvedEquip.toLowerCase() === 'inativo' || resolvedEquip.toLowerCase() === 'pendente') {
+      if (row['TIPO'] || row['Tipo'] || row['tipo'] || row['DESCRIÇÃO'] || row['Descricao']) {
+        resolvedEquip = String(row['TIPO'] || row['Tipo'] || row['tipo'] || row['DESCRIÇÃO'] || row['Descricao']).trim();
+      } else if (rawFabricante || rawModelo) {
+        resolvedEquip = `${rawFabricante} ${rawModelo}`.trim();
+      }
+    }
+
+    const uniqueId = rawSerie ? `EQP-${rawSerie}` : (rawTag ? `EQP-${rawTag}` : (rawBarcode ? `EQP-${rawBarcode}` : `EQP-${idx + 1}`));
+    const finalBarcode = rawBarcode || rawSerie || rawTag || `CAL-${String(idx + 1).padStart(4, '0')}`;
+    const finalTag = rawTag || (row['Identificação'] ? String(row['Identificação']).trim() : `TAG-${String(idx + 1).padStart(3, '0')}`);
 
     return {
       id: uniqueId,
-      codigoBarras: rawBarcode || rawTag || `CAL-${String(idx + 1).padStart(4, '0')}`,
-      tag: rawTag || `TAG-${String(idx + 1).padStart(3, '0')}`,
-      equipamento: rawEquipamento,
+      codigoBarras: finalBarcode,
+      tag: finalTag,
+      equipamento: resolvedEquip,
       fabricante: rawFabricante,
       modelo: rawModelo,
       serie: rawSerie,
