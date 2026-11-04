@@ -189,7 +189,7 @@ function readDb() {
         let changed = false;
         data.hospitals.forEach(h => {
           if (Array.isArray(h.equipments)) {
-            h.equipments.forEach(eq => {
+            h.equipments.forEach((eq, idx) => {
               if (eq._originalRow) {
                 if ((eq.equipamento === 'Ativo' || !eq.equipamento) && eq._originalRow['TIPO']) {
                   eq.equipamento = String(eq._originalRow['TIPO']).trim();
@@ -203,6 +203,11 @@ function readDb() {
                   eq.codigoBarras = eq.serie;
                   changed = true;
                 }
+              }
+              // Garante ID 100% exclusivo para cada bomba
+              if (!eq.id || eq.id === 'BOMBA DE INFUSAO VOLUMETRICA' || eq.id === eq.equipamento) {
+                eq.id = eq.serie ? `EQP-${eq.serie}` : (eq.tag ? `EQP-${eq.tag}` : `EQP-${idx + 1}`);
+                changed = true;
               }
             });
           }

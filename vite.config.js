@@ -102,6 +102,36 @@ function apiServerPlugin() {
           saveDb(migrated);
           return migrated;
         }
+
+        if (Array.isArray(data.hospitals)) {
+          let changed = false;
+          data.hospitals.forEach(h => {
+            if (Array.isArray(h.equipments)) {
+              h.equipments.forEach((eq, idx) => {
+                if (eq._originalRow) {
+                  if ((eq.equipamento === 'Ativo' || !eq.equipamento) && eq._originalRow['TIPO']) {
+                    eq.equipamento = String(eq._originalRow['TIPO']).trim();
+                    changed = true;
+                  }
+                  if ((!eq.tag || eq.tag.startsWith('TAG-')) && eq._originalRow['Identificação']) {
+                    eq.tag = String(eq._originalRow['Identificação']).trim();
+                    changed = true;
+                  }
+                  if (eq.codigoBarras === 'BOMBA DE INFUSAO VOLUMETRICA' && eq.serie) {
+                    eq.codigoBarras = eq.serie;
+                    changed = true;
+                  }
+                }
+                if (!eq.id || eq.id === 'BOMBA DE INFUSAO VOLUMETRICA' || eq.id === eq.equipamento) {
+                  eq.id = eq.serie ? `EQP-${eq.serie}` : (eq.tag ? `EQP-${eq.tag}` : `EQP-${idx + 1}`);
+                  changed = true;
+                }
+              });
+            }
+          });
+          if (changed) saveDb(data);
+        }
+
         return data;
       }
     } catch (e) {}

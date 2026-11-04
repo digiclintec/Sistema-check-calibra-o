@@ -66,6 +66,9 @@ export default function ScannerModal({
 
   // Modo de operação: 'batch' (Fila de conferência) ou 'instant' (Check 1 por 1)
   const [mode, setMode] = useState('batch'); 
+
+  // Alvo de busca no código de barras: 'all' (automático) | 'idec' (somente IDEC / Tag) | 'serie' (somente Série)
+  const [searchTarget, setSearchTarget] = useState('all');
   
   // Fila de equipamentos bipados aguardando confirmação
   const [stagedItems, setStagedItems] = useState([]);
@@ -370,16 +373,17 @@ export default function ScannerModal({
       navigator.vibrate([60]);
     }
 
-    // Busca inteligente com o algoritmo de maior similaridade
-    const matches = findBestEquipmentMatches(cleanCode, equipments);
+    // Busca inteligente com decomposição de código composto (procura IDEC ou Série)
+    const matches = findBestEquipmentMatches(cleanCode, equipments, searchTarget);
 
     if (!matches || matches.length === 0) {
       // Nenhum candidato encontrado
       if (soundEnabled) playErrorSound();
+      const targetHint = searchTarget === 'idec' ? ' pelo IDEC / Tag' : searchTarget === 'serie' ? ' pelo Nº de Série' : '';
       setLastScannedFeedback({
         status: 'not_found',
         code: cleanCode,
-        message: `Nenhuma bomba ou equipamento encontrado para o código: "${cleanCode}"`,
+        message: `Nenhuma bomba localizada${targetHint} para o código lido (${cleanCode.length > 25 ? cleanCode.substring(0, 25) + '...' : cleanCode}).`,
         timestamp: new Date().toLocaleTimeString('pt-BR')
       });
       return;
@@ -403,7 +407,7 @@ export default function ScannerModal({
         code: cleanCode,
         match: bestMatch,
         equipment: targetEq,
-        message: `Check confirmado: ${targetEq.equipamento} (${targetEq.tag || targetEq.serie})`,
+        message: `${bestMatch.reason} • ${targetEq.equipamento} (IDEC: ${targetEq.tag || 'N/A'} | Série: ${targetEq.serie || 'N/A'})`,
         timestamp: new Date().toLocaleTimeString('pt-BR')
       });
       return;
@@ -420,7 +424,7 @@ export default function ScannerModal({
           code: cleanCode,
           match: bestMatch,
           equipment: targetEq,
-          message: `Esta bomba já está na lista abaixo (${targetEq.tag || targetEq.serie}).`,
+          message: `Esta bomba já está na fila abaixo (IDEC: ${targetEq.tag || 'N/A'} | Série: ${targetEq.serie || 'N/A'}).`,
           timestamp: new Date().toLocaleTimeString('pt-BR')
         });
         return prev;
@@ -439,7 +443,7 @@ export default function ScannerModal({
         code: cleanCode,
         match: bestMatch,
         equipment: targetEq,
-        message: `Bomba adicionada à lista: ${targetEq.equipamento} (${targetEq.tag || targetEq.serie})`,
+        message: `${bestMatch.reason} • ${targetEq.equipamento} (IDEC: ${targetEq.tag || 'N/A'} | Série: ${targetEq.serie || 'N/A'})`,
         timestamp: new Date().toLocaleTimeString('pt-BR')
       });
 
@@ -597,6 +601,46 @@ export default function ScannerModal({
             <ImageIcon className="w-3.5 h-3.5" />
             <span>Tirar Foto</span>
           </button>
+        </div>
+
+        {/* Seletor de Comparação no Código (Código Completo / Apenas IDEC / Apenas Série) */}
+        <div className="px-3 py-1.5 bg-slate-900/90 border-b border-slate-800/80 flex items-center justify-between gap-1.5 text-xs shrink-0 overflow-x-auto">
+          <span className="text-[10px] sm:text-xs text-slate-400 font-semibold shrink-0">Comparar:</span>
+          <div className="flex items-center gap-1 bg-slate-950/80 p-0.5 rounded-xl border border-slate-800 shrink-0">
+            <button
+              onClick={() => setSearchTarget('all')}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 ${
+                searchTarget === 'all'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Lê todo o código composto e localiza tanto o IDEC quanto a Série"
+            >
+              <span>🔍 Código Completo</span>
+            </button>
+            <button
+              onClick={() => setSearchTarget('idec')}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 ${
+                searchTarget === 'idec'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Compara exclusivamente com o IDEC / Identificação do Equipamento (ex: CCHL-0075)"
+            >
+              <span>🏷️ Somente IDEC</span>
+            </button>
+            <button
+              onClick={() => setSearchTarget('serie')}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 ${
+                searchTarget === 'serie'
+                  ? 'bg-purple-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Compara exclusivamente com o Número de Série (ex: 2104010003)"
+            >
+              <span>🔢 Somente Série</span>
+            </button>
+          </div>
         </div>
 
         {/* Camera Viewport Area com CLIQUE PARA FOCAR (Tap to Focus) */}
