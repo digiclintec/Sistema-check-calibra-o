@@ -91,45 +91,37 @@ export default function ScannerModal({
   const nativeDetectorActiveRef = useRef(false);
   const nativeDetectorRafRef = useRef(null);
 
-  // Inicializa câmeras ao abrir o modal
+  // Inicializa câmera ao abrir o modal
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      stopScanner();
+      return;
+    }
 
     let isMounted = true;
     setCameraError('');
     setLastScannedFeedback(null);
     setFocusRing({ x: 0, y: 0, visible: false, status: 'idle' });
 
-    Html5Qrcode.getCameras()
-      .then((devices) => {
-        if (!isMounted) return;
-        if (devices && devices.length > 0) {
-          setCameras(devices);
-          const backCam = devices.find(d => 
-            d.label.toLowerCase().includes('back') || 
-            d.label.toLowerCase().includes('traseira') ||
-            d.label.toLowerCase().includes('environment') ||
-            d.label.toLowerCase().includes('0, facing back')
-          );
-          if (backCam) {
-            setSelectedCamera(backCam.id);
-          }
-        }
-      })
-      .catch((err) => {
-        console.warn('Erro ao listar câmeras:', err);
-      });
-
-    startScanner(selectedCamera || null);
+    // Pequeno intervalo de 120ms para o container DOM estar 100% montado e evitar conflito de hardware
+    const timer = setTimeout(() => {
+      if (isMounted) {
+        startScanner(selectedCamera || null);
+      }
+    }, 120);
 
     return () => {
       isMounted = false;
+      clearTimeout(timer);
       stopScanner();
     };
   }, [isOpen]);
 
-  const startScanner = async (cameraId) => {
+  const startScanner = async (cameraId, isRetry = false) => {
     await stopScanner();
+
+    // Pausa preventiva de 100ms para liberação completa do hardware da câmera no mobile
+    await new Promise(r => setTimeout(r, 100));
 
     try {
       const html5QrCode = new Html5Qrcode('barcode-reader-box', {
@@ -141,15 +133,12 @@ export default function ScannerModal({
       });
       html5QrCodeRef.current = html5QrCode;
 
-      // Configuração com restrições Full HD (1080p) e foco contínuo
+      // Configuração flexível Full HD sem restrições 'min' que causam OverconstrainedError em modo retrato
       const videoConstraints = {
         facingMode: { ideal: "environment" },
         ...(cameraId ? { deviceId: { exact: cameraId } } : {}),
-        width: { min: 1280, ideal: 1920, max: 3840 },
-        height: { min: 720, ideal: 1080, max: 2160 },
-        advanced: [
-          { focusMode: "continuous" }
-        ]
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
       };
 
       const config = {
@@ -184,6 +173,18 @@ export default function ScannerModal({
 
       setScanning(true);
       setCameraError('');
+
+      // Com o scanner já aberto e permissão concedida, lista os dispositivos de forma segura sem conflito
+      if (navigator.mediaDevices?.enumerateDevices) {
+        navigator.mediaDevices.enumerateDevices()
+          .then((devices) => {
+            const videoDevices = devices.filter(d => d.kind === 'videoinput');
+            if (videoDevices.length > 0) {
+              setCameras(videoDevices);
+            }
+          })
+          .catch(() => {});
+      }
 
       // Inicia loop ultra-rápido de detecção nativa por hardware (Android Chrome / Google ML Kit)
       if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
@@ -235,7 +236,7 @@ export default function ScannerModal({
       setTimeout(() => {
         applyHardwareFocus();
         applySpecificZoom(1.5);
-      }, 500);
+      }, 400);
 
       // Verifica capacidades de lanterna e zoom óptico/digital
       try {
@@ -253,7 +254,15 @@ export default function ScannerModal({
       }
 
     } catch (err) {
-      console.error('Falha ao iniciar scanner:', err);
+      console.warn('Tentativa ao iniciar câmera:', err);
+
+      // Auto-retry silencioso: se falhou na primeira tentativa (ex: câmera liberando recurso), tenta novamente em 350ms
+      if (!isRetry) {
+        console.log('Tentando reconexão suave da câmera em 350ms...');
+        await new Promise(r => setTimeout(r, 350));
+        return startScanner(null, true);
+      }
+
       setScanning(false);
       setCameraError(
         'Não foi possível abrir a câmera traseira diretamente. Verifique as permissões de câmera do navegador ou use o botão "Enviar Foto do Código".'
