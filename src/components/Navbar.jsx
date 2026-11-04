@@ -10,7 +10,10 @@ import {
   LogOut, 
   Crown, 
   Users,
-  Smartphone
+  Smartphone,
+  Building2,
+  ChevronDown,
+  Sparkles
 } from 'lucide-react';
 
 export default function Navbar({ 
@@ -24,9 +27,26 @@ export default function Navbar({
   currentUser,
   onLogout,
   onOpenMasterPanel,
-  onOpenInstall
+  onOpenInstall,
+  hospitals = [],
+  activeHospitalId,
+  onSwitchHospital,
+  onOpenPlansModal
 }) {
   const isMaster = currentUser?.role === 'master' || currentUser?.email?.toLowerCase() === 'digiclintec@gmail.com';
+  const activeHospital = hospitals.find(h => h.id === activeHospitalId) || hospitals[0];
+
+  const planBadgeClasses = {
+    basico: 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border-blue-200 dark:border-blue-900',
+    pro: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900',
+    enterprise: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-200 dark:border-amber-900'
+  };
+
+  const planName = {
+    basico: 'Básico',
+    pro: 'Pro',
+    enterprise: 'Enterprise'
+  }[activeHospital?.plano || 'pro'] || 'Pro';
 
   return (
     <header className="sticky top-0 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
@@ -54,9 +74,41 @@ export default function Navbar({
             </div>
           </div>
 
+          {/* Hospital Switcher Dropdown (Multi-Hospital SaaS) */}
+          {hospitals && hospitals.length > 0 && (
+            <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/80 p-1 sm:p-1.5 rounded-2xl border border-slate-200 dark:border-slate-700/60 max-w-[160px] sm:max-w-xs">
+              <Building2 className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 ml-1 hidden xs:block" />
+              <select
+                value={activeHospitalId || ''}
+                onChange={(e) => onSwitchHospital && onSwitchHospital(e.target.value)}
+                className="bg-transparent text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer truncate pr-1"
+                title="Selecione o hospital ou clínica para visualizar os equipamentos"
+              >
+                {hospitals.map(h => (
+                  <option key={h.id} value={h.id} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
+                    🏥 {h.name} ({h.totalEquipments || 0} itens)
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* Actions & Buttons */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-2.5">
             
+            {/* Plans Modal Button */}
+            <button
+              onClick={onOpenPlansModal}
+              className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded-xl text-xs font-bold border transition shadow-sm ${
+                planBadgeClasses[activeHospital?.plano || 'pro']
+              }`}
+              title="Ver ou trocar o plano de assinatura deste hospital"
+            >
+              <Crown className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden sm:inline">Plano:</span>
+              <span>{planName}</span>
+            </button>
+
             {/* Sound Toggle */}
             <button
               onClick={() => setSoundEnabled(!soundEnabled)}
@@ -70,28 +122,28 @@ export default function Navbar({
             {isMaster && (
               <button
                 onClick={onOpenMasterPanel}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 dark:text-amber-300 border border-amber-500/30 transition shadow-sm"
-                title="Painel Master para gerenciar cadastros de usuários"
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 dark:text-amber-300 border border-amber-500/30 transition shadow-sm"
+                title="Painel Master para gerenciar cadastros de hospitais e operadores"
               >
-                <Crown className="w-4 h-4" />
-                <span className="hidden sm:inline">Painel Master</span>
+                <Sparkles className="w-4 h-4" />
+                <span className="hidden lg:inline">Master</span>
               </button>
             )}
 
             {/* Install App on Android/iOS Button */}
             <button
               onClick={onOpenInstall}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-bold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 transition shadow-sm"
+              className="flex items-center gap-1.5 px-2 sm:px-2.5 py-2 rounded-xl text-xs font-bold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 transition shadow-sm"
               title="Instalar aplicativo no Android ou iPhone"
             >
               <Smartphone className="w-4 h-4 text-emerald-500" />
-              <span className="hidden sm:inline">Baixar App</span>
+              <span className="hidden md:inline">Baixar App</span>
             </button>
 
             {/* Google Sheets Modal Button */}
             <button
               onClick={onOpenGoogleModal}
-              className="hidden md:flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition"
+              className="hidden lg:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition"
             >
               <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
               <span>Google Planilhas</span>
@@ -100,7 +152,7 @@ export default function Navbar({
             {/* Import Excel Button */}
             <button
               onClick={onOpenFilePicker}
-              className="flex items-center gap-1.5 px-3 sm:px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300/60 dark:border-slate-700 transition"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300/60 dark:border-slate-700 transition"
             >
               <Upload className="w-4 h-4 text-slate-600 dark:text-slate-400" />
               <span className="hidden sm:inline">Subir Planilha</span>
@@ -111,7 +163,7 @@ export default function Navbar({
             {hasData && (
               <button
                 onClick={onExportExcel}
-                className="flex items-center gap-1.5 px-3 sm:px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-white shadow-sm transition"
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-semibold bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-white shadow-sm transition"
                 title="Exportar planilha atualizada com as checagens"
               >
                 <Download className="w-4 h-4" />
@@ -123,21 +175,21 @@ export default function Navbar({
             {/* Primary Scanner Trigger Button */}
             <button
               onClick={onOpenScanner}
-              className="flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-2xl text-xs sm:text-sm font-bold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-md shadow-blue-500/25 transition active:scale-95"
+              className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-2xl text-xs sm:text-sm font-bold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:from-indigo-500 text-white shadow-md shadow-blue-500/25 transition active:scale-95"
             >
               <Camera className="w-4 h-4 sm:w-5 sm:h-5" />
-              <span>Ler Código</span>
+              <span className="hidden xs:inline">Ler Código</span>
             </button>
 
             {/* User Profile & Logout */}
             {currentUser && (
               <div className="flex items-center gap-2 pl-2 sm:pl-3 border-l border-slate-200 dark:border-slate-800">
                 <div className="hidden xl:flex flex-col text-right">
-                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate max-w-[140px] flex items-center justify-end gap-1">
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate max-w-[120px] flex items-center justify-end gap-1">
                     {isMaster && <Crown className="w-3 h-3 text-amber-500" />}
                     {currentUser.name || 'Digiclintec'}
                   </span>
-                  <span className="text-[10px] text-slate-400 font-mono truncate max-w-[140px]">
+                  <span className="text-[10px] text-slate-400 font-mono truncate max-w-[120px]">
                     {currentUser.email}
                   </span>
                 </div>

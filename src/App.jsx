@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import confetti from 'canvas-confetti';
 import { 
   FileSpreadsheet, 
@@ -11,7 +11,9 @@ import {
   X,
   FileText,
   Users,
-  Wifi
+  Wifi,
+  Building2,
+  Crown
 } from 'lucide-react';
 
 import LoginScreen from './components/LoginScreen';
@@ -24,6 +26,7 @@ import GoogleSheetsModal from './components/GoogleSheetsModal';
 import MasterPanelModal from './components/MasterPanelModal';
 import InstallPromptModal from './components/InstallPromptModal';
 import MobileBottomBar from './components/MobileBottomBar';
+import PlansModal from './components/PlansModal';
 
 import { parseSpreadsheetFile, exportToExcel } from './utils/sheetParser';
 import { SAMPLE_EQUIPMENT } from './utils/sampleData';
@@ -35,6 +38,7 @@ export default function App() {
   const SOUND_KEY = 'calibracheck_sound_enabled';
   const SHEET_NAME_KEY = 'calibracheck_sheet_name';
   const USER_KEY = 'calibracheck_user_v1';
+  const HOSP_KEY = 'calibracheck_active_hosp_v1';
 
   // User session state
   const [currentUser, setCurrentUser] = useState(() => {
@@ -44,6 +48,14 @@ export default function App() {
     } catch (e) {
       return null;
     }
+  });
+
+  const isMaster = currentUser?.role === 'master' || currentUser?.email?.toLowerCase() === 'digiclintec@gmail.com';
+
+  // Multi-Hospital SaaS state
+  const [hospitals, setHospitals] = useState([]);
+  const [activeHospitalId, setActiveHospitalId] = useState(() => {
+    return localStorage.getItem(HOSP_KEY) || 'hosp_central';
   });
 
   // Equipments state
@@ -70,6 +82,7 @@ export default function App() {
   const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
   const [isMasterPanelOpen, setIsMasterPanelOpen] = useState(false);
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
+  const [isPlansModalOpen, setIsPlansModalOpen] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [lastScannedId, setLastScannedId] = useState(null);
   const [toast, setToast] = useState(null);
@@ -78,6 +91,79 @@ export default function App() {
   const fileInputRef = useRef(null);
   const lastUpdatedServerRef = useRef(0);
   const broadcastChannelRef = useRef(null);
+
+  // Active hospital helper
+  const activeHospital = useMemo(() => {
+    return hospitals.find(h => h.id === activeHospitalId) || hospitals[0] || {
+      id: activeHospitalId,
+      name: 'Hospital Central - Digiclintec',
+      plano: 'enterprise'
+    };
+  }, [hospitals, activeHospitalId]);
+
+  // Load hospitals from server
+  const loadHospitals = useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      const res = await fetch('/api/hospitals');
+      const data = await res.json();
+      if (data.success && data.hospitals) {
+        setHospitals(data.hospitals);
+        if (data.activeHospitalId && !localStorage.getItem(HOSP_KEY)) {
+          setActiveHospitalId(data.activeHospitalId);
+        }
+      }
+    } catch (e) {
+      console.warn('Erro ao buscar hospitais:', e);
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    loadHospitals();
+  }, [loadHospitals]);
+
+  // Switch hospital
+  const handleSwitchHospital = async (hospId) => {
+    setActiveHospitalId(hospId);
+    localStorage.setItem(HOSP_KEY, hospId);
+    lastUpdatedServerRef.current = 0; // force reload
+
+    try {
+      await fetch('/api/hospitals/switch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: hospId })
+      });
+    } catch (e) {}
+
+    // Fetch hospital data immediately
+    try {
+      const res = await fetch(`/api/data?hospitalId=${hospId}`);
+      const data = await res.json();
+      if (data.success) {
+        setEquipments(data.equipments || []);
+        setActiveSheetName(data.activeSheetName || '');
+        const target = hospitals.find(h => h.id === hospId);
+        showToast('info', `Alternado para: ${target?.name || hospId}`);
+      }
+    } catch (e) {}
+  };
+
+  // Update hospital plan
+  const handleUpdateHospitalPlan = async (hospId, planId) => {
+    const res = await fetch('/api/hospitals/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: hospId, plano: planId })
+    });
+    const data = await res.json();
+    if (data.success) {
+      await loadHospitals();
+      showToast('success', `Plano do hospital atualizado para ${planId.toUpperCase()}!`);
+    } else {
+      showToast('error', data.message || 'Erro ao alterar plano.');
+    }
+  };
 
   // Cross-tab broadcast channel
   useEffect(() => {
@@ -88,17 +174,19 @@ export default function App() {
       channel.onmessage = (event) => {
         const { type, payload } = event.data || {};
         if (type === 'STATE_UPDATE') {
-          setEquipments(payload.equipments || []);
-          if (payload.activeSheetName) setActiveSheetName(payload.activeSheetName);
-          if (payload.lastAction) {
-            showToast('info', payload.lastAction);
+          if (!payload.hospitalId || payload.hospitalId === activeHospitalId) {
+            setEquipments(payload.equipments || []);
+            if (payload.activeSheetName !== undefined) setActiveSheetName(payload.activeSheetName);
+            if (payload.lastAction) {
+              showToast('info', payload.lastAction);
+            }
           }
         }
       };
 
       return () => channel.close();
     }
-  }, []);
+  }, [activeHospitalId]);
 
   // Save to LocalStorage
   useEffect(() => {
@@ -141,11 +229,11 @@ export default function App() {
     setToast({ type, message });
   };
 
-  // Sync with Server API (Shared real-time state for everyone logged in with the same password)
-  const syncWithServer = async () => {
+  // Sync with Server API (Shared real-time state for hospital)
+  const syncWithServer = useCallback(async () => {
     if (!currentUser) return;
     try {
-      const res = await fetch('/api/data');
+      const res = await fetch(`/api/data?hospitalId=${encodeURIComponent(activeHospitalId)}`);
       if (!res.ok) return;
       const data = await res.json();
       if (data.success && data.lastUpdated && data.lastUpdated > lastUpdatedServerRef.current) {
@@ -154,7 +242,7 @@ export default function App() {
         // If server data differs, update local state
         if (data.equipments && data.equipments.length >= 0) {
           setEquipments(data.equipments);
-          if (data.activeSheetName) {
+          if (data.activeSheetName !== undefined) {
             setActiveSheetName(data.activeSheetName);
           }
         }
@@ -162,41 +250,43 @@ export default function App() {
     } catch (err) {
       // Offline fallback silent
     }
-  };
+  }, [currentUser, activeHospitalId]);
 
   // Poll server every 2.5s for changes made by other users/devices
   useEffect(() => {
     if (!currentUser) return;
-    syncWithServer(); // Initial fetch
+    syncWithServer();
     const interval = setInterval(syncWithServer, 2500);
     return () => clearInterval(interval);
-  }, [currentUser]);
+  }, [currentUser, syncWithServer]);
 
   // Push full update to server & broadcast
   const pushServerUpdate = async (newEquipments, sheetName, actionDesc) => {
-    // 1. Update local state immediately
     setEquipments(newEquipments);
     if (sheetName !== undefined) setActiveSheetName(sheetName);
 
-    // 2. Broadcast to other tabs on same machine
+    // Broadcast to other tabs on same machine
     broadcastChannelRef.current?.postMessage({
       type: 'STATE_UPDATE',
       payload: {
+        hospitalId: activeHospitalId,
         equipments: newEquipments,
-        activeSheetName: sheetName || activeSheetName,
+        activeSheetName: sheetName !== undefined ? sheetName : activeSheetName,
         lastAction: actionDesc
       }
     });
 
-    // 3. Post to backend server for other devices on the network
+    // Post to backend server
     try {
       const res = await fetch('/api/data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          hospitalId: activeHospitalId,
           equipments: newEquipments,
-          activeSheetName: sheetName || activeSheetName,
-          userEmail: currentUser?.email
+          activeSheetName: sheetName !== undefined ? sheetName : activeSheetName,
+          userEmail: currentUser?.email,
+          userName: currentUser?.name
         })
       });
       const data = await res.json();
@@ -239,7 +329,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [equipments, soundEnabled, currentUser]);
+  }, [equipments, soundEnabled, currentUser, activeHospitalId]);
 
   // Statistics calculation
   const stats = useMemo(() => {
@@ -263,7 +353,7 @@ export default function App() {
     return { total, checked, pending, expired, expiringSoon, percent };
   }, [equipments]);
 
-  // Check if 100% finished to trigger celebratory confetti
+  // Confetti when 100% checked
   const prevCheckedRef = useRef(stats.checked);
   useEffect(() => {
     if (stats.total > 0 && stats.checked === stats.total && prevCheckedRef.current < stats.total) {
@@ -272,10 +362,10 @@ export default function App() {
         spread: 70,
         origin: { y: 0.6 }
       });
-      showToast('success', '🎉 Parabéns! Todos os equipamentos foram conferidos com sucesso!');
+      showToast('success', `🎉 Parabéns! Todos os equipamentos do ${activeHospital?.name || 'hospital'} foram conferidos!`);
     }
     prevCheckedRef.current = stats.checked;
-  }, [stats.checked, stats.total]);
+  }, [stats.checked, stats.total, activeHospital?.name]);
 
   // Toggle item check status
   const handleToggleCheck = async (id) => {
@@ -289,7 +379,7 @@ export default function App() {
           ...item,
           checado: nextState,
           dataCheck: nextState ? new Date().toISOString() : null,
-          conferidoPor: nextState ? currentUser?.email : null
+          conferidoPor: nextState ? (currentUser?.name ? `${currentUser.name} (${currentUser.email})` : currentUser?.email) : null
         };
       }
       return item;
@@ -300,7 +390,12 @@ export default function App() {
       fetch('/api/toggle-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, userEmail: currentUser?.email })
+        body: JSON.stringify({
+          id,
+          hospitalId: activeHospitalId,
+          userEmail: currentUser?.email,
+          userName: currentUser?.name
+        })
       }).then(res => res.json()).then(data => {
         if (data.success && data.lastUpdated) {
           lastUpdatedServerRef.current = data.lastUpdated;
@@ -319,7 +414,7 @@ export default function App() {
   const handleScanCode = async (code) => {
     if (!code || !equipments || equipments.length === 0) {
       if (soundEnabled) playErrorSound();
-      showToast('error', 'Nenhuma planilha carregada ainda. Suba um arquivo para começar.');
+      showToast('error', 'Nenhuma planilha carregada ainda para este hospital.');
       return { status: 'not_found', message: 'Nenhuma planilha carregada' };
     }
 
@@ -355,22 +450,21 @@ export default function App() {
       };
     }
 
-    // Mark as checked!
+    // Mark as checked
     if (soundEnabled) playSuccessSound();
 
+    const inspector = currentUser?.name ? `${currentUser.name} (${currentUser.email})` : (currentUser?.email || 'Operador');
     const updated = [...equipments];
     updated[foundIndex] = {
       ...updated[foundIndex],
       checado: true,
       dataCheck: new Date().toISOString(),
-      conferidoPor: currentUser?.email
+      conferidoPor: inspector
     };
 
-    // Fast local update
     setEquipments(updated);
     showToast('success', `Check confirmado: ${targetItem.equipamento} (${targetItem.tag})`);
 
-    // Sync to server & tabs
     await pushServerUpdate(updated, activeSheetName, `Check: ${targetItem.equipamento}`);
 
     return {
@@ -391,8 +485,9 @@ export default function App() {
   const processFile = async (file) => {
     try {
       const result = await parseSpreadsheetFile(file);
-      await pushServerUpdate(result.equipments, result.fileName, `Nova planilha carregada: ${result.fileName}`);
-      showToast('success', `Planilha "${result.fileName}" carregada com ${result.total} equipamentos!`);
+      await pushServerUpdate(result.equipments, result.fileName, `Planilha carregada: ${result.fileName}`);
+      showToast('success', `Planilha "${result.fileName}" carregada no ${activeHospital?.name || 'hospital'} com ${result.total} itens!`);
+      loadHospitals();
     } catch (err) {
       console.error(err);
       showToast('error', `Erro ao ler planilha: ${err.message}`);
@@ -418,36 +513,44 @@ export default function App() {
     }
   };
 
-  // Handle Google Sheets Data import
+  // Google Sheets import
   const handleGoogleDataImport = async (data) => {
-    await pushServerUpdate(data.equipments, data.fileName, 'Planilha importada');
+    await pushServerUpdate(data.equipments, data.fileName, 'Planilha Google importada');
     showToast('success', `Planilha importada com ${data.total} equipamentos!`);
+    loadHospitals();
   };
 
   // Load sample data
   const handleLoadSample = async () => {
     await pushServerUpdate(SAMPLE_EQUIPMENT, 'Exemplo_Calibracao_Padrao.xlsx', 'Exemplo carregado');
     showToast('success', '10 equipamentos de exemplo carregados para teste imediato!');
+    loadHospitals();
   };
 
-  // Reset / Clear all data
+  // Reset / Clear hospital data
   const handleResetData = async () => {
-    if (window.confirm('Deseja limpar todos os dados da planilha atual para todos os usuários?')) {
+    if (window.confirm(`Deseja limpar todos os dados da planilha atual do "${activeHospital?.name || 'hospital atual'}"?`)) {
       await pushServerUpdate([], '', 'Planilha limpa');
       try {
-        await fetch('/api/reset', { method: 'POST' });
+        await fetch('/api/reset', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hospitalId: activeHospitalId })
+        });
       } catch (e) {}
       localStorage.removeItem(STORAGE_KEY);
       localStorage.removeItem(SHEET_NAME_KEY);
-      showToast('warning', 'Dados resetados com sucesso.');
+      showToast('warning', 'Dados do hospital resetados com sucesso.');
+      loadHospitals();
     }
   };
 
-  // Export back to Excel
+  // Export to Excel
   const handleExport = () => {
     if (equipments.length === 0) return;
     const dateStr = new Date().toISOString().split('T')[0];
-    const baseName = activeSheetName ? activeSheetName.replace(/\.[^/.]+$/, "") : "calibracao";
+    const hospSlug = (activeHospital?.name || 'calibracao').replace(/[^a-zA-Z0-9]/g, '_');
+    const baseName = activeSheetName ? activeSheetName.replace(/\.[^/.]+$/, "") : hospSlug;
     const fileName = `${baseName}_conferido_${dateStr}.xlsx`;
     exportToExcel(equipments, fileName);
     showToast('success', `Arquivo "${fileName}" baixado com sucesso!`);
@@ -460,6 +563,7 @@ export default function App() {
       localStorage.setItem(USER_KEY, JSON.stringify(user));
     } catch (e) {}
     showToast('success', `Bem-vindo, ${user.name || user.email}!`);
+    loadHospitals();
   };
 
   // Logout handler
@@ -471,7 +575,7 @@ export default function App() {
     }
   };
 
-  // If user is not logged in, show Login Screen!
+  // If user is not logged in, show Login Screen
   if (!currentUser) {
     return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
   }
@@ -492,18 +596,18 @@ export default function App() {
         className="hidden"
       />
 
-      {/* Drag & Drop Visual Overlay */}
+      {/* Drag & Drop Overlay */}
       {isDraggingFile && (
         <div className="fixed inset-0 z-50 bg-blue-600/90 backdrop-blur-sm flex flex-col items-center justify-center text-white pointer-events-none p-6 text-center animate-in fade-in duration-150">
           <Upload className="w-16 h-16 mb-4 animate-bounce" />
           <h2 className="text-3xl font-extrabold mb-2">Solte sua planilha crua aqui</h2>
-          <p className="text-blue-100 text-sm">Formatos aceitos: .xlsx, .xls ou .csv</p>
+          <p className="text-blue-100 text-sm">Destino: {activeHospital?.name} (.xlsx, .xls, .csv)</p>
         </div>
       )}
 
       {/* Toast Notification Bar */}
       {toast && (
-        <div className="fixed bottom-5 right-5 z-50 max-w-md animate-in slide-in-from-bottom duration-200">
+        <div className="fixed bottom-20 sm:bottom-5 right-5 z-50 max-w-md animate-in slide-in-from-bottom duration-200">
           <div className={`p-4 rounded-2xl shadow-xl flex items-center justify-between gap-3 text-xs sm:text-sm font-semibold border ${
             toast.type === 'error'
               ? 'bg-red-600 text-white border-red-700'
@@ -528,7 +632,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Top Navbar with User Profile & Logout */}
+      {/* Top Navbar with Multi-Hospital Switcher, Plans & User Profile */}
       <Navbar
         onOpenFilePicker={() => fileInputRef.current?.click()}
         onOpenGoogleModal={() => setIsGoogleModalOpen(true)}
@@ -541,10 +645,14 @@ export default function App() {
         onLogout={handleLogout}
         onOpenMasterPanel={() => setIsMasterPanelOpen(true)}
         onOpenInstall={() => setIsInstallModalOpen(true)}
+        hospitals={hospitals}
+        activeHospitalId={activeHospitalId}
+        onSwitchHospital={handleSwitchHospital}
+        onOpenPlansModal={() => setIsPlansModalOpen(true)}
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 sm:pb-6">
         
         {equipments.length === 0 ? (
           /* Empty / Welcome State */
@@ -553,21 +661,22 @@ export default function App() {
             onOpenGoogleModal={() => setIsGoogleModalOpen(true)}
             onLoadSample={handleLoadSample}
             onDropFile={processFile}
+            hospitalName={activeHospital?.name}
           />
         ) : (
           /* Active Spreadsheet View */
           <div className="space-y-6">
             
-            {/* Active File Header info & live sync indicator */}
+            {/* Active Hospital & File Header info & live sync indicator */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 border border-blue-200 dark:border-blue-900/50">
-                  <FileText className="w-5 h-5" />
+                  <Building2 className="w-5 h-5" />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="font-bold text-slate-900 dark:text-white text-sm sm:text-base">
-                      {activeSheetName || 'Planilha Compartilhada'}
+                      {activeHospital?.name || 'Hospital Central'}
                     </h3>
                     <span className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-2 py-0.5 rounded-full font-mono">
                       {equipments.length} itens
@@ -578,7 +687,7 @@ export default function App() {
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Sincronizado entre todos os aparelhos conectados com o login Digiclintec.
+                    Arquivo ativo: <span className="font-medium text-slate-700 dark:text-slate-300">{activeSheetName || 'Planilha Compartilhada'}</span>
                   </p>
                 </div>
               </div>
@@ -596,7 +705,7 @@ export default function App() {
                 <button
                   onClick={handleResetData}
                   className="p-2 text-slate-400 hover:text-red-500 rounded-xl hover:bg-red-50 dark:hover:bg-red-950/30 transition"
-                  title="Trocar ou Limpar Planilha"
+                  title="Trocar ou Limpar Planilha deste Hospital"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -610,7 +719,7 @@ export default function App() {
               onSelectFilter={setActiveFilter}
             />
 
-            {/* Equipment Table with Search & Scanner Bar */}
+            {/* Equipment Table with Search & Scanner Bar (Mobile cards + Desktop table) */}
             <EquipmentTable
               equipments={equipments}
               onToggleCheck={handleToggleCheck}
@@ -640,11 +749,24 @@ export default function App() {
         onImportData={handleGoogleDataImport}
       />
 
-      {/* Master User Management Panel */}
+      {/* Master User & Hospital Management Panel */}
       <MasterPanelModal
         isOpen={isMasterPanelOpen}
         onClose={() => setIsMasterPanelOpen(false)}
         currentUser={currentUser}
+        hospitals={hospitals}
+        activeHospitalId={activeHospitalId}
+        onSwitchHospital={handleSwitchHospital}
+        onRefreshHospitals={loadHospitals}
+      />
+
+      {/* SaaS Subscription Plans Modal */}
+      <PlansModal
+        isOpen={isPlansModalOpen}
+        onClose={() => setIsPlansModalOpen(false)}
+        activeHospital={activeHospital}
+        onUpdateHospitalPlan={handleUpdateHospitalPlan}
+        isMaster={isMaster}
       />
 
       {/* PWA Android / iOS Install Modal */}
