@@ -176,3 +176,4 @@ export default function InstallPromptModal({ isOpen, onClose, deferredPrompt }) 
     </div>
   );
 }
+
