@@ -195,6 +195,39 @@ function evaluateFieldMatch(scannedRaw, fieldRaw, tokens = []) {
     };
   }
 
+  // 4b. Correspondência Inteligente de IDEC / Tag por Dígitos ou Sufixo (ex: "0047", "047" ou "47" casa com "UTIPHL-0047")
+  if (scannedDigits.length >= 2 && fieldDigits.length >= 2) {
+    if (fieldDigits === scannedDigits) {
+      return {
+        score: 1150 + scannedDigits.length * 10,
+        confidence: 98,
+        matchingDigits: scannedDigits.length,
+        matchedSnippet: fieldStr,
+        reason: `IDEC / Numeração idêntica encontrada: "${fieldStr}"`
+      };
+    } else if (fieldDigits.endsWith(scannedDigits)) {
+      return {
+        score: 1000 + scannedDigits.length * 15,
+        confidence: 94,
+        matchingDigits: scannedDigits.length,
+        matchedSnippet: fieldStr,
+        reason: `Final do IDEC / Tag (${scannedDigits}) coincide com "${fieldStr}"`
+      };
+    }
+  }
+
+  // 4c. O campo da planilha CONTÉM o código lido (ex: busca por "HL-0047" ou "0047" dentro de "UTIPHL-0047")
+  if (scannedClean.length >= 3 && fieldClean.includes(scannedClean)) {
+    const ratio = Math.round((scannedClean.length / fieldClean.length) * 100);
+    return {
+      score: 950 + scannedClean.length * 15,
+      confidence: Math.max(ratio, 90),
+      matchingDigits: Math.min(scannedDigits.length, fieldDigits.length),
+      matchedSnippet: scannedStr,
+      reason: `Código lido faz parte do cadastro "${fieldStr}"`
+    };
+  }
+
   // 5. Token exato extraído de código composto
   for (const t of tokens) {
     if (t === fieldClean && fieldClean.length >= 4) {

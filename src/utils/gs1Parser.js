@@ -69,7 +69,12 @@ export function parseCompositeBarcode(rawInput) {
     let match;
     while ((match = aiRegex.exec(cleanedInput)) !== null) {
       const ai = match[1];
-      const val = match[2].trim().replace(/\s+/g, '');
+      const rawVal = match[2].trim();
+      // O valor do AI termina no final da linha ou antes de palavras adicionais de outros rótulos
+      const firstLine = rawVal.split(/[\r\n]+/)[0].trim();
+      const val = firstLine.split(/\s+/)[0].replace(/[^A-Za-z0-9\-\.\/]/g, '');
+
+      if (!val) continue;
 
       if (ai === '21') {
         // AI 21 é SEMPRE o Número de Série no padrão GS1 internacional
@@ -139,9 +144,9 @@ export function parseCompositeBarcode(rawInput) {
       else if (afterGtin.startsWith('10')) {
         const after10 = afterGtin.substring(2);
         // O lote da Terumo costuma ser YYMMDD (6 dígitos) ou 8 dígitos
-        // Procuramos por '21' que indica o início do serial
-        const idx21 = after10.indexOf('21');
-        if (idx21 !== -1 && idx21 >= 4 && idx21 <= 10) {
+        // Procuramos por '21' que indica o início do serial (a partir da posição 4 para não confundir com lote começando em 21)
+        const idx21 = after10.indexOf('21', 4);
+        if (idx21 !== -1 && idx21 <= 12) {
           lote = after10.substring(0, idx21);
           serialNumber = after10.substring(idx21 + 2);
           candidatesSet.add(lote);
@@ -218,3 +223,4 @@ export function extractCleanSerialNumber(code) {
   // Se não encontrou formato GS1 específico, retorna o código original limpo
   return String(code).trim();
 }
+

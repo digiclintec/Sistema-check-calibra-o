@@ -21,12 +21,14 @@ import {
   ArrowRight,
   ShieldCheck,
   Crosshair,
-  Target
+  Target,
+  ScanLine
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { playSuccessSound, playWarningSound, playErrorSound } from '../utils/audio';
 import { findBestEquipmentMatches } from '../utils/fuzzyMatch';
 import { parseCompositeBarcode } from '../utils/gs1Parser';
+import { processPhotoTextWithAgent } from '../utils/serialAgent';
 
 // Suporte a todos os formatos padrão industriais e hospitalares
 const SUPPORTED_FORMATS = [
@@ -58,8 +60,9 @@ export default function ScannerModal({
   const [torchOn, setTorchOn] = useState(false);
   const [hasTorch, setHasTorch] = useState(false);
   const [hasZoom, setHasZoom] = useState(false);
-  const [zoomLevel, setZoomLevel] = useState(1);
+  const [zoomLevel, setZoomLevel] = useState(1.5); // Inicia em 1.5x para evitar borrão de macro
   const [viewMode, setViewMode] = useState('split'); // 'split' | 'full_camera'
+  const [reticleType, setReticleType] = useState('1d'); // '1d' (Linha Laser) | '2d' (Caixa QR)
   
   // Feedback visual do toque para focar (Tap to Focus)
   const [focusRing, setFocusRing] = useState({ x: 0, y: 0, visible: false, status: 'idle' });
@@ -83,6 +86,10 @@ export default function ScannerModal({
   const focusTimeoutRef = useRef(null);
   const lastCodeRef = useRef('');
   const lastTimeRef = useRef(0);
+
+  // Detector nativo de código de barras (Google Play Services / Android ML Kit)
+  const nativeDetectorActiveRef = useRef(false);
+  const nativeDetectorRafRef = useRef(null);
 
   // Inicializa câmeras ao abrir o modal
   useEffect(() => {
@@ -134,18 +141,30 @@ export default function ScannerModal({
       });
       html5QrCodeRef.current = html5QrCode;
 
-      // Configuração de alto desempenho para leitura instantânea e ampla
+      // Configuração com restrições Full HD (1080p) e foco contínuo
+      const videoConstraints = {
+        facingMode: { ideal: "environment" },
+        ...(cameraId ? { deviceId: { exact: cameraId } } : {}),
+        width: { min: 1280, ideal: 1920, max: 3840 },
+        height: { min: 720, ideal: 1080, max: 2160 },
+        advanced: [
+          { focusMode: "continuous" }
+        ]
+      };
+
       const config = {
-        fps: 30, // 30 quadros por segundo para máxima velocidade de captura
+        fps: 30, // 30 quadros por segundo
+        videoConstraints: videoConstraints,
         qrbox: (viewfinderWidth, viewfinderHeight) => {
-          // Caixa ampla cobrindo 90% da largura útil da tela
-          const width = Math.floor(viewfinderWidth * 0.90);
-          const height = Math.floor(Math.min(viewfinderHeight * 0.65, 320));
+          // Ampla área horizontal cobrindo 98% da largura útil sem cortar códigos 1D longos
+          const width = Math.floor(viewfinderWidth * 0.98);
+          const height = Math.floor(Math.min(viewfinderHeight * 0.75, 340));
           return {
-            width: Math.max(width, 240),
+            width: Math.max(width, 280),
             height: Math.max(height, 140)
           };
         },
+        disableFlip: true,
       };
 
       const cameraConfig = cameraId 
@@ -166,9 +185,56 @@ export default function ScannerModal({
       setScanning(true);
       setCameraError('');
 
-      // Ativa foco contínuo por hardware imediatamente após início
+      // Inicia loop ultra-rápido de detecção nativa por hardware (Android Chrome / Google ML Kit)
+      if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
+        try {
+          const nativeDetector = new window.BarcodeDetector({
+            formats: [
+              'code_128',
+              'code_39',
+              'code_93',
+              'ean_13',
+              'ean_8',
+              'data_matrix',
+              'qr_code',
+              'itf',
+              'upc_a',
+              'upc_e'
+            ]
+          });
+
+          nativeDetectorActiveRef.current = true;
+          const runNativeLoop = async () => {
+            if (!nativeDetectorActiveRef.current) return;
+            const videoEl = document.querySelector('#barcode-reader-box video');
+            if (videoEl && videoEl.readyState >= 2 && !videoEl.paused) {
+              try {
+                const barcodes = await nativeDetector.detect(videoEl);
+                if (barcodes && barcodes.length > 0) {
+                  for (const b of barcodes) {
+                    if (b.rawValue) {
+                      handleDecoded(b.rawValue);
+                      break;
+                    }
+                  }
+                }
+              } catch (e) {}
+            }
+            if (nativeDetectorActiveRef.current) {
+              nativeDetectorRafRef.current = requestAnimationFrame(runNativeLoop);
+            }
+          };
+
+          nativeDetectorRafRef.current = requestAnimationFrame(runNativeLoop);
+        } catch (e) {
+          console.warn('BarcodeDetector nativo não pôde ser ativado:', e);
+        }
+      }
+
+      // Ativa foco contínuo e zoom 1.5x por padrão para afastar do limite macro
       setTimeout(() => {
         applyHardwareFocus();
+        applySpecificZoom(1.5);
       }, 500);
 
       // Verifica capacidades de lanterna e zoom óptico/digital
@@ -196,6 +262,12 @@ export default function ScannerModal({
   };
 
   const stopScanner = async () => {
+    nativeDetectorActiveRef.current = false;
+    if (nativeDetectorRafRef.current) {
+      cancelAnimationFrame(nativeDetectorRafRef.current);
+      nativeDetectorRafRef.current = null;
+    }
+
     if (html5QrCodeRef.current) {
       try {
         if (html5QrCodeRef.current.isScanning) {
@@ -335,19 +407,28 @@ export default function ScannerModal({
     }
   };
 
-  const cycleZoom = async (e) => {
-    e?.stopPropagation();
-    if (!html5QrCodeRef.current) return;
+  const applySpecificZoom = async (nextZoom) => {
     try {
-      // Cicla entre 1x -> 1.5x -> 2x -> 1x
-      const nextZoom = zoomLevel === 1 ? 1.5 : zoomLevel === 1.5 ? 2 : 1;
-      await html5QrCodeRef.current.applyVideoConstraints({
-        advanced: [{ zoom: nextZoom }]
-      });
+      if (html5QrCodeRef.current) {
+        await html5QrCodeRef.current.applyVideoConstraints({
+          advanced: [{ zoom: nextZoom }]
+        });
+      }
+      const videoEl = document.querySelector('#barcode-reader-box video');
+      const track = videoEl?.srcObject?.getVideoTracks()?.[0];
+      if (track) {
+        await track.applyConstraints({ advanced: [{ zoom: nextZoom }] });
+      }
       setZoomLevel(nextZoom);
     } catch (e) {
-      console.warn('Zoom não suportado:', e);
+      console.warn('Erro ao aplicar zoom:', e);
     }
+  };
+
+  const cycleZoom = async (e) => {
+    e?.stopPropagation();
+    const nextZoom = zoomLevel === 1 ? 1.5 : zoomLevel === 1.5 ? 2 : 1;
+    await applySpecificZoom(nextZoom);
   };
 
   const handleCameraChange = (camId) => {
@@ -488,28 +569,128 @@ export default function ScannerModal({
     setLastScannedFeedback(null);
   };
 
-  // Leitura a partir de foto/galeria
+  // Leitura ultra-inteligente a partir de foto/galeria (Código de Barras + OCR Automático)
   const handlePhotoScan = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setLastScannedFeedback({
+      status: 'analyzing',
+      code: 'Foto',
+      message: 'Analisando imagem (tentando Código de Barras e leitura de Número de Série)...',
+      timestamp: new Date().toLocaleTimeString('pt-BR')
+    });
+
     try {
-      const scanner = html5QrCodeRef.current || new Html5Qrcode('barcode-reader-box', {
-        formatsToSupport: SUPPORTED_FORMATS
-      });
-      const decoded = await scanner.scanFile(file, true);
-      if (decoded) {
-        handleDecoded(decoded);
+      // 1. Tenta decodificar código de barras 1D/2D
+      let decodedBarcode = null;
+
+      // 1a. Tenta leitor Html5Qrcode / ZXing
+      try {
+        const scanner = html5QrCodeRef.current || new Html5Qrcode('barcode-reader-box', {
+          formatsToSupport: SUPPORTED_FORMATS
+        });
+        decodedBarcode = await scanner.scanFile(file, true);
+      } catch (barcodeErr) {
+        // 1b. Se falhar ZXing, tenta BarcodeDetector nativo no ImageBitmap
+        if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
+          try {
+            const bmp = await createImageBitmap(file);
+            const nativeDetector = new window.BarcodeDetector({
+              formats: ['code_128', 'code_39', 'code_93', 'ean_13', 'qr_code', 'data_matrix']
+            });
+            const detected = await nativeDetector.detect(bmp);
+            if (detected && detected.length > 0 && detected[0].rawValue) {
+              decodedBarcode = detected[0].rawValue;
+            }
+          } catch (e) {}
+        }
       }
-    } catch (err) {
-      console.warn('Foto não reconhecida:', err);
+
+      if (decodedBarcode) {
+        handleDecoded(decodedBarcode);
+        e.target.value = '';
+        return;
+      }
+
+      // 2. Fallback Inteligente: Se as barrinhas estiverem com reflexo, executa o Agente OCR
+      setLastScannedFeedback({
+        status: 'analyzing',
+        code: 'OCR',
+        message: 'Decodificando texto impresso [SN] / [REF] / IDEC da etiqueta...',
+        timestamp: new Date().toLocaleTimeString('pt-BR')
+      });
+
+      // Cria imagem otimizada em canvas com contraste aprimorado
+      const optimizedDataUrl = await new Promise((resolve) => {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          const maxDim = 1600;
+          let w = img.width;
+          let h = img.height;
+          if (w > maxDim || h > maxDim) {
+            if (w > h) { h = Math.round((h * maxDim) / w); w = maxDim; }
+            else { w = Math.round((w * maxDim) / h); h = maxDim; }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', 0.85));
+        };
+        img.onerror = () => resolve(url);
+        img.src = url;
+      });
+
+      let ocrText = '';
+      try {
+        const { createWorker } = await import('tesseract.js');
+        const worker = await createWorker('por+eng', 1);
+        const ret = await worker.recognize(optimizedDataUrl);
+        ocrText = ret.data.text || '';
+        await worker.terminate();
+      } catch (clientErr) {
+        const res = await fetch('/api/ocr-scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageBase64: optimizedDataUrl })
+        });
+        const d = await res.json();
+        ocrText = d.text || '';
+      }
+
+      if (ocrText) {
+        const agentResult = processPhotoTextWithAgent(ocrText, equipments);
+        if (agentResult.matchedEquipments.length > 0) {
+          for (const match of agentResult.matchedEquipments) {
+            handleDecoded(match.matchedToken || match.equipment.serie || match.equipment.tag);
+          }
+          e.target.value = '';
+          return;
+        }
+      }
+
+      // Se nenhum método localizou
+      if (soundEnabled) playErrorSound();
       setLastScannedFeedback({
         status: 'not_found',
         code: 'Foto',
-        message: 'Nenhum código nítido detectado na foto. Tente aproximar da etiqueta.',
+        message: 'Nenhum código de barras ou número de série legível foi identificado na foto. Tente tirar a foto mais próxima da etiqueta da bomba.',
         timestamp: new Date().toLocaleTimeString('pt-BR')
       });
+
+    } catch (err) {
+      console.error('Erro ao ler foto:', err);
       if (soundEnabled) playErrorSound();
+      setLastScannedFeedback({
+        status: 'not_found',
+        code: 'Foto',
+        message: `Falha ao ler foto: ${err.message}`,
+        timestamp: new Date().toLocaleTimeString('pt-BR')
+      });
     }
     e.target.value = '';
   };
@@ -669,23 +850,39 @@ export default function ScannerModal({
 
           {/* Mira Laser Ampla de Enquadramento */}
           {scanning && !cameraError && (
-            <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-4">
-              <div className="relative w-full max-w-[340px] h-[180px] sm:h-[210px] border-2 border-dashed border-blue-400/80 rounded-2xl shadow-[0_0_30px_rgba(59,130,246,0.35)]">
-                {/* Linha Laser Vermelha Animada */}
-                <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-red-600 via-rose-400 to-red-600 shadow-[0_0_12px_#ef4444] animate-[bounce_2s_infinite]"></div>
-                
-                {/* Marcadores de Canto */}
-                <div className="absolute -top-1 -left-1 w-6 h-6 border-t-4 border-l-4 border-blue-500 rounded-tl-lg"></div>
-                <div className="absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 border-blue-500 rounded-tr-lg"></div>
-                <div className="absolute -bottom-1 -left-1 w-6 h-6 border-b-4 border-l-4 border-blue-500 rounded-bl-lg"></div>
-                <div className="absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 border-blue-500 rounded-br-lg"></div>
+            <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-3">
+              {reticleType === '1d' ? (
+                // Mira 1D: Ampla e horizontal ideal para bombas de infusão (Code 128 / GS1)
+                <div className="relative w-[96%] max-w-[480px] h-[120px] sm:h-[140px] border-2 border-dashed border-red-500/80 rounded-2xl shadow-[0_0_25px_rgba(239,68,68,0.35)] flex items-center justify-center">
+                  {/* Linha Laser Vermelha Horizontal Contínua e Brilhante */}
+                  <div className="absolute left-0 right-0 h-1 bg-gradient-to-r from-red-600 via-rose-300 to-red-600 shadow-[0_0_14px_#ef4444] animate-pulse"></div>
+                  
+                  {/* Marcadores de Canto Vermelhos */}
+                  <div className="absolute -top-1 -left-1 w-6 h-6 border-t-4 border-l-4 border-red-500 rounded-tl-lg"></div>
+                  <div className="absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 border-red-500 rounded-tr-lg"></div>
+                  <div className="absolute -bottom-1 -left-1 w-6 h-6 border-b-4 border-l-4 border-red-500 rounded-bl-lg"></div>
+                  <div className="absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 border-red-500 rounded-br-lg"></div>
 
-                {/* Dica de Toque para Focar no rodapé da mira */}
-                <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 whitespace-nowrap text-[11px] font-semibold text-white/95 bg-slate-900/90 px-3 py-0.5 rounded-full border border-slate-700/80 shadow-md flex items-center gap-1.5">
-                  <Crosshair className="w-3 h-3 text-amber-400 animate-spin" />
-                  <span>Toque na tela para focar</span>
+                  {/* Dica da Linha Laser no rodapé da mira */}
+                  <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 whitespace-nowrap text-[11px] font-semibold text-white/95 bg-slate-900/95 px-3 py-0.5 rounded-full border border-red-500/40 shadow-md flex items-center gap-1.5">
+                    <ScanLine className="w-3.5 h-3.5 text-red-400" />
+                    <span>Alinhe o laser vermelho sobre todo o código de barras</span>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                // Mira 2D: Caixa quadrada para QR Code / DataMatrix
+                <div className="relative w-full max-w-[280px] h-[260px] border-2 border-dashed border-blue-400/80 rounded-2xl shadow-[0_0_30px_rgba(59,130,246,0.35)]">
+                  <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-cyan-300 to-blue-500 shadow-[0_0_12px_#3b82f6] animate-[bounce_2s_infinite]"></div>
+                  <div className="absolute -top-1 -left-1 w-6 h-6 border-t-4 border-l-4 border-blue-500 rounded-tl-lg"></div>
+                  <div className="absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 border-blue-500 rounded-tr-lg"></div>
+                  <div className="absolute -bottom-1 -left-1 w-6 h-6 border-b-4 border-l-4 border-blue-500 rounded-bl-lg"></div>
+                  <div className="absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 border-blue-500 rounded-br-lg"></div>
+                  <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 whitespace-nowrap text-[11px] font-semibold text-white/95 bg-slate-900/90 px-3 py-0.5 rounded-full border border-slate-700/80 shadow-md flex items-center gap-1.5">
+                    <Crosshair className="w-3 h-3 text-amber-400 animate-spin" />
+                    <span>Enquadre o código QR</span>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -717,40 +914,64 @@ export default function ScannerModal({
             </div>
           )}
 
-          {/* Botões Flutuantes Rápidos (Focar, Zoom 1x/1.5x/2x e Lanterna) */}
-          <div className="absolute top-3 right-3 z-20 flex items-center gap-2" onClick={e => e.stopPropagation()}>
+          {/* Barra Superior de Controles na Câmera: Alternador 1D/2D à Esquerda */}
+          <div className="absolute top-3 left-3 z-20" onClick={e => e.stopPropagation()}>
+            <button
+              onClick={() => setReticleType(r => r === '1d' ? '2d' : '1d')}
+              className={`px-2.5 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 border shadow-lg transition active:scale-95 ${
+                reticleType === '1d'
+                  ? 'bg-red-500/20 text-red-300 border-red-500/40'
+                  : 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+              }`}
+              title="Alternar entre mira para Código de Barras e mira para QR Code"
+            >
+              <ScanLine className="w-3.5 h-3.5" />
+              <span>{reticleType === '1d' ? '1D Barras (Laser)' : '2D QR Code'}</span>
+            </button>
+          </div>
+
+          {/* Botões Flutuantes Rápidos à Direita (Focar, Seletor de Zoom 1x/1.5x/2x e Lanterna) */}
+          <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
             
+            {/* Seletor Rápido de Zoom (Evita borrão macro) */}
+            <div className="flex items-center bg-slate-900/90 p-0.5 rounded-full border border-slate-700/80 shadow-lg">
+              {[1, 1.5, 2].map((z) => (
+                <button
+                  key={z}
+                  onClick={() => applySpecificZoom(z)}
+                  className={`px-2 py-1 rounded-full text-[11px] font-bold transition ${
+                    zoomLevel === z
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                  title={`Zoom ${z}x`}
+                >
+                  {z}x
+                </button>
+              ))}
+            </div>
+
             {/* Botão Dedicado de Focar */}
             <button
               onClick={handleTriggerCenterFocus}
-              className="px-2.5 py-2 rounded-full bg-slate-900/85 hover:bg-slate-800 text-amber-300 font-bold text-xs flex items-center gap-1.5 border border-amber-500/40 shadow-lg transition active:scale-95"
+              className="p-2 rounded-full bg-slate-900/85 hover:bg-slate-800 text-amber-300 font-bold text-xs flex items-center gap-1 border border-amber-500/40 shadow-lg transition active:scale-95"
               title="Focar câmera agora"
             >
               <Crosshair className="w-4 h-4 text-amber-400" />
-              <span>Focar</span>
-            </button>
-
-            {/* Alternador de Zoom (1x, 1.5x, 2x) */}
-            <button
-              onClick={cycleZoom}
-              className="w-10 h-10 rounded-full bg-slate-900/85 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center border border-slate-700/80 shadow-lg transition active:scale-95"
-              title="Alternar Zoom (1x, 1.5x, 2x)"
-            >
-              {zoomLevel}x
             </button>
 
             {/* Lanterna */}
             {hasTorch && (
               <button
                 onClick={toggleTorch}
-                className={`w-10 h-10 rounded-full flex items-center justify-center shadow-lg transition border ${
+                className={`w-9 h-9 rounded-full flex items-center justify-center shadow-lg transition border ${
                   torchOn 
                     ? 'bg-amber-400 text-slate-950 font-bold border-amber-300' 
                     : 'bg-slate-900/85 text-white hover:bg-slate-800 border-slate-700/80'
                 }`}
                 title="Ligar Lanterna"
               >
-                <Zap className="w-5 h-5" />
+                <Zap className="w-4 h-4" />
               </button>
             )}
           </div>
