@@ -22,6 +22,8 @@ import EquipmentTable from './components/EquipmentTable';
 import ScannerModal from './components/ScannerModal';
 import GoogleSheetsModal from './components/GoogleSheetsModal';
 import MasterPanelModal from './components/MasterPanelModal';
+import InstallPromptModal from './components/InstallPromptModal';
+import MobileBottomBar from './components/MobileBottomBar';
 
 import { parseSpreadsheetFile, exportToExcel } from './utils/sheetParser';
 import { SAMPLE_EQUIPMENT } from './utils/sampleData';
@@ -67,6 +69,8 @@ export default function App() {
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
   const [isMasterPanelOpen, setIsMasterPanelOpen] = useState(false);
+  const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [lastScannedId, setLastScannedId] = useState(null);
   const [toast, setToast] = useState(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
@@ -105,6 +109,22 @@ export default function App() {
       console.warn('Storage quota exceeded:', e);
     }
   }, [equipments, activeSheetName]);
+
+  // Capture Android PWA beforeinstallprompt
+  useEffect(() => {
+    const handleBeforeInstall = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+  }, []);
+
+  const handleCycleFilter = () => {
+    const sequence = ['todos', 'pendentes', 'checados', 'vencidos'];
+    const nextIdx = (sequence.indexOf(activeFilter) + 1) % sequence.length;
+    setActiveFilter(sequence[nextIdx]);
+  };
 
   useEffect(() => {
     localStorage.setItem(SOUND_KEY, String(soundEnabled));
@@ -520,6 +540,7 @@ export default function App() {
         currentUser={currentUser}
         onLogout={handleLogout}
         onOpenMasterPanel={() => setIsMasterPanelOpen(true)}
+        onOpenInstall={() => setIsInstallModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -624,6 +645,23 @@ export default function App() {
         isOpen={isMasterPanelOpen}
         onClose={() => setIsMasterPanelOpen(false)}
         currentUser={currentUser}
+      />
+
+      {/* PWA Android / iOS Install Modal */}
+      <InstallPromptModal
+        isOpen={isInstallModalOpen}
+        onClose={() => setIsInstallModalOpen(false)}
+        deferredPrompt={deferredPrompt}
+      />
+
+      {/* Floating Mobile Bottom Action Bar (Thumb-friendly for Android & iOS) */}
+      <MobileBottomBar
+        onOpenScanner={() => setIsScannerOpen(true)}
+        onOpenInstall={() => setIsInstallModalOpen(true)}
+        activeFilter={activeFilter}
+        onCycleFilter={handleCycleFilter}
+        checkedCount={stats.checked}
+        totalCount={stats.total}
       />
 
       {/* Footer */}

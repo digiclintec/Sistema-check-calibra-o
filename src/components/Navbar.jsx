@@ -6,10 +6,11 @@ import {
   FileSpreadsheet, 
   Volume2, 
   VolumeX, 
-  CheckCircle,
-  LogOut,
-  Crown,
-  Users
+  CheckCircle, 
+  LogOut, 
+  Crown, 
+  Users,
+  Smartphone
 } from 'lucide-react';
 
 export default function Navbar({ 
@@ -22,7 +23,8 @@ export default function Navbar({
   setSoundEnabled,
   currentUser,
   onLogout,
-  onOpenMasterPanel
+  onOpenMasterPanel,
+  onOpenInstall
 }) {
   const isMaster = currentUser?.role === 'master' || currentUser?.email?.toLowerCase() === 'digiclintec@gmail.com';
 
@@ -75,6 +77,16 @@ export default function Navbar({
                 <span className="hidden sm:inline">Painel Master</span>
               </button>
             )}
+
+            {/* Install App on Android/iOS Button */}
+            <button
+              onClick={onOpenInstall}
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-bold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 transition shadow-sm"
+              title="Instalar aplicativo no Android ou iPhone"
+            >
+              <Smartphone className="w-4 h-4 text-emerald-500" />
+              <span className="hidden sm:inline">Baixar App</span>
+            </button>
 
             {/* Google Sheets Modal Button */}
             <button

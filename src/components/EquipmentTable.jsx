@@ -11,11 +11,12 @@ import {
   Layers, 
   ChevronRight, 
   ChevronDown, 
-  Sparkles,
-  Barcode,
-  CheckCircle2,
-  Filter,
-  ArrowUpDown
+  Barcode, 
+  CheckCircle2, 
+  Filter, 
+  ArrowUpDown,
+  Building2,
+  Cpu
 } from 'lucide-react';
 
 export default function EquipmentTable({ 
@@ -28,12 +29,11 @@ export default function EquipmentTable({
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSector, setSelectedSector] = useState('ALL');
-  const [sortField, setSortField] = useState('status'); // 'status', 'name', 'tag', 'validade'
+  const [sortField, setSortField] = useState('status');
   const [sortAsc, setSortAsc] = useState(true);
   const [quickCodeInput, setQuickCodeInput] = useState('');
   const [expandedId, setExpandedId] = useState(null);
 
-  // Distinct sectors for dropdown
   const sectors = useMemo(() => {
     const list = new Set();
     equipments.forEach(e => {
@@ -42,7 +42,6 @@ export default function EquipmentTable({
     return Array.from(list).sort();
   }, [equipments]);
 
-  // Handle direct barcode gun / keyboard Enter in the quick bip input
   const handleQuickSubmit = (e) => {
     e.preventDefault();
     if (!quickCodeInput.trim()) return;
@@ -50,11 +49,9 @@ export default function EquipmentTable({
     setQuickCodeInput('');
   };
 
-  // Filter and sort items
   const filteredEquipments = useMemo(() => {
     let result = [...equipments];
 
-    // Filter by Tab / Status Card
     if (activeFilter === 'checados') {
       result = result.filter(e => e.checado);
     } else if (activeFilter === 'pendentes') {
@@ -67,12 +64,10 @@ export default function EquipmentTable({
       );
     }
 
-    // Filter by Sector
     if (selectedSector !== 'ALL') {
       result = result.filter(e => e.setor === selectedSector);
     }
 
-    // Filter by Search Query (Intelligent multi-field match)
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       result = result.filter(e => {
@@ -89,7 +84,6 @@ export default function EquipmentTable({
       });
     }
 
-    // Sort
     result.sort((a, b) => {
       let valA, valB;
       if (sortField === 'name') {
@@ -102,7 +96,6 @@ export default function EquipmentTable({
         valA = a.validadeCalibracao || '';
         valB = b.validadeCalibracao || '';
       } else {
-        // Default sort: pending first, then checked
         valA = a.checado ? 1 : 0;
         valB = b.checado ? 1 : 0;
       }
@@ -154,7 +147,7 @@ export default function EquipmentTable({
     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden">
       
       {/* Search and Quick Scan Bar */}
-      <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 space-y-3 bg-slate-50/50 dark:bg-slate-900/50">
+      <div className="p-3.5 sm:p-5 border-b border-slate-200 dark:border-slate-800 space-y-3 bg-slate-50/50 dark:bg-slate-900/50">
         
         {/* Row 1: Direct Gun/Barcode Scan Bar */}
         <form onSubmit={handleQuickSubmit} className="relative flex items-center">
@@ -163,14 +156,14 @@ export default function EquipmentTable({
           </div>
           <input
             type="text"
-            placeholder="Aponte o leitor de código de barras ou digite e aperte ENTER..."
+            placeholder="Aponte o leitor de código de barras ou digite..."
             value={quickCodeInput}
             onChange={(e) => setQuickCodeInput(e.target.value)}
-            className="w-full bg-white dark:bg-slate-950 border-2 border-blue-500/40 dark:border-blue-500/50 rounded-2xl pl-11 pr-24 py-3 text-sm font-mono text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-500/15 shadow-sm"
+            className="w-full bg-white dark:bg-slate-950 border-2 border-blue-500/40 dark:border-blue-500/50 rounded-2xl pl-11 pr-20 py-2.5 sm:py-3 text-xs sm:text-sm font-mono text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-500/15 shadow-sm"
           />
           <button
             type="submit"
-            className="absolute right-2 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-sm"
+            className="absolute right-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-sm"
           >
             <CheckCircle2 className="w-3.5 h-3.5" />
             Check
@@ -178,7 +171,7 @@ export default function EquipmentTable({
         </form>
 
         {/* Row 2: Search Query & Sector Filter */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
           
           {/* Smart Search */}
           <div className="relative flex-1">
@@ -207,7 +200,7 @@ export default function EquipmentTable({
               <select
                 value={selectedSector}
                 onChange={(e) => setSelectedSector(e.target.value)}
-                className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:border-blue-500"
+                className="w-full sm:w-auto bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:border-blue-500"
               >
                 <option value="ALL">Todos os Setores ({equipments.length})</option>
                 {sectors.map((sec) => (
@@ -220,7 +213,7 @@ export default function EquipmentTable({
           )}
 
           {/* Active Filter Chips */}
-          <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
             {['todos', 'pendentes', 'checados', 'vencidos'].map((f) => (
               <button
                 key={f}
@@ -240,8 +233,95 @@ export default function EquipmentTable({
 
       </div>
 
-      {/* Equipment List / Table */}
-      <div className="overflow-x-auto">
+      {/* MOBILE VIEW: Touch-Optimized Cards for Android & iOS */}
+      <div className="sm:hidden p-3 space-y-3">
+        {filteredEquipments.length === 0 ? (
+          <div className="py-10 text-center text-slate-400">
+            <AlertCircle className="w-8 h-8 mx-auto text-slate-400 mb-2" />
+            <p className="font-semibold text-slate-700 dark:text-slate-200 text-xs">Nenhum equipamento encontrado</p>
+            <p className="text-[11px] text-slate-400 mt-1">Ajuste os filtros ou a busca acima.</p>
+          </div>
+        ) : (
+          filteredEquipments.map((item) => {
+            const isRecentlyScanned = lastScannedId === item.id || lastScannedId === item.codigoBarras;
+
+            return (
+              <div
+                key={item.id}
+                className={`p-4 rounded-2xl border transition-all ${
+                  item.checado
+                    ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-300/60 dark:border-emerald-800/50'
+                    : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 shadow-sm'
+                } ${isRecentlyScanned ? 'ring-2 ring-blue-500 animate-pulse' : ''}`}
+              >
+                {/* Top header row */}
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div>
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                      {item.tag || item.codigoBarras}
+                    </span>
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white mt-1 leading-snug">
+                      {item.equipamento}
+                    </h4>
+                  </div>
+                  <div>{getStatusBadge(item.statusCalibracao)}</div>
+                </div>
+
+                {/* Specs / Details */}
+                <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400 py-2 border-t border-b border-slate-100 dark:border-slate-800/60">
+                  <div>
+                    <span className="text-[10px] text-slate-400 block">Setor:</span>
+                    <span className="font-medium text-slate-700 dark:text-slate-200">{item.setor || 'Geral'}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block">Validade:</span>
+                    <span className="font-medium text-slate-700 dark:text-slate-200 font-mono">{item.validadeCalibracao || 'N/A'}</span>
+                  </div>
+                  {(item.fabricante || item.modelo) && (
+                    <div className="col-span-2 pt-1 flex items-center gap-1.5 truncate">
+                      <Cpu className="w-3 h-3 text-slate-400 shrink-0" />
+                      <span>{item.fabricante} {item.modelo}</span>
+                      {item.serie && <span>• S/N: {item.serie}</span>}
+                    </div>
+                  )}
+                  {item.conferidoPor && (
+                    <div className="col-span-2 pt-0.5 text-emerald-600 dark:text-emerald-400 text-[10px]">
+                      ✓ Conferido por: {item.conferidoPor}
+                    </div>
+                  )}
+                </div>
+
+                {/* Big Touch Action Button */}
+                <div className="pt-2.5">
+                  <button
+                    onClick={() => onToggleCheck(item.id)}
+                    className={`w-full py-2.5 px-4 rounded-xl font-bold text-xs transition flex items-center justify-center gap-2 active:scale-95 shadow-sm ${
+                      item.checado
+                        ? 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-red-50 hover:text-red-600'
+                        : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-blue-500/20'
+                    }`}
+                  >
+                    {item.checado ? (
+                      <>
+                        <X className="w-4 h-4 text-slate-500" />
+                        Desmarcar Checagem
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-4 h-4 stroke-[3]" />
+                        Confirmar Check
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* DESKTOP VIEW: High-Density Table */}
+      <div className="hidden sm:block overflow-x-auto">
         <table className="w-full text-left text-xs">
           <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 font-semibold uppercase tracking-wider select-none">
             <tr>
@@ -259,7 +339,7 @@ export default function EquipmentTable({
                 </div>
               </th>
               <th className="py-3.5 px-4 hidden lg:table-cell">Setor / Local</th>
-              <th className="py-3.5 px-4 cursor-pointer hover:text-slate-900 dark:hover:text-white hidden sm:table-cell" onClick={() => toggleSort('validade')}>
+              <th className="py-3.5 px-4 cursor-pointer hover:text-slate-900 dark:hover:text-white" onClick={() => toggleSort('validade')}>
                 <div className="flex items-center gap-1.5">
                   Validade Calibração
                   <ArrowUpDown className="w-3 h-3" />
@@ -283,150 +363,94 @@ export default function EquipmentTable({
             ) : (
               filteredEquipments.map((item) => {
                 const isRecentlyScanned = lastScannedId === item.id || lastScannedId === item.codigoBarras;
-                const isExpanded = expandedId === item.id;
 
                 return (
-                  <React.Fragment key={item.id}>
-                    <tr 
-                      className={`transition-colors duration-200 group ${
-                        item.checado 
-                          ? 'bg-emerald-50/40 dark:bg-emerald-950/15' 
-                          : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
-                      } ${isRecentlyScanned ? 'animate-pulse bg-blue-100/60 dark:bg-blue-900/40' : ''}`}
-                    >
-                      {/* Check Status Icon */}
-                      <td className="py-3 px-4 text-center">
-                        <button
-                          onClick={() => onToggleCheck(item.id)}
-                          className={`w-7 h-7 mx-auto rounded-full flex items-center justify-center transition-transform active:scale-90 ${
-                            item.checado
-                              ? 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/30'
-                              : 'border-2 border-slate-300 dark:border-slate-700 text-transparent hover:border-blue-500'
-                          }`}
-                          title={item.checado ? "Desmarcar equipamento" : "Marcar como checado"}
-                        >
-                          <Check className="w-4 h-4 stroke-[3]" />
-                        </button>
-                      </td>
+                  <tr 
+                    key={item.id}
+                    className={`transition-colors duration-200 group ${
+                      item.checado 
+                        ? 'bg-emerald-50/40 dark:bg-emerald-950/15' 
+                        : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
+                    } ${isRecentlyScanned ? 'animate-pulse bg-blue-100/60 dark:bg-blue-900/40' : ''}`}
+                  >
+                    <td className="py-3 px-4 text-center">
+                      <button
+                        onClick={() => onToggleCheck(item.id)}
+                        className={`w-7 h-7 mx-auto rounded-full flex items-center justify-center transition-transform active:scale-90 ${
+                          item.checado
+                            ? 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/30'
+                            : 'border-2 border-slate-300 dark:border-slate-700 text-transparent hover:border-blue-500'
+                        }`}
+                        title={item.checado ? "Desmarcar equipamento" : "Marcar como checado"}
+                      >
+                        <Check className="w-4 h-4 stroke-[3]" />
+                      </button>
+                    </td>
 
-                      {/* Equipment Name & Quick Details */}
-                      <td className="py-3 px-4">
-                        <div className="flex items-start gap-2">
-                          <button
-                            onClick={() => setExpandedId(isExpanded ? null : item.id)}
-                            className="mt-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 sm:hidden"
-                          >
-                            <ChevronRight className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                          </button>
-                          <div>
-                            <div className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
-                              <span>{item.equipamento}</span>
-                              {item.checado && (
-                                <span className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 px-1.5 py-0.2 rounded font-semibold">
-                                  OK
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 flex flex-wrap items-center gap-x-2">
-                              {item.fabricante && <span>{item.fabricante}</span>}
-                              {item.modelo && <span>• Mod: {item.modelo}</span>}
-                              {item.serie && <span>• S/N: {item.serie}</span>}
-                            </div>
-                            {/* Mobile only info */}
-                            <div className="sm:hidden text-[11px] text-slate-400 mt-1 font-mono flex items-center gap-2">
-                              <span>Tag: {item.tag}</span>
-                              <span>• Barras: {item.codigoBarras}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </td>
+                    <td className="py-3 px-4">
+                      <div className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
+                        <span>{item.equipamento}</span>
+                        {item.checado && (
+                          <span className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 px-1.5 py-0.2 rounded font-semibold">
+                            OK
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 flex flex-wrap items-center gap-x-2">
+                        {item.fabricante && <span>{item.fabricante}</span>}
+                        {item.modelo && <span>• Mod: {item.modelo}</span>}
+                        {item.serie && <span>• S/N: {item.serie}</span>}
+                      </div>
+                    </td>
 
-                      {/* Tag / Barcode */}
-                      <td className="py-3 px-4 hidden md:table-cell font-mono">
-                        <div className="text-slate-800 dark:text-slate-200 font-bold">{item.tag}</div>
-                        <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
-                          <Barcode className="w-3 h-3 text-slate-400" />
-                          {item.codigoBarras}
-                        </div>
-                      </td>
+                    <td className="py-3 px-4 hidden md:table-cell font-mono">
+                      <div className="text-slate-800 dark:text-slate-200 font-bold">{item.tag}</div>
+                      <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
+                        <Barcode className="w-3 h-3 text-slate-400" />
+                        {item.codigoBarras}
+                      </div>
+                    </td>
 
-                      {/* Sector */}
-                      <td className="py-3 px-4 hidden lg:table-cell text-slate-600 dark:text-slate-300">
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs">
-                          {item.setor || 'Geral'}
-                        </span>
-                      </td>
+                    <td className="py-3 px-4 hidden lg:table-cell text-slate-600 dark:text-slate-300">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs">
+                        {item.setor || 'Geral'}
+                      </span>
+                    </td>
 
-                      {/* Calibration Date */}
-                      <td className="py-3 px-4 hidden sm:table-cell text-slate-600 dark:text-slate-300 font-mono">
-                        <div className="flex items-center gap-1.5">
-                          <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                          <span>{item.validadeCalibracao || 'Não informada'}</span>
-                        </div>
-                      </td>
+                    <td className="py-3 px-4 text-slate-600 dark:text-slate-300 font-mono">
+                      <div className="flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                        <span>{item.validadeCalibracao || 'Não informada'}</span>
+                      </div>
+                    </td>
 
-                      {/* Calibration Status Badge */}
-                      <td className="py-3 px-4 text-center">
-                        {getStatusBadge(item.statusCalibracao)}
-                      </td>
+                    <td className="py-3 px-4 text-center">
+                      {getStatusBadge(item.statusCalibracao)}
+                    </td>
 
-                      {/* Action Button */}
-                      <td className="py-3 px-4 text-center">
-                        <button
-                          onClick={() => onToggleCheck(item.id)}
-                          className={`w-full py-1.5 px-3 rounded-xl font-semibold text-xs transition duration-150 flex items-center justify-center gap-1.5 ${
-                            item.checado
-                              ? 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-red-100 hover:text-red-700 dark:hover:bg-red-950/60 dark:hover:text-red-400'
-                              : 'bg-blue-600 hover:bg-blue-500 text-white shadow-sm shadow-blue-500/20'
-                          }`}
-                        >
-                          {item.checado ? (
-                            <>
-                              <X className="w-3.5 h-3.5" />
-                              Desmarcar
-                            </>
-                          ) : (
-                            <>
-                              <Check className="w-3.5 h-3.5" />
-                              Checar
-                            </>
-                          )}
-                        </button>
-                      </td>
-                    </tr>
-
-                    {/* Expandable Details on mobile / click */}
-                    {isExpanded && (
-                      <tr className="bg-slate-50 dark:bg-slate-950/50 sm:hidden">
-                        <td colSpan={7} className="p-4 space-y-2 border-b border-slate-200 dark:border-slate-800 text-xs">
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <span className="text-slate-400 block text-[10px]">Setor:</span>
-                              <span className="font-semibold text-slate-700 dark:text-slate-200">{item.setor}</span>
-                            </div>
-                            <div>
-                              <span className="text-slate-400 block text-[10px]">Validade:</span>
-                              <span className="font-semibold text-slate-700 dark:text-slate-200">{item.validadeCalibracao}</span>
-                            </div>
-                            {item.dataCheck && (
-                              <div className="col-span-2">
-                                <span className="text-slate-400 block text-[10px]">Conferido em:</span>
-                                <span className="text-emerald-600 dark:text-emerald-400 font-mono">
-                                  {new Date(item.dataCheck).toLocaleString('pt-BR')}
-                                </span>
-                              </div>
-                            )}
-                            {item.observacao && (
-                              <div className="col-span-2 bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-800">
-                                <span className="text-slate-400 block text-[10px]">Observação:</span>
-                                <p className="text-slate-600 dark:text-slate-300">{item.observacao}</p>
-                              </div>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
+                    <td className="py-3 px-4 text-center">
+                      <button
+                        onClick={() => onToggleCheck(item.id)}
+                        className={`w-full py-1.5 px-3 rounded-xl font-semibold text-xs transition duration-150 flex items-center justify-center gap-1.5 ${
+                          item.checado
+                            ? 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-red-100 hover:text-red-700 dark:hover:bg-red-950/60 dark:hover:text-red-400'
+                            : 'bg-blue-600 hover:bg-blue-500 text-white shadow-sm shadow-blue-500/20'
+                        }`}
+                      >
+                        {item.checado ? (
+                          <>
+                            <X className="w-3.5 h-3.5" />
+                            Desmarcar
+                          </>
+                        ) : (
+                          <>
+                            <Check className="w-3.5 h-3.5" />
+                            Checar
+                          </>
+                        )}
+                      </button>
+                    </td>
+                  </tr>
                 );
               })
             )}
@@ -454,4 +478,3 @@ export default function EquipmentTable({
     </div>
   );
 }
-
