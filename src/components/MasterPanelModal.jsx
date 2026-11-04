@@ -388,3 +388,4 @@ export default function MasterPanelModal({ isOpen, onClose, currentUser }) {
     </div>
   );
 }
+
