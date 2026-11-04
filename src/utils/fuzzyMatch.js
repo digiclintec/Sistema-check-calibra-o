@@ -1,11 +1,14 @@
+import { parseCompositeBarcode } from './gs1Parser.js';
+
 /**
  * Utilitário Avançado de Busca Inteligente e Decomposição de Códigos de Barras Hospitalares
  * 
  * Suporta:
  * 1. Códigos compostos com múltiplos números em um único código de barras (GS1, HIBCC, DataMatrix, 1D).
- * 2. Busca específica por IDEC (Identificação do Equipamento / Tag: ex: "CCHL-0075").
- * 3. Busca específica por Número de Série (ex: "2104010003").
- * 4. Extração automática de substrings, tokens e números contidos dentro de um código longo.
+ * 2. Isolamento automático do Número de Série (AI 21) descartando GTIN (01) e Lote (10).
+ * 3. Busca específica por IDEC (Identificação do Equipamento / Tag: ex: "CCHL-0075").
+ * 4. Busca específica por Número de Série (ex: "2104010003").
+ * 5. Extração automática de substrings, tokens e números contidos dentro de um código longo.
  */
 
 /**
@@ -40,18 +43,24 @@ export function extractTokensFromBarcode(rawCode) {
   const cleanFull = cleanAlphanumeric(text);
   if (cleanFull) tokens.add(cleanFull);
 
-  // 2. Extração de Application Identifiers GS1: (01), (21), (8004), etc.
+  // 2. Análise profunda de código GS1 composto (com ou sem parênteses)
+  const gs1Parsed = parseCompositeBarcode(text);
+  if (gs1Parsed.serialNumber) {
+    tokens.add(cleanAlphanumeric(gs1Parsed.serialNumber));
+  }
+  if (gs1Parsed.ref) {
+    tokens.add(cleanAlphanumeric(gs1Parsed.ref));
+  }
+  for (const cand of gs1Parsed.allCandidates) {
+    const c = cleanAlphanumeric(cand);
+    if (c.length >= 3) tokens.add(c);
+  }
+
+  // 3. Extração de Application Identifiers GS1 com parênteses: (01), (21), (8004), etc.
   const aiMatches = text.matchAll(/\((\d{2,4})\)([^()]+)/g);
   for (const m of aiMatches) {
     const val = cleanAlphanumeric(m[2]);
     if (val) tokens.add(val);
-  }
-
-  // 3. Padrão GS1 DataMatrix plano: 01 + 14 dígitos GTIN + 21 + Serial
-  const gs1FlatMatch = text.match(/01(\d{14})21([A-Za-z0-9]+)/);
-  if (gs1FlatMatch) {
-    const serial = gs1FlatMatch[2].split(/(?:17\d{6}|10[A-Za-z0-9]+)/)[0];
-    if (serial) tokens.add(cleanAlphanumeric(serial));
   }
 
   // 4. Divisão por separadores comuns: espaços, barras, traços, pontos, ponto-e-vírgula, vírgulas, quebras de linha
@@ -63,8 +72,8 @@ export function extractTokensFromBarcode(rawCode) {
     }
   }
 
-  // 5. Extração de todas as sequências de números com 4 ou mais dígitos
-  const digitSequences = text.match(/\d{4,}/g) || [];
+  // 5. Extração de todas as sequências de números com 6 ou mais dígitos (típicos de séries médicos)
+  const digitSequences = text.match(/\d{6,}/g) || [];
   for (const seq of digitSequences) {
     tokens.add(seq);
   }
@@ -140,7 +149,7 @@ function evaluateFieldMatch(scannedRaw, fieldRaw, tokens = []) {
   // 1. Coincidência Exata Absoluta (100% de confiança)
   if (scannedClean === fieldClean && scannedClean.length > 0) {
     return {
-      score: 1100,
+      score: 1300,
       confidence: 100,
       matchingDigits: scannedDigits.length,
       matchedSnippet: fieldStr,
@@ -148,12 +157,50 @@ function evaluateFieldMatch(scannedRaw, fieldRaw, tokens = []) {
     };
   }
 
-  // 2. Token exato extraído de código composto (ex: "CCHL-0075" ou "2104010003" dentro de um código longo)
-  for (const t of tokens) {
-    if (t === fieldClean && fieldClean.length >= 3) {
+  // 2. Extração Inteligente de GS1 (AI 21 = Número de Série)
+  const gs1Data = parseCompositeBarcode(scannedStr);
+  if (gs1Data.serialNumber) {
+    const cleanGs1Serial = cleanAlphanumeric(gs1Data.serialNumber);
+    if (cleanGs1Serial === fieldClean) {
       return {
-        score: 1050 + fieldClean.length,
+        score: 1250 + fieldClean.length * 5,
         confidence: 100,
+        matchingDigits: fieldDigits.length,
+        matchedSnippet: gs1Data.serialNumber,
+        reason: `Número de Série (AI 21) identificado com precisão: "${fieldStr}"`
+      };
+    }
+  }
+
+  // 3. Contenção Direta Total: O código longo lido CONTÉM integralmente o campo cadastrado
+  // Exemplo: O código lido tem 36 caracteres e inclui perfeitamente a série "2109010096" ou tag "UTIPHL-0047"
+  if (fieldClean.length >= 5 && scannedClean.includes(fieldClean)) {
+    return {
+      score: 1200 + fieldClean.length * 5,
+      confidence: 100,
+      matchingDigits: fieldDigits.length,
+      matchedSnippet: fieldStr,
+      reason: `"${fieldStr}" localizado integralmente dentro do código composto`
+    };
+  }
+
+  // 4. Contenção Total de Dígitos (para números de série com 6 ou mais dígitos)
+  if (fieldDigits.length >= 6 && scannedDigits.includes(fieldDigits)) {
+    return {
+      score: 1180 + fieldDigits.length * 5,
+      confidence: 99,
+      matchingDigits: fieldDigits.length,
+      matchedSnippet: fieldDigits,
+      reason: `Todos os ${fieldDigits.length} dígitos do número de série estão presentes no código de barras`
+    };
+  }
+
+  // 5. Token exato extraído de código composto
+  for (const t of tokens) {
+    if (t === fieldClean && fieldClean.length >= 4) {
+      return {
+        score: 1100 + fieldClean.length * 3,
+        confidence: 98,
         matchingDigits: fieldDigits.length,
         matchedSnippet: fieldStr,
         reason: `Encontrado exatamente no código composto: "${fieldStr}"`
@@ -161,82 +208,47 @@ function evaluateFieldMatch(scannedRaw, fieldRaw, tokens = []) {
     }
   }
 
-  // 3. Contenção Direta: O código longo lido CONTÉM o campo do equipamento (ex: código de barras tem 40 caracteres e inclui a série)
-  if (fieldClean.length >= 4 && scannedClean.includes(fieldClean)) {
-    return {
-      score: 1000 + fieldClean.length,
-      confidence: 99,
-      matchingDigits: fieldDigits.length,
-      matchedSnippet: fieldStr,
-      reason: `"${fieldStr}" localizado dentro do código de barras composto`
-    };
+  // 6. Substring Contígua / Match Parcial de Dígitos (apenas quando não há match total)
+  if (scannedDigits.length >= 4 && fieldDigits.length >= 4) {
+    const commonDigits = longestCommonSubstringLength(scannedDigits, fieldDigits);
+    const maxDigits = Math.max(scannedDigits.length, fieldDigits.length);
+
+    // Se pelo menos 80% dos dígitos do campo coincidem
+    if (commonDigits >= 6 && commonDigits >= Math.round(fieldDigits.length * 0.8)) {
+      const ratio = commonDigits / fieldDigits.length;
+      const confidence = Math.round(ratio * 90);
+      return {
+        score: Math.round(ratio * 600) + (commonDigits * 10),
+        confidence,
+        matchingDigits: commonDigits,
+        matchedSnippet: fieldDigits.substring(0, commonDigits),
+        reason: `${commonDigits} dígitos sequenciais idênticos (${confidence}% similar)`
+      };
+    }
   }
 
-  // 4. O campo da planilha CONTÉM o código lido
-  if (scannedClean.length >= 4 && fieldClean.includes(scannedClean)) {
+  // 7. O campo da planilha CONTÉM o código lido (apenas se tiver comprimento significativo)
+  if (scannedClean.length >= 6 && fieldClean.includes(scannedClean)) {
     const ratio = Math.round((scannedClean.length / fieldClean.length) * 100);
     return {
-      score: 950 + scannedClean.length,
-      confidence: Math.max(ratio, 92),
+      score: 750 + scannedClean.length,
+      confidence: Math.max(ratio, 80),
       matchingDigits: Math.min(scannedDigits.length, fieldDigits.length),
       matchedSnippet: scannedStr,
       reason: `Código lido faz parte do cadastro (${scannedClean.length} caracteres)`
     };
   }
 
-  // 5. Comparação de Dígitos Numéricos (Números de Série)
-  if (scannedDigits.length >= 4 && fieldDigits.length >= 4) {
-    // 5a. A sequência inteira de dígitos está contida no código
-    if (scannedDigits.includes(fieldDigits)) {
-      return {
-        score: 980 + fieldDigits.length,
-        confidence: 98,
-        matchingDigits: fieldDigits.length,
-        matchedSnippet: fieldDigits,
-        reason: `Todos os ${fieldDigits.length} dígitos do número de série estão no código de barras`
-      };
-    }
-    if (fieldDigits.includes(scannedDigits)) {
-      return {
-        score: 940 + scannedDigits.length,
-        confidence: 94,
-        matchingDigits: scannedDigits.length,
-        matchedSnippet: scannedDigits,
-        reason: `${scannedDigits.length} dígitos lidos conferem com o cadastro`
-      };
-    }
-
-    // 5b. Maior sequência contígua de números idênticos
-    const commonDigits = longestCommonSubstringLength(scannedDigits, fieldDigits);
-    const maxDigits = Math.max(scannedDigits.length, fieldDigits.length);
-
-    if (commonDigits >= 4) {
-      const ratio = commonDigits / maxDigits;
-      const confidence = Math.round(ratio * 100);
-      const score = Math.round(ratio * 700) + (commonDigits * 15);
-
-      if (confidence >= 60 || commonDigits >= 6) {
-        return {
-          score,
-          confidence: Math.min(confidence, 94),
-          matchingDigits: commonDigits,
-          matchedSnippet: fieldDigits.substring(0, commonDigits),
-          reason: `${commonDigits} números sequenciais idênticos (${confidence}% similar)`
-        };
-      }
-    }
-  }
-
-  // 6. Proximidade por distância de Levenshtein (erros de digitação ou leitura levemente corrompida)
-  if (scannedClean.length >= 5 && fieldClean.length >= 5) {
+  // 8. Proximidade por distância de Levenshtein
+  if (scannedClean.length >= 6 && fieldClean.length >= 6) {
     const dist = levenshteinDistance(scannedClean, fieldClean);
     const maxLen = Math.max(scannedClean.length, fieldClean.length);
     const similarity = 1 - (dist / maxLen);
 
-    if (similarity >= 0.70) {
+    if (similarity >= 0.75) {
       const confidence = Math.round(similarity * 100);
       return {
-        score: Math.round(similarity * 600),
+        score: Math.round(similarity * 500),
         confidence,
         matchingDigits: Math.max(0, maxLen - dist),
         matchedSnippet: fieldStr,

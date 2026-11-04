@@ -24,6 +24,7 @@ import {
   RotateCcw,
   CheckCheck
 } from 'lucide-react';
+import { extractCleanSerialNumber, parseCompositeBarcode } from '../utils/gs1Parser';
 
 export default function EquipmentTable({ 
   equipments, 
@@ -53,7 +54,8 @@ export default function EquipmentTable({
   const handleQuickSubmit = (e) => {
     e.preventDefault();
     if (!quickCodeInput.trim()) return;
-    onQuickScanCode(quickCodeInput.trim());
+    const clean = extractCleanSerialNumber(quickCodeInput.trim());
+    onQuickScanCode(clean || quickCodeInput.trim());
     setQuickCodeInput('');
   };
 
@@ -78,14 +80,21 @@ export default function EquipmentTable({
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
+      const cleanSerial = extractCleanSerialNumber(searchQuery).toLowerCase();
+      
       result = result.filter(e => {
+        const serie = (e.serie || '').toLowerCase();
+        const tag = (e.tag || '').toLowerCase();
+        const code = (e.codigoBarras || '').toLowerCase();
+
         return (
-          e.codigoBarras?.toLowerCase().includes(q) ||
-          e.tag?.toLowerCase().includes(q) ||
+          code.includes(q) || (code.length >= 4 && q.includes(code)) ||
+          tag.includes(q) || (tag.length >= 4 && q.includes(tag)) ||
+          serie.includes(q) || (serie.length >= 6 && q.includes(serie)) ||
+          (cleanSerial && cleanSerial.length >= 4 && (serie.includes(cleanSerial) || tag.includes(cleanSerial))) ||
           e.equipamento?.toLowerCase().includes(q) ||
           e.fabricante?.toLowerCase().includes(q) ||
           e.modelo?.toLowerCase().includes(q) ||
-          e.serie?.toLowerCase().includes(q) ||
           e.setor?.toLowerCase().includes(q) ||
           e.observacao?.toLowerCase().includes(q)
         );

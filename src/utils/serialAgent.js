@@ -6,19 +6,23 @@
  */
 
 import { findBestEquipmentMatches } from './fuzzyMatch.js';
+import { parseCompositeBarcode } from './gs1Parser.js';
 
 // Prefixos e siglas comuns de número de série e identificação médica
 const SERIAL_PREFIX_PATTERNS = [
-  // NS variações: NS, N/S, N.S., N° S, Nº S, NS:, N/S:
-  /(?:^|[\s,;:\(\)\[\]])(?:N\s*[\/\.]?\s*S|N[º°]?\s*S[EÉ]RIE|N[º°]?\s*S|NUMBER\s+SERIAL|SERIAL\s+NUMBER|SERIAL|S[EÉ]RIE|SN|S\s*[\/\.]?\s*N|S\/NO|S\.NO|SER\.?\s*NO|SER\.?)\s*[:=\-#\.]?\s*([A-Z0-9\-\.\/]{4,25})/gi,
+  // Suporte a rótulos com colchetes: [SN] 2109010096, [NS] ..., [REF] ...
+  /(?:^|[\s,;:\(\)\[\]])(?:\[SN\]|\[NS\]|\[S\/N\]|\[N\/S\]|SN|NS|N\s*[\/\.]?\s*S|N[º°]?\s*S[EÉ]RIE|NUMBER\s+SERIAL|SERIAL\s+NUMBER|SERIAL|S[EÉ]RIE|S\s*[\/\.]?\s*N|S\/NO|S\.NO)\s*[:=\-#\.]?\s*([A-Z0-9\-\.\/]{4,25})/gi,
   
+  // Padrão específico de Application Identifier GS1 (21)
+  /(?:\(21\)|21)\s*([A-Z0-9\-\.\/]{6,25})/gi,
+
   // IDEC e TAG variações: IDEC, IDEC:, TAG, TAG:, IDENTIFICAÇÃO, IDENTIFICACAO
   /(?:^|[\s,;:\(\)\[\]])(?:IDEC|TAG|IDENTIFICA[CÇ][AÃ]O|PATRIM[OÔ]NIO|PATR|EQP|BOMBA|C[OÓ]DIGO)\s*[:=\-#\.]?\s*([A-Z0-9\-\.\/]{4,25})/gi,
 
-  // Padrão específico para formato IDEC hospitalar (ex: CCHL-0075, UTI-012, etc.)
-  /(?:^|[\s,;:\(\)\[\]])([A-Z]{2,6}\s*-\s*[0-9]{3,6})/gi,
+  // Padrão específico para formato IDEC hospitalar (ex: UTIPHL-0047, CCHL-0075, UTI-012, etc.)
+  /(?:^|[\s,;:\(\)\[\]])([A-Z]{2,8}\s*-\s*[0-9]{3,6})/gi,
 
-  // Padrões de números de série típicos de bombas de infusão (sequência de 8 a 12 dígitos, ex: 2104010003, 2006010178)
+  // Padrões de números de série típicos de bombas de infusão (sequência de 8 a 12 dígitos, ex: 2109010096, 2104010003, 2006010178)
   /(?:^|[\s,;:\(\)\[\]])([0-9]{8,12})(?:$|[\s,;:\(\)\[\]])/g
 ];
 
@@ -64,6 +68,15 @@ export function extractSerialCandidates(rawText) {
       candidatesMap.set(key, { token: clean, label, confidence });
     }
   };
+
+  // 0. Decomposição profunda de código GS1 composto (ex: (01)...(10)...(21) ou plano)
+  const gs1Data = parseCompositeBarcode(rawText);
+  if (gs1Data.serialNumber) {
+    addCandidate(gs1Data.serialNumber, 'Número de Série (NS / AI 21)', 0.99);
+  }
+  if (gs1Data.ref) {
+    addCandidate(gs1Data.ref, 'Modelo / Referência (REF)', 0.85);
+  }
 
   // 1. Linhas que contêm diretamente NS / Serial / IDEC
   const lines = rawText.split(/\r?\n/);

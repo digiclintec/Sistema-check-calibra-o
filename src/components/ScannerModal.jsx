@@ -26,6 +26,7 @@ import {
 import confetti from 'canvas-confetti';
 import { playSuccessSound, playWarningSound, playErrorSound } from '../utils/audio';
 import { findBestEquipmentMatches } from '../utils/fuzzyMatch';
+import { parseCompositeBarcode } from '../utils/gs1Parser';
 
 // Suporte a todos os formatos padrão industriais e hospitalares
 const SUPPORTED_FORMATS = [
@@ -398,6 +399,11 @@ export default function ScannerModal({
     }
 
     // Modo 1: Checagem Imediata (1 a 1)
+    const gs1Info = parseCompositeBarcode(cleanCode);
+    const detailMsg = gs1Info.serialNumber && gs1Info.serialNumber !== cleanCode
+      ? `Série ${gs1Info.serialNumber} isolado do código GS1 • ${targetEq.equipamento} (${targetEq.tag || targetEq.serie})`
+      : `${bestMatch.reason} • ${targetEq.equipamento} (IDEC: ${targetEq.tag || 'N/A'} | Série: ${targetEq.serie || 'N/A'})`;
+
     if (mode === 'instant') {
       if (onScan) {
         onScan(targetEq.id || cleanCode);
@@ -407,7 +413,7 @@ export default function ScannerModal({
         code: cleanCode,
         match: bestMatch,
         equipment: targetEq,
-        message: `${bestMatch.reason} • ${targetEq.equipamento} (IDEC: ${targetEq.tag || 'N/A'} | Série: ${targetEq.serie || 'N/A'})`,
+        message: detailMsg,
         timestamp: new Date().toLocaleTimeString('pt-BR')
       });
       return;
@@ -443,7 +449,7 @@ export default function ScannerModal({
         code: cleanCode,
         match: bestMatch,
         equipment: targetEq,
-        message: `${bestMatch.reason} • ${targetEq.equipamento} (IDEC: ${targetEq.tag || 'N/A'} | Série: ${targetEq.serie || 'N/A'})`,
+        message: detailMsg,
         timestamp: new Date().toLocaleTimeString('pt-BR')
       });
 
