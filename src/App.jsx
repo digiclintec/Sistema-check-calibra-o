@@ -28,6 +28,8 @@ import InstallPromptModal from './components/InstallPromptModal';
 import MobileBottomBar from './components/MobileBottomBar';
 import PlansModal from './components/PlansModal';
 import MonthlyPlanningTab from './components/MonthlyPlanningTab';
+import SerialScanModal from './components/SerialScanModal';
+import MassActionPasswordModal from './components/MassActionPasswordModal';
 
 import { parseSpreadsheetFile, exportToExcel } from './utils/sheetParser';
 import { SAMPLE_EQUIPMENT } from './utils/sampleData';
@@ -84,6 +86,8 @@ export default function App() {
   const [activePlanId, setActivePlanId] = useState(null);
   const [activeFilter, setActiveFilter] = useState('todos');
   const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [isSerialScanOpen, setIsSerialScanOpen] = useState(false);
+  const [massActionModal, setMassActionModal] = useState({ isOpen: false, action: 'check_all' });
   const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
   const [isMasterPanelOpen, setIsMasterPanelOpen] = useState(false);
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
@@ -579,6 +583,54 @@ export default function App() {
     showToast('success', `🎉 ${checkedCount} equipamentos conferidos com sucesso!`);
   };
 
+  // Ações em Massa com Senha (Marcar Todos / Desmarcar Todos)
+  const handleMassCheck = async (action, password) => {
+    try {
+      const res = await fetch('/api/mass-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action,
+          password,
+          hospitalId: activeHospitalId,
+          userEmail: currentUser?.email,
+          userName: currentUser?.name
+        })
+      });
+      const data = await res.json();
+      if (!data.success) {
+        if (soundEnabled) playErrorSound();
+        return { success: false, message: data.message || 'Senha incorreta.' };
+      }
+
+      if (data.equipments) {
+        setEquipments(data.equipments);
+      }
+      if (data.lastUpdated) {
+        lastUpdatedServerRef.current = data.lastUpdated;
+      }
+
+      if (action === 'check_all') {
+        if (soundEnabled) playSuccessSound();
+        confetti({
+          particleCount: 150,
+          spread: 80,
+          origin: { y: 0.5 }
+        });
+        showToast('success', `Todos os ${data.count || equipments.length} equipamentos foram marcados como conferidos!`);
+      } else {
+        if (soundEnabled) playWarningSound();
+        showToast('info', `Todos os equipamentos foram desmarcados.`);
+      }
+
+      loadMonthlyPlans(activeHospitalId);
+      return { success: true };
+    } catch (err) {
+      if (soundEnabled) playErrorSound();
+      return { success: false, message: 'Erro de conexão com o servidor.' };
+    }
+  };
+
   // Main barcode lookup & check logic com busca inteligente (maior quantidade de números parecidos)
   const handleScanCode = async (code) => {
     if (!code || !equipments || equipments.length === 0) {
@@ -918,6 +970,8 @@ export default function App() {
               setActiveFilter={setActiveFilter}
               onQuickScanCode={handleScanCode}
               lastScannedId={lastScannedId}
+              onOpenSerialScan={() => setIsSerialScanOpen(true)}
+              onTriggerMassAction={(action) => setMassActionModal({ isOpen: true, action })}
             />
 
           </div>
@@ -933,6 +987,28 @@ export default function App() {
         onBatchCheck={handleBatchCheck}
         equipments={equipments}
         soundEnabled={soundEnabled}
+      />
+
+      {/* Agente Digitalizador de Número de Série por Foto / OCR */}
+      <SerialScanModal
+        isOpen={isSerialScanOpen}
+        onClose={() => setIsSerialScanOpen(false)}
+        equipments={equipments}
+        onBatchCheck={handleBatchCheck}
+        soundEnabled={soundEnabled}
+        hospitalName={activeHospital?.name}
+        planTitle={activeSheetName}
+      />
+
+      {/* Modal de Confirmação com Senha para Ações em Massa (Marcar / Desmarcar Tudo) */}
+      <MassActionPasswordModal
+        isOpen={massActionModal.isOpen}
+        onClose={() => setMassActionModal(prev => ({ ...prev, isOpen: false }))}
+        action={massActionModal.action}
+        totalEquipments={equipments.length}
+        hospitalName={activeHospital?.name}
+        planTitle={activeSheetName}
+        onConfirm={handleMassCheck}
       />
 
       {/* Google Sheets / File Import Modal */}
@@ -972,6 +1048,7 @@ export default function App() {
       {/* Floating Mobile Bottom Action Bar (Thumb-friendly for Android & iOS) */}
       <MobileBottomBar
         onOpenScanner={() => setIsScannerOpen(true)}
+        onOpenSerialScan={() => setIsSerialScanOpen(true)}
         onOpenInstall={() => setIsInstallModalOpen(true)}
         activeFilter={activeFilter}
         onCycleFilter={handleCycleFilter}

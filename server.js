@@ -842,6 +842,118 @@ app.post('/api/batch-check', (req, res) => {
   });
 });
 
+// Mass Check (Check All or Uncheck All with simple PIN password protection)
+app.post('/api/mass-check', (req, res) => {
+  const { action, password, hospitalId, userEmail, userName } = req.body || {};
+
+  // Senha simples de segurança: padrão 1234 ou senha de usuário/master
+  const MASTER_PIN = '1234';
+  const cleanPass = String(password || '').trim();
+
+  const users = readUsers();
+  const isValidPass = cleanPass === MASTER_PIN || users.some(u => u.password === cleanPass);
+
+  if (!isValidPass) {
+    return res.status(401).json({
+      success: false,
+      message: 'Senha de segurança incorreta. A senha padrão para ações em massa é 1234.'
+    });
+  }
+
+  if (action !== 'check_all' && action !== 'uncheck_all') {
+    return res.status(400).json({ success: false, message: 'Ação inválida. Use check_all ou uncheck_all.' });
+  }
+
+  const db = readDb();
+  const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
+  const hospIdx = (db.hospitals || []).findIndex(h => h.id === targetId);
+
+  if (hospIdx === -1) {
+    return res.status(404).json({ success: false, message: 'Hospital não encontrado.' });
+  }
+
+  const inspectorLabel = userName ? `${userName} (${userEmail || ''})` : (userEmail || 'Operador');
+  const nowIso = new Date().toISOString();
+  const list = db.hospitals[hospIdx].equipments || [];
+
+  if (action === 'check_all') {
+    for (let i = 0; i < list.length; i++) {
+      list[i] = {
+        ...list[i],
+        checado: true,
+        dataCheck: list[i].dataCheck || nowIso,
+        conferidoPor: list[i].conferidoPor || inspectorLabel
+      };
+    }
+  } else {
+    // uncheck_all
+    for (let i = 0; i < list.length; i++) {
+      list[i] = {
+        ...list[i],
+        checado: false,
+        dataCheck: null,
+        conferidoPor: null
+      };
+    }
+  }
+
+  db.hospitals[hospIdx].equipments = list;
+  db.hospitals[hospIdx].lastUpdated = Date.now();
+  db.hospitals[hospIdx].lastUpdatedBy = inspectorLabel;
+
+  // Sincroniza com plano ativo
+  if (Array.isArray(db.hospitals[hospIdx].plans)) {
+    const pIdx = db.hospitals[hospIdx].plans.findIndex(p => p.id === db.hospitals[hospIdx].activePlanId);
+    if (pIdx !== -1) {
+      db.hospitals[hospIdx].plans[pIdx].equipments = list;
+      db.hospitals[hospIdx].plans[pIdx].lastUpdated = Date.now();
+    }
+  }
+
+  db.lastUpdated = Date.now();
+  saveDb(db);
+
+  res.json({
+    success: true,
+    message: action === 'check_all' ? `Todos os ${list.length} equipamentos foram marcados como checados!` : `Todos os ${list.length} equipamentos foram desmarcados.`,
+    action,
+    count: list.length,
+    equipments: list,
+    lastUpdated: db.lastUpdated,
+    lastUpdatedBy: inspectorLabel
+  });
+});
+
+// OCR Scan Agent (Backend recognition fallback with tesseract.js)
+app.post('/api/ocr-scan', async (req, res) => {
+  try {
+    const { imageBase64 } = req.body || {};
+    if (!imageBase64) {
+      return res.status(400).json({ success: false, message: 'Nenhuma imagem enviada.' });
+    }
+
+    const { default: Tesseract } = await import('tesseract.js');
+    let imgBuffer;
+    if (imageBase64.includes('base64,')) {
+      imgBuffer = Buffer.from(imageBase64.split('base64,')[1], 'base64');
+    } else {
+      imgBuffer = Buffer.from(imageBase64, 'base64');
+    }
+
+    const { data: { text } } = await Tesseract.recognize(imgBuffer, 'por+eng', {
+      logger: () => {}
+    });
+
+    res.json({
+      success: true,
+      text: text || ''
+    });
+  } catch (err) {
+    console.error('OCR Error:', err);
+    res.status(500).json({ success: false, message: 'Falha no processamento OCR: ' + err.message });
+  }
+});
+
 // Reset equipments of active hospital
 app.post('/api/reset', (req, res) => {
   const { hospitalId } = req.body || {};

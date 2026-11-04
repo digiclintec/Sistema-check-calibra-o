@@ -16,7 +16,13 @@ import {
   Filter, 
   ArrowUpDown,
   Building2,
-  Cpu
+  Cpu,
+  Camera,
+  Sparkles,
+  Lock,
+  Unlock,
+  RotateCcw,
+  CheckCheck
 } from 'lucide-react';
 
 export default function EquipmentTable({ 
@@ -25,7 +31,9 @@ export default function EquipmentTable({
   activeFilter, 
   setActiveFilter, 
   onQuickScanCode,
-  lastScannedId
+  lastScannedId,
+  onOpenSerialScan,
+  onTriggerMassAction
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSector, setSelectedSector] = useState('ALL');
@@ -227,6 +235,45 @@ export default function EquipmentTable({
                 {f}
               </button>
             ))}
+          </div>
+
+        </div>
+
+        {/* Row 3: Quick Action Tools (Digitalizar Foto OCR & Ações em Massa com Senha) */}
+        <div className="pt-2 border-t border-slate-200/60 dark:border-slate-800/60 flex flex-wrap items-center justify-between gap-2">
+          
+          {/* Digitalizar Foto OCR Button */}
+          <button
+            type="button"
+            onClick={onOpenSerialScan}
+            className="py-1.5 px-3 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm active:scale-95 transition"
+          >
+            <Camera className="w-3.5 h-3.5" />
+            <span>Digitalizar Foto / NS (OCR)</span>
+            <span className="text-[10px] bg-white/20 px-1 rounded font-normal hidden sm:inline">IA</span>
+          </button>
+
+          {/* Mass Actions (Password Protected) */}
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => onTriggerMassAction && onTriggerMassAction('check_all')}
+              className="py-1.5 px-2.5 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition active:scale-95"
+              title="Marcar todos os equipamentos como conferidos (requer senha)"
+            >
+              <CheckCheck className="w-3.5 h-3.5" />
+              <span>Marcar Todos</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onTriggerMassAction && onTriggerMassAction('uncheck_all')}
+              className="py-1.5 px-2.5 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-950/80 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition active:scale-95"
+              title="Desmarcar todos os equipamentos (requer senha)"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Desmarcar Todos</span>
+            </button>
           </div>
 
         </div>

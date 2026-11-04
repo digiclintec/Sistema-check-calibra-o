@@ -1,8 +1,9 @@
 import React from 'react';
-import { Camera, ListFilter, Smartphone, Search, CheckCircle2 } from 'lucide-react';
+import { Camera, ListFilter, Smartphone, Sparkles, Cpu, CheckSquare } from 'lucide-react';
 
 export default function MobileBottomBar({
   onOpenScanner,
+  onOpenSerialScan,
   onOpenInstall,
   activeFilter,
   onCycleFilter,
@@ -10,7 +11,7 @@ export default function MobileBottomBar({
   totalCount
 }) {
   return (
-    <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 px-3 py-2 flex items-center justify-around shadow-2xl safe-area-bottom">
+    <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 px-3 py-2 flex items-center justify-around shadow-2xl safe-area-bottom">
       
       {/* Filter Button */}
       <button
@@ -27,6 +28,17 @@ export default function MobileBottomBar({
         </div>
         <span className="text-[10px] font-semibold mt-0.5 capitalize truncate max-w-[65px]">
           {activeFilter}
+        </span>
+      </button>
+
+      {/* Digitalizar Foto OCR Button */}
+      <button
+        onClick={onOpenSerialScan}
+        className="flex flex-col items-center justify-center p-1 text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 transition"
+      >
+        <Cpu className="w-5 h-5 animate-pulse" />
+        <span className="text-[10px] font-bold mt-0.5">
+          Foto OCR
         </span>
       </button>
 
