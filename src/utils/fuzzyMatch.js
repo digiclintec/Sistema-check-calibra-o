@@ -254,3 +254,4 @@ export function findBestEquipmentMatches(scannedCode, equipments = []) {
 
   return candidates;
 }
+

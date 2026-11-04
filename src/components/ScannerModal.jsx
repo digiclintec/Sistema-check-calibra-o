@@ -19,7 +19,9 @@ import {
   Minimize2,
   Layers,
   ArrowRight,
-  ShieldCheck
+  ShieldCheck,
+  Crosshair,
+  Target
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { playSuccessSound, playWarningSound, playErrorSound } from '../utils/audio';
@@ -56,8 +58,12 @@ export default function ScannerModal({
   const [hasTorch, setHasTorch] = useState(false);
   const [hasZoom, setHasZoom] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
-  const [viewMode, setViewMode] = useState('split'); // 'split' | 'full_camera' | 'full_list'
+  const [viewMode, setViewMode] = useState('split'); // 'split' | 'full_camera'
   
+  // Feedback visual do toque para focar (Tap to Focus)
+  const [focusRing, setFocusRing] = useState({ x: 0, y: 0, visible: false, status: 'idle' });
+  const [focusFeedbackText, setFocusFeedbackText] = useState('');
+
   // Modo de operação: 'batch' (Fila de conferência) ou 'instant' (Check 1 por 1)
   const [mode, setMode] = useState('batch'); 
   
@@ -69,6 +75,8 @@ export default function ScannerModal({
 
   const html5QrCodeRef = useRef(null);
   const fileInputRef = useRef(null);
+  const viewfinderRef = useRef(null);
+  const focusTimeoutRef = useRef(null);
   const lastCodeRef = useRef('');
   const lastTimeRef = useRef(0);
 
@@ -79,6 +87,7 @@ export default function ScannerModal({
     let isMounted = true;
     setCameraError('');
     setLastScannedFeedback(null);
+    setFocusRing({ x: 0, y: 0, visible: false, status: 'idle' });
 
     Html5Qrcode.getCameras()
       .then((devices) => {
@@ -153,6 +162,11 @@ export default function ScannerModal({
       setScanning(true);
       setCameraError('');
 
+      // Ativa foco contínuo por hardware imediatamente após início
+      setTimeout(() => {
+        applyHardwareFocus();
+      }, 500);
+
       // Verifica capacidades de lanterna e zoom óptico/digital
       try {
         const track = html5QrCode.getRunningTrackCameraCapabilities();
@@ -191,7 +205,120 @@ export default function ScannerModal({
     setTorchOn(false);
   };
 
-  const toggleTorch = async () => {
+  // Função central para forçar o foco de hardware da câmera
+  const applyHardwareFocus = async (relX, relY) => {
+    try {
+      const videoEl = document.querySelector('#barcode-reader-box video');
+      const stream = videoEl?.srcObject;
+      const track = stream?.getVideoTracks()?.[0];
+
+      if (track) {
+        const caps = track.getCapabilities ? track.getCapabilities() : {};
+        
+        // 1. Recalibra o motor de foco automático da lente
+        if (caps.focusMode) {
+          try {
+            // Se aceitar single-shot, alterna para disparar o motor
+            if (caps.focusMode.includes('single-shot')) {
+              await track.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] });
+            }
+            if (caps.focusMode.includes('continuous')) {
+              await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+            }
+          } catch (e) {}
+        }
+
+        // 2. Se o celular aceitar ponto de interesse (ponto tocado na tela)
+        if (relX !== undefined && relY !== undefined && caps.pointsOfInterest) {
+          try {
+            await track.applyConstraints({
+              advanced: [{ pointsOfInterest: [{ x: relX, y: relY }] }]
+            });
+          } catch (e) {}
+        }
+      }
+
+      // 3. Fallback via Html5Qrcode API
+      if (html5QrCodeRef.current) {
+        try {
+          await html5QrCodeRef.current.applyVideoConstraints({
+            advanced: [{ focusMode: 'continuous' }]
+          });
+        } catch (e) {}
+      }
+    } catch (err) {
+      console.warn('Erro ao aplicar foco de hardware:', err);
+    }
+  };
+
+  // Clique/Toque na tela para focar (Tap to Focus)
+  const handleViewfinderClick = (e) => {
+    if (!viewfinderRef.current) return;
+
+    const rect = viewfinderRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const relX = Math.max(0, Math.min(1, x / rect.width));
+    const relY = Math.max(0, Math.min(1, y / rect.height));
+
+    // Feedback tátil imediato
+    if (navigator.vibrate) {
+      navigator.vibrate([40]);
+    }
+
+    // Exibe mira visual no ponto tocado
+    setFocusRing({ x, y, visible: true, status: 'focusing' });
+    setFocusFeedbackText('Focando na área tocada...');
+
+    // Dispara foco de hardware
+    applyHardwareFocus(relX, relY);
+
+    if (focusTimeoutRef.current) {
+      clearTimeout(focusTimeoutRef.current);
+    }
+
+    // Após 350ms, marca como focado com cor verde
+    setTimeout(() => {
+      setFocusRing(prev => ({ ...prev, status: 'focused' }));
+      setFocusFeedbackText('✓ Foco Ajustado');
+    }, 350);
+
+    // Some suavemente após 1.4s
+    focusTimeoutRef.current = setTimeout(() => {
+      setFocusRing(prev => ({ ...prev, visible: false }));
+      setFocusFeedbackText('');
+    }, 1400);
+  };
+
+  // Botão dedicado de forçar foco central
+  const handleTriggerCenterFocus = (e) => {
+    e?.stopPropagation();
+    if (!viewfinderRef.current) return;
+    const rect = viewfinderRef.current.getBoundingClientRect();
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+
+    if (navigator.vibrate) navigator.vibrate([40]);
+
+    setFocusRing({ x: centerX, y: centerY, visible: true, status: 'focusing' });
+    setFocusFeedbackText('Re-calibrando foco...');
+
+    applyHardwareFocus(0.5, 0.5);
+
+    setTimeout(() => {
+      setFocusRing(prev => ({ ...prev, status: 'focused' }));
+      setFocusFeedbackText('✓ Foco Centralizado');
+    }, 350);
+
+    setTimeout(() => {
+      setFocusRing(prev => ({ ...prev, visible: false }));
+      setFocusFeedbackText('');
+    }, 1400);
+  };
+
+  const toggleTorch = async (e) => {
+    e?.stopPropagation();
     if (!html5QrCodeRef.current) return;
     try {
       const newStatus = !torchOn;
@@ -204,10 +331,12 @@ export default function ScannerModal({
     }
   };
 
-  const toggleZoom = async () => {
+  const cycleZoom = async (e) => {
+    e?.stopPropagation();
     if (!html5QrCodeRef.current) return;
     try {
-      const nextZoom = zoomLevel === 1 ? 2 : 1;
+      // Cicla entre 1x -> 1.5x -> 2x -> 1x
+      const nextZoom = zoomLevel === 1 ? 1.5 : zoomLevel === 1.5 ? 2 : 1;
       await html5QrCodeRef.current.applyVideoConstraints({
         advanced: [{ zoom: nextZoom }]
       });
@@ -285,7 +414,6 @@ export default function ScannerModal({
       // Verifica se o item já está na fila atual
       const existsIndex = prev.findIndex(item => item.equipment.id === targetEq.id);
       if (existsIndex !== -1) {
-        // Já está na fila, avisa com som de alerta leve
         if (soundEnabled) playWarningSound();
         setLastScannedFeedback({
           status: 'already_staged',
@@ -402,14 +530,15 @@ export default function ScannerModal({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-sm sm:text-base font-bold text-white leading-tight">
-                  Leitor de Alta Precisão
+                  Leitor com Toque para Focar
                 </h3>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                  Fuzzy Match 1D/QR
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                  Tap-to-Focus
                 </span>
               </div>
               <p className="text-[11px] text-slate-400">
-                Puxa pelo número de série, tag ou dígitos mais próximos
+                Toque na tela para focar em etiquetas embaçadas
               </p>
             </div>
           </div>
@@ -470,25 +599,28 @@ export default function ScannerModal({
           </button>
         </div>
 
-        {/* Camera Viewport Area */}
-        <div className={`relative bg-black flex flex-col items-center justify-center transition-all duration-200 overflow-hidden ${
-          viewMode === 'full_camera' 
-            ? 'flex-1 min-h-[60vh]' 
-            : viewMode === 'full_list' 
-            ? 'h-0 hidden' 
-            : 'h-[40vh] sm:h-[45vh]'
-        }`}>
+        {/* Camera Viewport Area com CLIQUE PARA FOCAR (Tap to Focus) */}
+        <div 
+          ref={viewfinderRef}
+          onClick={handleViewfinderClick}
+          className={`relative bg-black flex flex-col items-center justify-center transition-all duration-200 overflow-hidden cursor-crosshair select-none ${
+            viewMode === 'full_camera' 
+              ? 'flex-1 min-h-[60vh]' 
+              : 'h-[42vh] sm:h-[48vh]'
+          }`}
+          title="Toque em qualquer ponto da imagem para focar"
+        >
           
           {/* Caixa do Html5Qrcode com preenchimento total */}
           <div 
             id="barcode-reader-box" 
-            className="w-full h-full flex items-center justify-center [&_video]:w-full [&_video]:h-full [&_video]:object-cover"
+            className="w-full h-full flex items-center justify-center pointer-events-none [&_video]:w-full [&_video]:h-full [&_video]:object-cover"
           ></div>
 
-          {/* Mira a Laser Ampla e Nítida */}
+          {/* Mira Laser Ampla de Enquadramento */}
           {scanning && !cameraError && (
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-4">
-              <div className="relative w-full max-w-[340px] h-[180px] sm:h-[200px] border-2 border-dashed border-blue-400/80 rounded-2xl shadow-[0_0_30px_rgba(59,130,246,0.35)]">
+              <div className="relative w-full max-w-[340px] h-[180px] sm:h-[210px] border-2 border-dashed border-blue-400/80 rounded-2xl shadow-[0_0_30px_rgba(59,130,246,0.35)]">
                 {/* Linha Laser Vermelha Animada */}
                 <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-red-600 via-rose-400 to-red-600 shadow-[0_0_12px_#ef4444] animate-[bounce_2s_infinite]"></div>
                 
@@ -498,38 +630,86 @@ export default function ScannerModal({
                 <div className="absolute -bottom-1 -left-1 w-6 h-6 border-b-4 border-l-4 border-blue-500 rounded-bl-lg"></div>
                 <div className="absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 border-blue-500 rounded-br-lg"></div>
 
-                <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 whitespace-nowrap text-[11px] font-semibold text-white/95 bg-slate-900/90 px-3 py-0.5 rounded-full border border-slate-700/80 shadow-md">
-                  Aponte para o código de barras ou QR Code
+                {/* Dica de Toque para Focar no rodapé da mira */}
+                <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 whitespace-nowrap text-[11px] font-semibold text-white/95 bg-slate-900/90 px-3 py-0.5 rounded-full border border-slate-700/80 shadow-md flex items-center gap-1.5">
+                  <Crosshair className="w-3 h-3 text-amber-400 animate-spin" />
+                  <span>Toque na tela para focar</span>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Botões Flutuantes da Câmera (Zoom e Lanterna) */}
-          <div className="absolute top-3 right-3 z-20 flex items-center gap-2">
-            {hasZoom && (
-              <button
-                onClick={toggleZoom}
-                className="w-10 h-10 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center border border-slate-700/80 shadow-lg transition"
-                title="Alternar Zoom"
-              >
-                {zoomLevel}x
-              </button>
-            )}
+          {/* Mira Visual Animada de Toque no Ponto Tocado (Tap Reticle) */}
+          {focusRing.visible && (
+            <div 
+              className={`absolute pointer-events-none -translate-x-1/2 -translate-y-1/2 transition-transform duration-200 z-30 ${
+                focusRing.status === 'focused' ? 'scale-95 text-emerald-400' : 'scale-110 text-amber-400 animate-pulse'
+              }`}
+              style={{ left: focusRing.x, top: focusRing.y, width: 72, height: 72 }}
+            >
+              <div className="w-full h-full border-2 border-dashed border-current rounded-2xl relative shadow-[0_0_15px_currentColor]">
+                <div className="absolute -top-1 -left-1 w-3 h-3 border-t-2 border-l-2 border-current"></div>
+                <div className="absolute -top-1 -right-1 w-3 h-3 border-t-2 border-r-2 border-current"></div>
+                <div className="absolute -bottom-1 -left-1 w-3 h-3 border-b-2 border-l-2 border-current"></div>
+                <div className="absolute -bottom-1 -right-1 w-3 h-3 border-b-2 border-r-2 border-current"></div>
+                <div className="absolute inset-0 m-auto w-2 h-2 rounded-full bg-current"></div>
+              </div>
+            </div>
+          )}
 
+          {/* Toast Pill de Confirmação de Foco */}
+          {focusFeedbackText && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 pointer-events-none animate-in fade-in slide-in-from-top-2 duration-150">
+              <div className="bg-slate-950/90 text-white border border-slate-700/80 px-3.5 py-1.5 rounded-full text-xs font-bold shadow-xl flex items-center gap-2">
+                <Target className="w-3.5 h-3.5 text-amber-400" />
+                <span>{focusFeedbackText}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Botões Flutuantes Rápidos (Focar, Zoom 1x/1.5x/2x e Lanterna) */}
+          <div className="absolute top-3 right-3 z-20 flex items-center gap-2" onClick={e => e.stopPropagation()}>
+            
+            {/* Botão Dedicado de Focar */}
+            <button
+              onClick={handleTriggerCenterFocus}
+              className="px-2.5 py-2 rounded-full bg-slate-900/85 hover:bg-slate-800 text-amber-300 font-bold text-xs flex items-center gap-1.5 border border-amber-500/40 shadow-lg transition active:scale-95"
+              title="Focar câmera agora"
+            >
+              <Crosshair className="w-4 h-4 text-amber-400" />
+              <span>Focar</span>
+            </button>
+
+            {/* Alternador de Zoom (1x, 1.5x, 2x) */}
+            <button
+              onClick={cycleZoom}
+              className="w-10 h-10 rounded-full bg-slate-900/85 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center border border-slate-700/80 shadow-lg transition active:scale-95"
+              title="Alternar Zoom (1x, 1.5x, 2x)"
+            >
+              {zoomLevel}x
+            </button>
+
+            {/* Lanterna */}
             {hasTorch && (
               <button
                 onClick={toggleTorch}
                 className={`w-10 h-10 rounded-full flex items-center justify-center shadow-lg transition border ${
                   torchOn 
                     ? 'bg-amber-400 text-slate-950 font-bold border-amber-300' 
-                    : 'bg-slate-900/80 text-white hover:bg-slate-800 border-slate-700/80'
+                    : 'bg-slate-900/85 text-white hover:bg-slate-800 border-slate-700/80'
                 }`}
                 title="Ligar Lanterna"
               >
                 <Zap className="w-5 h-5" />
               </button>
             )}
+          </div>
+
+          {/* Dica de Foco no rodapé da câmera */}
+          <div className="absolute bottom-2 left-3 right-3 pointer-events-none text-center">
+            <span className="text-[10px] text-white/70 bg-black/60 px-2.5 py-1 rounded-full backdrop-blur-xs">
+              💡 Imagem embaçada? Toque na tela ou use o botão <strong>1.5x/2x</strong> afastando o celular a 20cm
+            </span>
           </div>
 
           {/* Mensagem de Erro de Câmera */}
@@ -630,7 +810,7 @@ export default function ScannerModal({
               <Layers className="w-8 h-8 mb-2 opacity-40 text-blue-400" />
               <p className="text-xs font-semibold text-slate-400">Nenhum equipamento na fila ainda</p>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                Aponte a câmera para as bombas. Todas que você bipar aparecerão aqui antes de confirmar o check.
+                Aponte a câmera para as bombas. Se a imagem estiver embaçada, toque na tela ou aperte <strong>Focar</strong>.
               </p>
             </div>
           ) : (
