@@ -188,6 +188,38 @@ function readDb() {
       if (Array.isArray(data.hospitals)) {
         let changed = false;
         data.hospitals.forEach(h => {
+          // Initialize plans list if not present
+          if (!Array.isArray(h.plans)) {
+            h.plans = [];
+            if ((Array.isArray(h.equipments) && h.equipments.length > 0) || h.activeSheetName) {
+              const defaultPlan = {
+                id: 'plan_' + (h.id || 'central') + '_padrao',
+                title: h.activeSheetName ? h.activeSheetName.replace(/\.[^/.]+$/, "") : 'Planejamento Padrão',
+                mes: 'Novembro/2026',
+                fileName: h.activeSheetName || 'Planilha_Calibracao.xlsx',
+                equipments: h.equipments || [],
+                createdAt: new Date().toISOString(),
+                lastUpdated: h.lastUpdated || Date.now()
+              };
+              h.plans.push(defaultPlan);
+              h.activePlanId = defaultPlan.id;
+            }
+            changed = true;
+          }
+
+          // If activePlanId is set, sync h.equipments with active plan
+          if (h.plans && h.plans.length > 0) {
+            if (!h.activePlanId || !h.plans.some(p => p.id === h.activePlanId)) {
+              h.activePlanId = h.plans[0].id;
+              changed = true;
+            }
+            const activePlan = h.plans.find(p => p.id === h.activePlanId) || h.plans[0];
+            if (activePlan) {
+              h.equipments = activePlan.equipments || [];
+              h.activeSheetName = activePlan.fileName || activePlan.title || '';
+            }
+          }
+
           if (Array.isArray(h.equipments)) {
             h.equipments.forEach((eq, idx) => {
               if (eq._originalRow) {
@@ -474,6 +506,156 @@ app.post('/api/hospitals/switch', (req, res) => {
   res.json({ success: true, activeHospitalId: db.activeHospitalId });
 });
 
+// ---------------- MONTHLY CALIBRATION PLANS ROUTES ---------------- //
+
+// List all monthly plans for a hospital
+app.get('/api/plans', (req, res) => {
+  const db = readDb();
+  const targetId = req.query.hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
+  const hospital = (db.hospitals || []).find(h => h.id === targetId) || db.hospitals?.[0] || {};
+  
+  const plans = (hospital.plans || []).map(p => {
+    const total = (p.equipments || []).length;
+    const checked = (p.equipments || []).filter(e => e.checado).length;
+    const pending = total - checked;
+    const percent = total > 0 ? Math.round((checked / total) * 100) : 0;
+    return {
+      id: p.id,
+      title: p.title || p.fileName || 'Planejamento de Calibração',
+      mes: p.mes || 'Novembro/2026',
+      fileName: p.fileName || '',
+      total,
+      checked,
+      pending,
+      percent,
+      createdAt: p.createdAt,
+      lastUpdated: p.lastUpdated
+    };
+  });
+
+  res.json({
+    success: true,
+    hospitalId: hospital.id,
+    hospitalName: hospital.name,
+    activePlanId: hospital.activePlanId || plans[0]?.id || null,
+    plans
+  });
+});
+
+// Switch active monthly plan
+app.post('/api/plans/switch', (req, res) => {
+  const { hospitalId, planId } = req.body || {};
+  const db = readDb();
+  const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
+  const hospIdx = (db.hospitals || []).findIndex(h => h.id === targetId);
+
+  if (hospIdx === -1) {
+    return res.status(404).json({ success: false, message: 'Hospital não encontrado.' });
+  }
+
+  const hospital = db.hospitals[hospIdx];
+  const plan = (hospital.plans || []).find(p => p.id === planId);
+  if (!plan) {
+    return res.status(404).json({ success: false, message: 'Planejamento não encontrado.' });
+  }
+
+  hospital.activePlanId = planId;
+  hospital.equipments = plan.equipments || [];
+  hospital.activeSheetName = plan.fileName || plan.title;
+  hospital.lastUpdated = Date.now();
+  db.lastUpdated = Date.now();
+  saveDb(db);
+
+  res.json({
+    success: true,
+    message: `Planejamento "${plan.title}" ativado com sucesso!`,
+    activePlanId: planId,
+    activePlan: plan,
+    equipments: plan.equipments || [],
+    activeSheetName: hospital.activeSheetName
+  });
+});
+
+// Create new monthly plan
+app.post('/api/plans/create', (req, res) => {
+  const { hospitalId, title, mes, fileName, equipments } = req.body || {};
+  const db = readDb();
+  const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
+  const hospIdx = (db.hospitals || []).findIndex(h => h.id === targetId);
+
+  if (hospIdx === -1) {
+    return res.status(404).json({ success: false, message: 'Hospital não encontrado.' });
+  }
+
+  const hospital = db.hospitals[hospIdx];
+  hospital.plans = hospital.plans || [];
+
+  const newPlanId = 'plan_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+  const newPlan = {
+    id: newPlanId,
+    title: String(title || fileName || 'Planejamento de Calibração').trim(),
+    mes: String(mes || 'Novembro/2026').trim(),
+    fileName: String(fileName || '').trim(),
+    equipments: Array.isArray(equipments) ? equipments : [],
+    createdAt: new Date().toISOString(),
+    lastUpdated: Date.now()
+  };
+
+  hospital.plans.push(newPlan);
+  hospital.activePlanId = newPlanId;
+  hospital.equipments = newPlan.equipments;
+  hospital.activeSheetName = newPlan.fileName || newPlan.title;
+  hospital.lastUpdated = Date.now();
+  db.lastUpdated = Date.now();
+  saveDb(db);
+
+  res.json({
+    success: true,
+    message: 'Novo planejamento criado e ativado com sucesso!',
+    plan: newPlan,
+    activePlanId: newPlanId,
+    equipments: newPlan.equipments,
+    activeSheetName: hospital.activeSheetName
+  });
+});
+
+// Delete a monthly plan
+app.post('/api/plans/delete', (req, res) => {
+  const { hospitalId, planId } = req.body || {};
+  const db = readDb();
+  const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
+  const hospIdx = (db.hospitals || []).findIndex(h => h.id === targetId);
+
+  if (hospIdx === -1) {
+    return res.status(404).json({ success: false, message: 'Hospital não encontrado.' });
+  }
+
+  const hospital = db.hospitals[hospIdx];
+  if ((hospital.plans || []).length <= 1) {
+    return res.status(400).json({ success: false, message: 'Não é possível excluir o único planejamento existente.' });
+  }
+
+  hospital.plans = (hospital.plans || []).filter(p => p.id !== planId);
+  if (hospital.activePlanId === planId) {
+    const nextPlan = hospital.plans[0];
+    hospital.activePlanId = nextPlan?.id || null;
+    hospital.equipments = nextPlan?.equipments || [];
+    hospital.activeSheetName = nextPlan?.fileName || '';
+  }
+
+  hospital.lastUpdated = Date.now();
+  db.lastUpdated = Date.now();
+  saveDb(db);
+
+  res.json({
+    success: true,
+    message: 'Planejamento excluído com sucesso.',
+    activePlanId: hospital.activePlanId,
+    equipments: hospital.equipments,
+    activeSheetName: hospital.activeSheetName
+  });
+});
+
 // ---------------- DATA & CHECK-IN ROUTES (PER HOSPITAL) ---------------- //
 
 // Get current spreadsheet state for active hospital
@@ -511,6 +693,16 @@ app.post('/api/data', (req, res) => {
   db.hospitals[idx].activeSheetName = activeSheetName || '';
   db.hospitals[idx].lastUpdated = Date.now();
   db.hospitals[idx].lastUpdatedBy = inspectorLabel;
+
+  // Sincroniza com o plano ativo
+  if (Array.isArray(db.hospitals[idx].plans)) {
+    const pIdx = db.hospitals[idx].plans.findIndex(p => p.id === db.hospitals[idx].activePlanId);
+    if (pIdx !== -1) {
+      db.hospitals[idx].plans[pIdx].equipments = db.hospitals[idx].equipments;
+      db.hospitals[idx].plans[pIdx].fileName = activeSheetName || db.hospitals[idx].plans[pIdx].fileName;
+      db.hospitals[idx].plans[pIdx].lastUpdated = Date.now();
+    }
+  }
 
   db.lastUpdated = Date.now();
   saveDb(db);
@@ -562,6 +754,15 @@ app.post('/api/toggle-check', (req, res) => {
   db.hospitals[hospIdx].equipments = list;
   db.hospitals[hospIdx].lastUpdated = Date.now();
   db.hospitals[hospIdx].lastUpdatedBy = inspectorLabel;
+
+  // Sincroniza com plano ativo
+  if (Array.isArray(db.hospitals[hospIdx].plans)) {
+    const pIdx = db.hospitals[hospIdx].plans.findIndex(p => p.id === db.hospitals[hospIdx].activePlanId);
+    if (pIdx !== -1) {
+      db.hospitals[hospIdx].plans[pIdx].equipments = list;
+      db.hospitals[hospIdx].plans[pIdx].lastUpdated = Date.now();
+    }
+  }
 
   db.lastUpdated = Date.now();
   saveDb(db);
@@ -618,6 +819,16 @@ app.post('/api/batch-check', (req, res) => {
   db.hospitals[hospIdx].equipments = list;
   db.hospitals[hospIdx].lastUpdated = Date.now();
   db.hospitals[hospIdx].lastUpdatedBy = inspectorLabel;
+
+  // Sincroniza com plano ativo
+  if (Array.isArray(db.hospitals[hospIdx].plans)) {
+    const pIdx = db.hospitals[hospIdx].plans.findIndex(p => p.id === db.hospitals[hospIdx].activePlanId);
+    if (pIdx !== -1) {
+      db.hospitals[hospIdx].plans[pIdx].equipments = list;
+      db.hospitals[hospIdx].plans[pIdx].lastUpdated = Date.now();
+    }
+  }
+
   db.lastUpdated = Date.now();
   saveDb(db);
 

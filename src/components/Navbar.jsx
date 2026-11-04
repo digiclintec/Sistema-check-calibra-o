@@ -13,7 +13,10 @@ import {
   Smartphone,
   Building2,
   ChevronDown,
-  Sparkles
+  Sparkles,
+  Calendar,
+  Layers,
+  FileCheck
 } from 'lucide-react';
 
 export default function Navbar({ 
@@ -31,7 +34,12 @@ export default function Navbar({
   hospitals = [],
   activeHospitalId,
   onSwitchHospital,
-  onOpenPlansModal
+  onOpenPlansModal,
+  activeMainTab = 'conferencia',
+  onChangeMainTab,
+  monthlyPlans = [],
+  activePlanId,
+  onSwitchPlan
 }) {
   const isMaster = currentUser?.role === 'master' || currentUser?.email?.toLowerCase() === 'digiclintec@gmail.com';
   const activeHospital = hospitals.find(h => h.id === activeHospitalId) || hospitals[0];
@@ -54,7 +62,7 @@ export default function Navbar({
         <div className="flex items-center justify-between h-16 sm:h-20 gap-2">
           
           {/* Brand Logo & Name */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5 sm:gap-3">
             <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-blue-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/25 shrink-0">
               <CheckCircle className="w-6 h-6 stroke-[2.5]" />
             </div>
@@ -76,7 +84,7 @@ export default function Navbar({
 
           {/* Hospital Switcher Dropdown (Multi-Hospital SaaS) */}
           {hospitals && hospitals.length > 0 && (
-            <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/80 p-1 sm:p-1.5 rounded-2xl border border-slate-200 dark:border-slate-700/60 max-w-[160px] sm:max-w-xs">
+            <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/80 p-1 sm:p-1.5 rounded-2xl border border-slate-200 dark:border-slate-700/60 max-w-[150px] sm:max-w-xs shrink-0">
               <Building2 className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 ml-1 hidden xs:block" />
               <select
                 value={activeHospitalId || ''}
@@ -86,16 +94,67 @@ export default function Navbar({
               >
                 {hospitals.map(h => (
                   <option key={h.id} value={h.id} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
-                    🏥 {h.name} ({h.totalEquipments || 0} itens)
+                    🏥 {h.name}
                   </option>
                 ))}
               </select>
             </div>
           )}
 
+          {/* Navigation Tabs (Conferência vs Planejamento do Mês) */}
+          {onChangeMainTab && (
+            <div className="hidden md:flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-2xl border border-slate-200 dark:border-slate-700/60">
+              <button
+                onClick={() => onChangeMainTab('conferencia')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                  activeMainTab === 'conferencia'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <FileCheck className="w-3.5 h-3.5" />
+                <span>Conferência</span>
+              </button>
+              <button
+                onClick={() => onChangeMainTab('planejamento')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                  activeMainTab === 'planejamento'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>Planejamento do Mês</span>
+                {monthlyPlans.length > 0 && (
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                    activeMainTab === 'planejamento' ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                  }`}>
+                    {monthlyPlans.length}
+                  </span>
+                )}
+              </button>
+            </div>
+          )}
+
           {/* Actions & Buttons */}
           <div className="flex items-center gap-1.5 sm:gap-2.5">
             
+            {/* Mobile Planejamento Trigger Button */}
+            {onChangeMainTab && (
+              <button
+                onClick={() => onChangeMainTab(activeMainTab === 'planejamento' ? 'conferencia' : 'planejamento')}
+                className={`md:hidden flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold border transition ${
+                  activeMainTab === 'planejamento'
+                    ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                }`}
+                title="Alternar para aba de Planejamento do Mês"
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>Planilhas</span>
+              </button>
+            )}
+
             {/* Plans Modal Button */}
             <button
               onClick={onOpenPlansModal}
@@ -140,42 +199,22 @@ export default function Navbar({
               <span className="hidden md:inline">Baixar App</span>
             </button>
 
-            {/* Google Sheets Modal Button */}
-            <button
-              onClick={onOpenGoogleModal}
-              className="hidden lg:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              <span>Google Planilhas</span>
-            </button>
-
-            {/* Import Excel Button */}
-            <button
-              onClick={onOpenFilePicker}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300/60 dark:border-slate-700 transition"
-            >
-              <Upload className="w-4 h-4 text-slate-600 dark:text-slate-400" />
-              <span className="hidden sm:inline">Subir Planilha</span>
-              <span className="sm:hidden">Excel</span>
-            </button>
-
             {/* Export Excel Button (Active when data exists) */}
             {hasData && (
               <button
                 onClick={onExportExcel}
-                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-semibold bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-white shadow-sm transition"
+                className="hidden sm:flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-semibold bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-white shadow-sm transition"
                 title="Exportar planilha atualizada com as checagens"
               >
                 <Download className="w-4 h-4" />
-                <span className="hidden sm:inline">Baixar Excel</span>
-                <span className="sm:hidden">Exportar</span>
+                <span>Exportar</span>
               </button>
             )}
 
             {/* Primary Scanner Trigger Button */}
             <button
               onClick={onOpenScanner}
-              className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-2xl text-xs sm:text-sm font-bold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:from-indigo-500 text-white shadow-md shadow-blue-500/25 transition active:scale-95"
+              className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-2xl text-xs sm:text-sm font-bold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-md shadow-blue-500/25 transition active:scale-95"
             >
               <Camera className="w-4 h-4 sm:w-5 sm:h-5" />
               <span className="hidden xs:inline">Ler Código</span>

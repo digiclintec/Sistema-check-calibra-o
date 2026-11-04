@@ -27,6 +27,7 @@ import MasterPanelModal from './components/MasterPanelModal';
 import InstallPromptModal from './components/InstallPromptModal';
 import MobileBottomBar from './components/MobileBottomBar';
 import PlansModal from './components/PlansModal';
+import MonthlyPlanningTab from './components/MonthlyPlanningTab';
 
 import { parseSpreadsheetFile, exportToExcel } from './utils/sheetParser';
 import { SAMPLE_EQUIPMENT } from './utils/sampleData';
@@ -78,6 +79,9 @@ export default function App() {
   });
 
   // UI state
+  const [activeMainTab, setActiveMainTab] = useState('conferencia'); // 'conferencia' | 'planejamento'
+  const [monthlyPlans, setMonthlyPlans] = useState([]);
+  const [activePlanId, setActivePlanId] = useState(null);
   const [activeFilter, setActiveFilter] = useState('todos');
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
@@ -123,6 +127,112 @@ export default function App() {
     loadHospitals();
   }, [loadHospitals]);
 
+  // Load monthly calibration plans for active hospital
+  const loadMonthlyPlans = useCallback(async (hospId = activeHospitalId) => {
+    if (!currentUser) return;
+    try {
+      const res = await fetch(`/api/plans?hospitalId=${encodeURIComponent(hospId)}`);
+      const data = await res.json();
+      if (data.success && data.plans) {
+        setMonthlyPlans(data.plans);
+        if (data.activePlanId) {
+          setActivePlanId(data.activePlanId);
+        }
+      }
+    } catch (e) {
+      console.warn('Erro ao carregar planejamentos mensais:', e);
+    }
+  }, [currentUser, activeHospitalId]);
+
+  useEffect(() => {
+    loadMonthlyPlans(activeHospitalId);
+  }, [loadMonthlyPlans, activeHospitalId]);
+
+  // Switch active monthly plan
+  const handleSwitchPlan = async (planId) => {
+    try {
+      const res = await fetch('/api/plans/switch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hospitalId: activeHospitalId,
+          planId
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setActivePlanId(planId);
+        setEquipments(data.equipments || []);
+        if (data.activeSheetName) setActiveSheetName(data.activeSheetName);
+        setActiveMainTab('conferencia');
+        showToast('success', `Planilha "${data.planTitle || planId}" ativada para validação!`);
+        loadMonthlyPlans(activeHospitalId);
+      } else {
+        showToast('error', data.message || 'Erro ao alternar planilha.');
+      }
+    } catch (err) {
+      showToast('error', 'Erro de conexão ao ativar plano.');
+    }
+  };
+
+  // Create new monthly plan
+  const handleCreatePlan = async (planData) => {
+    try {
+      const res = await fetch('/api/plans/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hospitalId: activeHospitalId,
+          title: planData.title,
+          mes: planData.mes,
+          fileName: planData.fileName,
+          equipments: planData.equipments,
+          userEmail: currentUser?.email,
+          userName: currentUser?.name
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setActivePlanId(data.plan.id);
+        setEquipments(data.plan.equipments || []);
+        setActiveSheetName(data.plan.title);
+        setActiveMainTab('conferencia');
+        showToast('success', `Plano "${data.plan.title}" criado com ${data.plan.equipments?.length || 0} equipamentos!`);
+        loadMonthlyPlans(activeHospitalId);
+        loadHospitals();
+      } else {
+        showToast('error', data.message || 'Erro ao criar plano.');
+      }
+    } catch (err) {
+      showToast('error', 'Falha ao salvar planejamento.');
+    }
+  };
+
+  // Delete monthly plan
+  const handleDeletePlan = async (planId, planTitle) => {
+    if (!window.confirm(`Tem certeza que deseja excluir a planilha "${planTitle}"?`)) return;
+    try {
+      const res = await fetch('/api/plans/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hospitalId: activeHospitalId,
+          planId
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('info', `Planilha "${planTitle}" removida.`);
+        loadMonthlyPlans(activeHospitalId);
+        loadHospitals();
+      } else {
+        showToast('error', data.message || 'Erro ao excluir plano.');
+      }
+    } catch (err) {
+      showToast('error', 'Falha ao excluir plano.');
+    }
+  };
+
   // Switch hospital
   const handleSwitchHospital = async (hospId) => {
     setActiveHospitalId(hospId);
@@ -148,6 +258,7 @@ export default function App() {
         showToast('info', `Alternado para: ${target?.name || hospId}`);
       }
     } catch (e) {}
+    loadMonthlyPlans(hospId);
   };
 
   // Update hospital plan
@@ -711,12 +822,30 @@ export default function App() {
         activeHospitalId={activeHospitalId}
         onSwitchHospital={handleSwitchHospital}
         onOpenPlansModal={() => setIsPlansModalOpen(true)}
+        activeMainTab={activeMainTab}
+        onChangeMainTab={setActiveMainTab}
+        monthlyPlans={monthlyPlans}
+        activePlanId={activePlanId}
+        onSwitchPlan={handleSwitchPlan}
       />
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 sm:pb-6">
         
-        {equipments.length === 0 ? (
+        {activeMainTab === 'planejamento' ? (
+          <MonthlyPlanningTab
+            plans={monthlyPlans}
+            activePlanId={activePlanId}
+            onSwitchPlan={handleSwitchPlan}
+            onCreatePlan={handleCreatePlan}
+            onDeletePlan={handleDeletePlan}
+            hospitalName={activeHospital?.name}
+            onNavigateToScanner={() => {
+              setActiveMainTab('conferencia');
+              setIsScannerOpen(true);
+            }}
+          />
+        ) : equipments.length === 0 ? (
           /* Empty / Welcome State */
           <HeroBanner
             onOpenFilePicker={() => fileInputRef.current?.click()}
