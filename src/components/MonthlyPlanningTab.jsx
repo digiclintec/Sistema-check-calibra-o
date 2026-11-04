@@ -113,10 +113,10 @@ export default function MonthlyPlanningTab({
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-200">
+    <div className="space-y-4 sm:space-y-6 w-full max-w-full overflow-hidden animate-in fade-in duration-200">
       
       {/* Top Banner / Planejamento Header */}
-      <div className="bg-gradient-to-r from-blue-900/60 via-slate-900 to-indigo-950/70 border border-blue-500/20 rounded-3xl p-5 sm:p-7 shadow-xl relative overflow-hidden">
+      <div className="bg-gradient-to-r from-blue-900/60 via-slate-900 to-indigo-950/70 border border-blue-500/20 rounded-2xl sm:rounded-3xl p-4 sm:p-7 shadow-xl relative overflow-hidden w-full">
         <div className="absolute top-0 right-0 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">

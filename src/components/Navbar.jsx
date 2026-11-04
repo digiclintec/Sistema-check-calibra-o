@@ -57,39 +57,39 @@ export default function Navbar({
   }[activeHospital?.plano || 'pro'] || 'Pro';
 
   return (
-    <header className="sticky top-0 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 sm:h-20 gap-2">
+    <header className="sticky top-0 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 w-full overflow-hidden">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-14 sm:h-20 gap-1.5 sm:gap-2">
           
           {/* Brand Logo & Name */}
-          <div className="flex items-center gap-2.5 sm:gap-3">
-            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-blue-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/25 shrink-0">
-              <CheckCircle className="w-6 h-6 stroke-[2.5]" />
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-blue-500 flex items-center justify-center text-white shadow-md shadow-blue-500/25 shrink-0">
+              <CheckCircle className="w-4 h-4 sm:w-6 sm:h-6 stroke-[2.5]" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-base sm:text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <h1 className="text-sm sm:text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">
                   Calibra<span className="text-blue-600 dark:text-blue-400">Check</span>
                 </h1>
-                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/60 hidden sm:inline-flex items-center gap-1">
+                <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/60 hidden sm:inline-flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
                   Online
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 hidden xs:block truncate">
-                Digiclintec • Sincronização em Tempo Real
+              <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 hidden xs:block truncate">
+                Digiclintec
               </p>
             </div>
           </div>
 
           {/* Hospital Switcher Dropdown (Multi-Hospital SaaS) */}
           {hospitals && hospitals.length > 0 && (
-            <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/80 p-1 sm:p-1.5 rounded-2xl border border-slate-200 dark:border-slate-700/60 max-w-[150px] sm:max-w-xs shrink-0">
-              <Building2 className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 ml-1 hidden xs:block" />
+            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 sm:p-1.5 rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700/60 max-w-[110px] xs:max-w-[140px] sm:max-w-xs shrink min-w-0">
+              <Building2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0 ml-0.5 hidden xs:block" />
               <select
                 value={activeHospitalId || ''}
                 onChange={(e) => onSwitchHospital && onSwitchHospital(e.target.value)}
-                className="bg-transparent text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer truncate pr-1"
+                className="bg-transparent text-[11px] sm:text-sm font-semibold text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer truncate w-full"
                 title="Selecione o hospital ou clínica para visualizar os equipamentos"
               >
                 {hospitals.map(h => (
@@ -137,13 +137,13 @@ export default function Navbar({
           )}
 
           {/* Actions & Buttons */}
-          <div className="flex items-center gap-1.5 sm:gap-2.5">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             
             {/* Mobile Planejamento Trigger Button */}
             {onChangeMainTab && (
               <button
                 onClick={() => onChangeMainTab(activeMainTab === 'planejamento' ? 'conferencia' : 'planejamento')}
-                className={`md:hidden flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold border transition ${
+                className={`md:hidden flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-bold border transition ${
                   activeMainTab === 'planejamento'
                     ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
@@ -151,19 +151,19 @@ export default function Navbar({
                 title="Alternar para aba de Planejamento do Mês"
               >
                 <Calendar className="w-3.5 h-3.5" />
-                <span>Planilhas</span>
+                <span className="hidden xs:inline">Planilhas</span>
               </button>
             )}
 
             {/* Plans Modal Button */}
             <button
               onClick={onOpenPlansModal}
-              className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded-xl text-xs font-bold border transition shadow-sm ${
+              className={`flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-2 rounded-xl text-[11px] sm:text-xs font-bold border transition shadow-sm ${
                 planBadgeClasses[activeHospital?.plano || 'pro']
               }`}
               title="Ver ou trocar o plano de assinatura deste hospital"
             >
-              <Crown className="w-3.5 h-3.5 shrink-0" />
+              <Crown className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
               <span className="hidden sm:inline">Plano:</span>
               <span>{planName}</span>
             </button>
@@ -171,17 +171,17 @@ export default function Navbar({
             {/* Sound Toggle */}
             <button
               onClick={() => setSoundEnabled(!soundEnabled)}
-              className="p-2 sm:p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition"
+              className="p-1.5 sm:p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition"
               title={soundEnabled ? "Desativar sons de bipagem" : "Ativar sons de bipagem"}
             >
-              {soundEnabled ? <Volume2 className="w-4 h-4 text-emerald-500" /> : <VolumeX className="w-4 h-4 text-slate-400" />}
+              {soundEnabled ? <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-500" /> : <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" />}
             </button>
 
             {/* Master Panel Trigger Button */}
             {isMaster && (
               <button
                 onClick={onOpenMasterPanel}
-                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 dark:text-amber-300 border border-amber-500/30 transition shadow-sm"
+                className="hidden sm:flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 dark:text-amber-300 border border-amber-500/30 transition shadow-sm"
                 title="Painel Master para gerenciar cadastros de hospitais e operadores"
               >
                 <Sparkles className="w-4 h-4" />
@@ -189,10 +189,10 @@ export default function Navbar({
               </button>
             )}
 
-            {/* Install App on Android/iOS Button */}
+            {/* Install App on Android/iOS Button (Visível apenas em desktop/tablet pois o mobile já tem no rodapé) */}
             <button
               onClick={onOpenInstall}
-              className="flex items-center gap-1.5 px-2 sm:px-2.5 py-2 rounded-xl text-xs font-bold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 transition shadow-sm"
+              className="hidden sm:flex items-center gap-1.5 px-2 sm:px-2.5 py-2 rounded-xl text-xs font-bold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 transition shadow-sm"
               title="Instalar aplicativo no Android ou iPhone"
             >
               <Smartphone className="w-4 h-4 text-emerald-500" />
@@ -211,18 +211,18 @@ export default function Navbar({
               </button>
             )}
 
-            {/* Primary Scanner Trigger Button */}
+            {/* Primary Scanner Trigger Button (Visível no topo apenas em desktop, pois mobile usa o botão central do rodapé) */}
             <button
               onClick={onOpenScanner}
-              className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-2xl text-xs sm:text-sm font-bold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-md shadow-blue-500/25 transition active:scale-95"
+              className="hidden sm:flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-2xl text-xs sm:text-sm font-bold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-md shadow-blue-500/25 transition active:scale-95"
             >
               <Camera className="w-4 h-4 sm:w-5 sm:h-5" />
-              <span className="hidden xs:inline">Ler Código</span>
+              <span>Ler Código</span>
             </button>
 
             {/* User Profile & Logout */}
             {currentUser && (
-              <div className="flex items-center gap-2 pl-2 sm:pl-3 border-l border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-1 sm:gap-2 pl-1.5 sm:pl-3 border-l border-slate-200 dark:border-slate-800">
                 <div className="hidden xl:flex flex-col text-right">
                   <span className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate max-w-[120px] flex items-center justify-end gap-1">
                     {isMaster && <Crown className="w-3 h-3 text-amber-500" />}
@@ -234,10 +234,10 @@ export default function Navbar({
                 </div>
                 <button
                   onClick={onLogout}
-                  className="p-2 rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition"
+                  className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition"
                   title="Sair da conta"
                 >
-                  <LogOut className="w-4 h-4" />
+                  <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </button>
               </div>
             )}

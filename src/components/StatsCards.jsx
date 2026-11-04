@@ -56,25 +56,25 @@ export default function StatsCards({ stats, activeFilter, onSelectFilter }) {
   ];
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2.5 sm:space-y-3 w-full overflow-hidden">
       {/* Progress Bar Header */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Progresso da Conferência
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 shadow-sm w-full overflow-hidden">
+        <div className="flex items-center justify-between gap-1.5 mb-2 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Progresso
             </span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 font-semibold font-mono">
+            <span className="text-[11px] sm:text-xs px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 font-semibold font-mono">
               {checked} de {total} itens
             </span>
           </div>
-          <span className="text-sm font-extrabold text-slate-800 dark:text-slate-100 font-mono">
+          <span className="text-xs sm:text-sm font-extrabold text-slate-800 dark:text-slate-100 font-mono">
             {percent}% CONCLUÍDO
           </span>
         </div>
         
         {/* Visual Progress Bar */}
-        <div className="w-full bg-slate-100 dark:bg-slate-800 h-3 rounded-full overflow-hidden p-0.5">
+        <div className="w-full bg-slate-100 dark:bg-slate-800 h-2.5 sm:h-3 rounded-full overflow-hidden p-0.5">
           <div
             className={`h-full rounded-full transition-all duration-500 ease-out ${
               percent === 100
@@ -87,7 +87,7 @@ export default function StatsCards({ stats, activeFilter, onSelectFilter }) {
       </div>
 
       {/* Cards Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 w-full">
         {cards.map((card) => {
           const Icon = card.icon;
           const isSelected = activeFilter === card.id;
@@ -96,26 +96,26 @@ export default function StatsCards({ stats, activeFilter, onSelectFilter }) {
             <button
               key={card.id}
               onClick={() => onSelectFilter(card.id)}
-              className={`p-4 rounded-2xl text-left border transition-all duration-200 flex flex-col justify-between relative group ${
+              className={`p-3 sm:p-4 rounded-2xl text-left border transition-all duration-200 flex flex-col justify-between relative group min-w-0 overflow-hidden ${
                 isSelected
                   ? `${card.activeRing} bg-white dark:bg-slate-800/90 shadow-lg`
                   : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 shadow-sm'
               }`}
             >
-              <div className="flex items-center justify-between w-full mb-3">
-                <span className="text-xs font-semibold text-slate-600 dark:text-slate-400 truncate pr-1">
+              <div className="flex items-center justify-between w-full mb-1.5 sm:mb-2">
+                <span className="text-[10px] sm:text-xs font-semibold text-slate-600 dark:text-slate-400 truncate pr-1">
                   {card.label}
                 </span>
-                <div className={`p-2 rounded-xl ${card.bgColor} ${card.textColor} shrink-0`}>
-                  <Icon className="w-4 h-4" />
+                <div className={`p-1.5 sm:p-2 rounded-xl ${card.bgColor} ${card.textColor} shrink-0`}>
+                  <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </div>
               </div>
 
               <div>
-                <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white font-mono tracking-tight">
+                <div className="text-xl sm:text-3xl font-extrabold text-slate-900 dark:text-white font-mono tracking-tight">
                   {card.value}
                 </div>
-                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 truncate">
+                <div className="text-[9px] sm:text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
                   {card.subtext}
                 </div>
               </div>

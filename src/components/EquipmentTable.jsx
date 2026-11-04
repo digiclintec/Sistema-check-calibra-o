@@ -161,63 +161,63 @@ export default function EquipmentTable({
   };
 
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden">
+    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl sm:rounded-3xl shadow-sm overflow-hidden w-full max-w-full">
       
       {/* Search and Quick Scan Bar */}
-      <div className="p-3.5 sm:p-5 border-b border-slate-200 dark:border-slate-800 space-y-3 bg-slate-50/50 dark:bg-slate-900/50">
+      <div className="p-3 sm:p-5 border-b border-slate-200 dark:border-slate-800 space-y-2.5 sm:space-y-3 bg-slate-50/50 dark:bg-slate-900/50 w-full overflow-hidden">
         
         {/* Row 1: Direct Gun/Barcode Scan Bar */}
-        <form onSubmit={handleQuickSubmit} className="relative flex items-center">
-          <div className="absolute left-3.5 text-blue-600 dark:text-blue-400 flex items-center gap-1.5 pointer-events-none">
-            <Barcode className="w-5 h-5 animate-pulse" />
+        <form onSubmit={handleQuickSubmit} className="relative flex items-center w-full">
+          <div className="absolute left-3 text-blue-600 dark:text-blue-400 flex items-center gap-1.5 pointer-events-none">
+            <Barcode className="w-4 h-4 sm:w-5 sm:h-5 animate-pulse" />
           </div>
           <input
             type="text"
             placeholder="Aponte o leitor de código de barras ou digite..."
             value={quickCodeInput}
             onChange={(e) => setQuickCodeInput(e.target.value)}
-            className="w-full bg-white dark:bg-slate-950 border-2 border-blue-500/40 dark:border-blue-500/50 rounded-2xl pl-11 pr-20 py-2.5 sm:py-3 text-xs sm:text-sm font-mono text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-500/15 shadow-sm"
+            className="w-full bg-white dark:bg-slate-950 border-2 border-blue-500/40 dark:border-blue-500/50 rounded-xl sm:rounded-2xl pl-9 sm:pl-11 pr-18 sm:pr-20 py-2 sm:py-3 text-xs sm:text-sm font-mono text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-500/15 shadow-sm"
           />
           <button
             type="submit"
-            className="absolute right-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-sm"
+            className="absolute right-1.5 sm:right-2 px-2.5 sm:px-3 py-1 sm:py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg sm:rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-sm"
           >
             <CheckCircle2 className="w-3.5 h-3.5" />
-            Check
+            <span>Check</span>
           </button>
         </form>
 
-        {/* Row 2: Search Query & Sector Filter */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-          
-          {/* Smart Search */}
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Buscar por nome, tag, série, modelo..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl pl-9 pr-8 py-2 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
+        {/* Row 2: Search Query */}
+        <div className="relative w-full">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            placeholder="Buscar por nome, tag, série, modelo..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl pl-9 pr-8 py-2 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
 
+        {/* Row 2.5: Sector Selector & Filter Chips */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 w-full overflow-hidden">
+          
           {/* Sector Selector */}
           {sectors.length > 0 && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 w-full sm:w-auto shrink-0">
               <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
               <select
                 value={selectedSector}
                 onChange={(e) => setSelectedSector(e.target.value)}
-                className="w-full sm:w-auto bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:border-blue-500"
+                className="w-full sm:w-auto bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:border-blue-500 truncate"
               >
                 <option value="ALL">Todos os Setores ({equipments.length})</option>
                 {sectors.map((sec) => (
@@ -230,12 +230,12 @@ export default function EquipmentTable({
           )}
 
           {/* Active Filter Chips */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 w-full sm:w-auto no-scrollbar">
             {['todos', 'pendentes', 'checados', 'vencidos'].map((f) => (
               <button
                 key={f}
                 onClick={() => setActiveFilter(f)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold capitalize whitespace-nowrap transition ${
+                className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl text-xs font-semibold capitalize whitespace-nowrap transition shrink-0 ${
                   activeFilter === f
                     ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-sm'
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
@@ -249,7 +249,7 @@ export default function EquipmentTable({
         </div>
 
         {/* Row 3: Quick Action Tools (Digitalizar Foto OCR & Ações em Massa com Senha) */}
-        <div className="pt-2 border-t border-slate-200/60 dark:border-slate-800/60 flex flex-wrap items-center justify-between gap-2">
+        <div className="pt-2 border-t border-slate-200/60 dark:border-slate-800/60 flex flex-wrap items-center justify-between gap-2 w-full">
           
           {/* Digitalizar Foto OCR Button */}
           <button
@@ -263,7 +263,7 @@ export default function EquipmentTable({
           </button>
 
           {/* Mass Actions (Password Protected) */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <button
               type="button"
               onClick={() => onTriggerMassAction && onTriggerMassAction('check_all')}

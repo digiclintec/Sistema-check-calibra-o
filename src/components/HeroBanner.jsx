@@ -20,7 +20,7 @@ export default function HeroBanner({
   const [isHoveringDrop, setIsHoveringDrop] = useState(false);
 
   return (
-    <div className="bg-gradient-to-b from-blue-50/70 via-white to-white dark:from-slate-900/60 dark:via-slate-900 dark:to-slate-900 border border-blue-100 dark:border-slate-800 rounded-3xl p-6 sm:p-10 shadow-sm mb-6">
+    <div className="bg-gradient-to-b from-blue-50/70 via-white to-white dark:from-slate-900/60 dark:via-slate-900 dark:to-slate-900 border border-blue-100 dark:border-slate-800 rounded-2xl sm:rounded-3xl p-4 sm:p-10 shadow-sm mb-6 w-full max-w-full overflow-hidden">
       
       <div className="max-w-3xl mx-auto text-center space-y-4">
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-100/80 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 text-xs font-semibold border border-blue-200 dark:border-blue-900/50">
