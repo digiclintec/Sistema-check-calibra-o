@@ -271,26 +271,26 @@ export default function EquipmentTable({
             <span className="text-[10px] bg-white/20 px-1 rounded font-normal hidden sm:inline">IA</span>
           </button>
 
-          {/* Mass Actions (Password Protected) */}
+          {/* Smart Batch Actions (Password Protected) */}
           <div className="flex items-center gap-1.5 flex-wrap">
             <button
               type="button"
               onClick={() => onTriggerMassAction && onTriggerMassAction('check_all')}
-              className="py-1.5 px-2.5 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition active:scale-95"
-              title="Marcar todos os equipamentos como conferidos (requer senha)"
+              className="py-1.5 px-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-sm active:scale-95"
+              title="Ação inteligente em lote (escolher modalidades, técnico executor e setores)"
             >
-              <CheckCheck className="w-3.5 h-3.5" />
-              <span>Marcar Todos</span>
+              <Sparkles className="w-3.5 h-3.5 text-emerald-200" />
+              <span>Ação em Lote</span>
             </button>
 
             <button
               type="button"
               onClick={() => onTriggerMassAction && onTriggerMassAction('uncheck_all')}
               className="py-1.5 px-2.5 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-950/80 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition active:scale-95"
-              title="Desmarcar todos os equipamentos (requer senha)"
+              title="Desmarcar / reabrir equipamentos em lote (requer senha)"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>Desmarcar Todos</span>
+              <span className="hidden md:inline">Desmarcar</span>
             </button>
           </div>
 

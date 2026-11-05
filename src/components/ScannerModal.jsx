@@ -141,10 +141,16 @@ export default function ScannerModal({
     setIsCameraStarting(true);
     setCameraError('');
 
-    await stopScanner();
+    await stopScanner(true);
 
     // Pausa preventiva de 120ms para liberação completa do hardware da câmera no mobile
     await new Promise(r => setTimeout(r, 120));
+
+    // Garante que o elemento DOM do visualizador já está presente
+    for (let i = 0; i < 6; i++) {
+      if (document.getElementById('barcode-reader-box')) break;
+      await new Promise(r => setTimeout(r, 50));
+    }
 
     try {
       const html5QrCode = new Html5Qrcode('barcode-reader-box', {
@@ -294,9 +300,10 @@ export default function ScannerModal({
       console.warn(`Tentativa ${retryCount + 1} ao iniciar câmera:`, err);
 
       // Fallback em cascata suave antes de exibir mensagem de erro
-      if (retryCount < 2) {
-        console.log(`Tentando fallback de câmera tier ${retryCount + 2} em 250ms...`);
-        await new Promise(r => setTimeout(r, 250));
+      if (retryCount < 3) {
+        const delay = (retryCount + 1) * 250;
+        console.log(`Tentando fallback de câmera tier ${retryCount + 2} em ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
         return startScanner(null, retryCount + 1);
       }
 
@@ -309,7 +316,7 @@ export default function ScannerModal({
     }
   };
 
-  const stopScanner = async () => {
+  const stopScanner = async (keepStartingState = false) => {
     nativeDetectorActiveRef.current = false;
     if (nativeDetectorRafRef.current) {
       cancelAnimationFrame(nativeDetectorRafRef.current);
@@ -337,7 +344,9 @@ export default function ScannerModal({
       html5QrCodeRef.current = null;
     }
     setScanning(false);
-    setIsCameraStarting(false);
+    if (!keepStartingState) {
+      setIsCameraStarting(false);
+    }
     setTorchOn(false);
   };
 

@@ -30,6 +30,8 @@ import TeamManagementModal from './components/TeamManagementModal';
 import MonthlyPlanningTab from './components/MonthlyPlanningTab';
 import SerialScanModal from './components/SerialScanModal';
 import MassActionPasswordModal from './components/MassActionPasswordModal';
+import SmartBatchModal from './components/SmartBatchModal';
+import SpreadsheetAuditView from './components/SpreadsheetAuditView';
 import ManualCheckPasswordModal from './components/ManualCheckPasswordModal';
 import ModalityBar from './components/ModalityBar';
 
@@ -752,20 +754,38 @@ export default function App() {
     showToast('success', `🎉 ${checkedCount} equipamentos conferidos para [${modName}]!`);
   };
 
-  // Ações em Massa com Senha (Marcar Todos / Desmarcar Todos) para a modalidade ativa
-  const handleMassCheck = async (action, password, targetModality = activeModality) => {
+  // Ações em Massa com Senha (Marcar / Desmarcar em Lote) com suporte inteligente multi-modalidade e técnico
+  const handleMassCheck = async (payloadOrAction, maybePassword, maybeModality) => {
+    let payload = {};
+    if (typeof payloadOrAction === 'object' && payloadOrAction !== null) {
+      payload = {
+        action: payloadOrAction.action || 'check_all',
+        modalities: payloadOrAction.modalities,
+        assignedTechnician: payloadOrAction.assignedTechnician,
+        assignedDate: payloadOrAction.assignedDate,
+        sectorFilter: payloadOrAction.sectorFilter || 'ALL',
+        onlyPending: payloadOrAction.onlyPending ?? false,
+        password: payloadOrAction.password,
+        hospitalId: activeHospitalId,
+        userEmail: currentUser?.email,
+        userName: currentUser?.name
+      };
+    } else {
+      payload = {
+        action: payloadOrAction,
+        modality: maybeModality || activeModality,
+        password: maybePassword,
+        hospitalId: activeHospitalId,
+        userEmail: currentUser?.email,
+        userName: currentUser?.name
+      };
+    }
+
     try {
       const res = await fetch('/api/mass-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action,
-          modality: targetModality,
-          password,
-          hospitalId: activeHospitalId,
-          userEmail: currentUser?.email,
-          userName: currentUser?.name
-        })
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
       if (!data.success) {
@@ -780,18 +800,17 @@ export default function App() {
         lastUpdatedServerRef.current = data.lastUpdated;
       }
 
-      const modName = MODALITIES[targetModality]?.shortName || targetModality;
-      if (action === 'check_all') {
+      if (payload.action === 'check_all') {
         if (soundEnabled) playSuccessSound();
         confetti({
           particleCount: 150,
           spread: 80,
           origin: { y: 0.5 }
         });
-        showToast('success', `Todos os equipamentos foram marcados para [${modName}]!`);
+        showToast('success', data.message || `Equipamentos marcados com sucesso!`);
       } else {
         if (soundEnabled) playWarningSound();
-        showToast('info', `Todos os equipamentos foram desmarcados para [${modName}].`);
+        showToast('info', data.message || `Equipamentos desmarcados.`);
       }
 
       loadMonthlyPlans(activeHospitalId);
@@ -1108,7 +1127,14 @@ export default function App() {
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-24 sm:pb-6 overflow-hidden">
         
-        {activeMainTab === 'planejamento' ? (
+        {activeMainTab === 'auditoria' ? (
+          <SpreadsheetAuditView
+            equipments={equipments}
+            hospitalName={activeHospital?.name}
+            planTitle={activeSheetName}
+            onRefresh={fetchHospitalData}
+          />
+        ) : activeMainTab === 'planejamento' ? (
           <MonthlyPlanningTab
             plans={monthlyPlans}
             activePlanId={activePlanId}
@@ -1236,15 +1262,16 @@ export default function App() {
         activeModality={activeModality}
       />
 
-      {/* Modal de Confirmação com Senha para Ações em Massa (Marcar / Desmarcar Tudo) */}
-      <MassActionPasswordModal
+      {/* Modal Inteligente de Confirmação com Senha para Ações em Lote */}
+      <SmartBatchModal
         isOpen={massActionModal.isOpen}
         onClose={() => setMassActionModal(prev => ({ ...prev, isOpen: false }))}
-        action={massActionModal.action}
-        modality={activeModality}
-        totalEquipments={equipments.length}
+        initialAction={massActionModal.action}
+        activeModality={activeModality}
+        equipments={equipments}
         hospitalName={activeHospital?.name}
         planTitle={activeSheetName}
+        currentUser={currentUser}
         onConfirm={handleMassCheck}
       />
 
