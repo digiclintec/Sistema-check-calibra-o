@@ -1870,8 +1870,8 @@ export default function ScannerModal({
 
           {/* Barra Superior Unificada do Viewfinder: NÃO SOBREPÕE */}
           <div className="absolute top-2.5 left-2.5 right-2.5 z-20 flex items-center justify-between gap-1.5 pointer-events-auto" onClick={e => e.stopPropagation()}>
-            {/* Controles da Esquerda: Alternador 1D/2D e Seleção Direta de Lente Física (50MP vs 0.5x) */}
-            <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+            {/* Controles da Esquerda: Alternador 1D/2D e Indicador Exclusivo da Lente 50MP */}
+            <div className="flex items-center gap-1.5 min-w-0">
               <button
                 type="button"
                 onClick={() => setReticleType(r => r === '1d' ? '2d' : '1d')}
@@ -1886,40 +1886,11 @@ export default function ScannerModal({
                 <span>{reticleType === '1d' ? '1D Laser' : '2D QR'}</span>
               </button>
 
-              {/* Seletor Rápido de Lentes Físicas do Aparelho (50MP Principal vs Ultra-Wide) */}
-              {cameras && cameras.length > 1 ? (
-                <div className="flex items-center gap-1 bg-slate-950/90 p-0.5 rounded-full border border-slate-700/80 shadow-md">
-                  {cameras.map((cam, idx) => {
-                    const isSel = (cam.id === selectedCamera || cam.deviceId === selectedCamera);
-                    const shortName = getShortLensName(cam, idx);
-                    return (
-                      <button
-                        key={cam.id || cam.deviceId || idx}
-                        type="button"
-                        onClick={() => handleCameraChange(cam.id || cam.deviceId)}
-                        className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition flex items-center gap-1 shrink-0 ${
-                          isSel
-                            ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-300 font-extrabold'
-                            : 'text-slate-300 hover:text-white'
-                        }`}
-                        title={getFriendlyCameraLabel(cam, idx, cameras.length)}
-                      >
-                        <span>{shortName}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleCycleLensOrCamera}
-                  className="px-2.5 py-1 rounded-full text-[11px] font-black flex items-center gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white border border-blue-400/80 shadow-lg shadow-blue-500/30 transition active:scale-95 truncate max-w-[150px]"
-                  title="Toque para alternar fisicamente para outra câmera do celular"
-                >
-                  <SwitchCamera className="w-3.5 h-3.5 text-white shrink-0" />
-                  <span className="truncate">{currentLensDisplay}</span>
-                </button>
-              )}
+              {/* Indicador Fixo e Exclusivo: Câmera 50MP Principal Ativa */}
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-bold bg-slate-950/85 text-blue-300 border border-blue-500/40 shadow-md backdrop-blur-xs">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
+                <span>🎯 50MP Principal</span>
+              </div>
             </div>
 
             {/* Controles da Direita: Foco de Perto (Macro) e Lanterna */}
@@ -2366,23 +2337,10 @@ export default function ScannerModal({
             </div>
           )}
 
-          <div className="flex items-center gap-2">
-            {cameras.length > 1 && (
-              <select
-                value={selectedCamera}
-                onChange={(e) => handleCameraChange(e.target.value)}
-                className="flex-1 bg-slate-800 border border-slate-700 text-slate-300 text-xs rounded-xl px-2.5 py-2 focus:outline-none"
-              >
-                <option value="">Lente Traseira Automática</option>
-                {cameras.map((c, idx) => (
-                  <option key={c.id} value={c.id}>{getFriendlyCameraLabel(c, idx, cameras.length)}</option>
-                ))}
-              </select>
-            )}
-
+          <div className="flex items-center justify-end">
             <button
               onClick={onClose}
-              className="py-2 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition"
+              className="py-2.5 px-6 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition border border-slate-700/80 active:scale-95"
             >
               Fechar
             </button>
