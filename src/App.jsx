@@ -922,7 +922,12 @@ export default function App() {
     try {
       const result = await parseSpreadsheetFile(file);
       await pushServerUpdate(result.equipments, result.fileName, `Planilha carregada: ${result.fileName}`);
-      showToast('success', `Planilha "${result.fileName}" carregada no ${activeHospital?.name || 'hospital'} com ${result.total} itens!`);
+      const checkedCount = (result.equipments || []).filter(e => e.checado).length;
+      if (checkedCount > 0) {
+        showToast('success', `Planilha "${result.fileName}" carregada com ${result.total} itens (${checkedCount} já validados da planilha)!`);
+      } else {
+        showToast('success', `Planilha "${result.fileName}" carregada no ${activeHospital?.name || 'hospital'} com ${result.total} itens!`);
+      }
       loadHospitals();
     } catch (err) {
       console.error(err);
@@ -952,7 +957,12 @@ export default function App() {
   // Google Sheets import
   const handleGoogleDataImport = async (data) => {
     await pushServerUpdate(data.equipments, data.fileName, 'Planilha Google importada');
-    showToast('success', `Planilha importada com ${data.total} equipamentos!`);
+    const checkedCount = (data.equipments || []).filter(e => e.checado).length;
+    if (checkedCount > 0) {
+      showToast('success', `Planilha importada com ${data.total} equipamentos (${checkedCount} já validados da planilha)!`);
+    } else {
+      showToast('success', `Planilha importada com ${data.total} equipamentos!`);
+    }
     loadHospitals();
   };
 

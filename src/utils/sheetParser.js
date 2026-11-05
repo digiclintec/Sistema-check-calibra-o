@@ -20,6 +20,28 @@ export function parseCheckValue(val) {
   if (!val) return false;
   
   const str = String(val).trim().toLowerCase();
+
+  // Casos negativos explícitos (nunca marcar como check)
+  if (
+    str === 'pendente' ||
+    str === 'aguardando' ||
+    str === 'a fazer' ||
+    str === 'a conferir' ||
+    str === 'nao' ||
+    str === 'não' ||
+    str === 'false' ||
+    str === '0' ||
+    str === 'n' ||
+    str === 'aberto' ||
+    str.includes('nao checado') ||
+    str.includes('não checado') ||
+    str.includes('sem check') ||
+    str.includes('desmarcado')
+  ) {
+    return false;
+  }
+
+  // Casos positivos explícitos
   if (
     str === 'sim' ||
     str === 's' ||
@@ -27,6 +49,8 @@ export function parseCheckValue(val) {
     str === 'true' ||
     str === 'x' ||
     str === 'v' ||
+    str === 'check' ||
+    str === 'checked' ||
     str === 'checado' ||
     str === 'conferido' ||
     str === 'concluido' ||
@@ -39,9 +63,15 @@ export function parseCheckValue(val) {
     str === 'pass' ||
     str === 'passed' ||
     str === 'sim/ok' ||
+    str === 'ok/check' ||
+    str === 'validado' ||
+    str.includes('check') ||
     str.includes('concluid') ||
     str.includes('realizad') ||
     str.includes('conferid') ||
+    str.includes('validad') ||
+    str.includes('aprovad') ||
+    str.includes('calibrad') ||
     str.includes('ok')
   ) {
     return true;
@@ -87,8 +117,9 @@ export function parseDateValue(val) {
 
 /**
  * Mapeamento inteligente de colunas em planilhas brutas ou semi-tratadas
+ * com Suporte a Deep Content Awareness (detecção por conteúdo real das células)
  */
-export function identifyColumns(headers) {
+export function identifyColumns(headers, sampleRows = []) {
   const mapping = {
     codigoBarras: null,
     tag: null,
@@ -273,11 +304,12 @@ export function identifyColumns(headers) {
     )) {
       mapping.setor = h;
     }
-    // Setor de Retirada / Coleta (Bomba retirada de outro setor)
+    // Setor de Retirada / Coleta (Bomba retirada de outro setor ou segunda coluna de setor)
     else if (!mapping.setorRetirada && (
       norm.includes('retirad') ||
       norm.includes('colet') ||
-      norm.includes('origem')
+      norm.includes('origem') ||
+      (norm.includes('setor') && mapping.setor && mapping.setor !== h)
     )) {
       mapping.setorRetirada = h;
     }
@@ -293,17 +325,19 @@ export function identifyColumns(headers) {
     // Status Geral de Calibração (ex: "Status Calibração")
     else if (!mapping.statusCalibracao && (
       norm.includes('statuscalibracao') || 
-      (norm.includes('status') && !norm.includes('geral') && !norm.includes('prev') && !norm.includes('seg'))
+      (norm.includes('status') && !norm.includes('geral') && !norm.includes('prev') && !norm.includes('seg') && !norm.includes('estado'))
     )) {
       mapping.statusCalibracao = h;
     }
-    // Checado Geral / Status Geral / Check
+    // Checado Geral / Status Geral / Check / Estado de Conferência
     else if (!mapping.checadoGeral && (
       norm.includes('statusgeral') ||
       norm.includes('checado') || 
       norm.includes('conferido') || 
       norm.includes('check') || 
       norm.includes('verificado') ||
+      norm.includes('estadopendente') ||
+      norm.includes('pendente') ||
       norm === 'status' ||
       norm === 'situacao'
     )) {
@@ -343,11 +377,101 @@ export function identifyColumns(headers) {
       norm.includes('observacao') || 
       norm.includes('obs') || 
       norm.includes('nota') ||
-      norm.includes('defeito')
+      norm.includes('defeito') ||
+      norm.includes('motivo')
     )) {
       mapping.observacao = h;
     }
   });
+
+  // --- DEEP CONTENT-AWARE INSPECTION: Analisa o conteúdo real das células ---
+  if (Array.isArray(sampleRows) && sampleRows.length > 0) {
+    const inspectRows = sampleRows.slice(0, 100);
+
+    // Avalia se o checadoGeral atual possui tokens de conferência reais
+    let currentCheckTokens = 0;
+    if (mapping.checadoGeral) {
+      for (const row of inspectRows) {
+        const val = String(row[mapping.checadoGeral] || '').trim().toLowerCase();
+        if (val === 'check' || val === 'checked' || val.includes('check') || val === 'pendente' || val === 'ok' || val === 'conferido' || val === 'calibrado') {
+          currentCheckTokens++;
+        }
+      }
+    }
+
+    // Se o checadoGeral atual não tiver tokens suficientes ou não foi mapeado, procura a melhor coluna por conteúdo
+    if (currentCheckTokens < 2 || !mapping.checadoGeral) {
+      let bestCheckCol = null;
+      let maxCheckMatches = 0;
+
+      headers.forEach(h => {
+        if (h === mapping.serie || h === mapping.tag || h === mapping.codigoBarras || h === mapping.equipamento || h === mapping.modelo || h === mapping.fabricante || h === mapping.setor || h === mapping.setorRetirada) {
+          return;
+        }
+
+        let matchCount = 0;
+        for (const row of inspectRows) {
+          const val = String(row[h] || '').trim().toLowerCase();
+          if (
+            val === 'check' || 
+            val === 'checked' || 
+            val.includes('check') || 
+            val === 'pendente' || 
+            val === 'ok' || 
+            val === 'conferido' || 
+            val === 'calibrado' ||
+            val === 'sim' ||
+            val === 'nao' ||
+            val === 'não'
+          ) {
+            matchCount++;
+          }
+        }
+
+        if (matchCount > maxCheckMatches && matchCount >= 2) {
+          maxCheckMatches = matchCount;
+          bestCheckCol = h;
+        }
+      });
+
+      if (bestCheckCol) {
+        mapping.checadoGeral = bestCheckCol;
+      }
+    }
+
+    // 2. Identificar coluna de Setor de Retirada (Coleta) se houver segunda coluna de setor
+    if (!mapping.setorRetirada) {
+      headers.forEach(h => {
+        if (h === mapping.setor || h === mapping.serie || h === mapping.tag || h === mapping.equipamento || h === mapping.checadoGeral) {
+          return;
+        }
+        const norm = normalizeHeader(h);
+        if (norm.includes('retirad') || norm.includes('colet') || norm.includes('origem') || norm === 'setor') {
+          mapping.setorRetirada = h;
+        }
+      });
+    }
+
+    // 3. Identificar coluna de Observação se houver coluna com defeitos / notas (ex: "MANUTENÇÃO EXTERNA")
+    if (!mapping.observacao) {
+      headers.forEach(h => {
+        if (h === mapping.setor || h === mapping.setorRetirada || h === mapping.checadoGeral || h === mapping.tag || h === mapping.serie || h === mapping.equipamento) {
+          return;
+        }
+        const norm = normalizeHeader(h);
+        if (norm.includes('obs') || norm.includes('nota') || norm.includes('motivo') || norm.includes('defeito') || norm.includes('manutencao') || norm.startsWith('coluna')) {
+          // Verifica se tem algum texto longo nos dados
+          const hasNotes = inspectRows.some(r => {
+            const val = String(r[h] || '').trim();
+            return val.length > 3 && !/^\d+$/.test(val);
+          });
+          if (hasNotes) {
+            mapping.observacao = h;
+          }
+        }
+      });
+    }
+  }
 
   // Fallbacks inteligentes se colunas essenciais não tiverem nome padrão:
   if (!mapping.codigoBarras && mapping.serie) {
@@ -488,16 +612,16 @@ export function normalizeRows(rows, mapping) {
       
       // Suporte multiequipes (Calibração, Preventiva, Segurança Elétrica)
       check_calibracao: Boolean(isCalChecked),
-      data_calibracao: dataCal,
-      usuario_calibracao: userCal,
+      data_calibracao: isCalChecked ? (dataCal || new Date().toISOString()) : null,
+      usuario_calibracao: isCalChecked ? (userCal || 'Planilha Original') : null,
       
       check_preventiva: Boolean(isPrevChecked),
-      data_preventiva: dataPrev,
-      usuario_preventiva: userPrev,
+      data_preventiva: isPrevChecked ? (dataPrev || new Date().toISOString()) : null,
+      usuario_preventiva: isPrevChecked ? (userPrev || 'Planilha Original') : null,
 
       check_seguranca: Boolean(isSegChecked),
-      data_seguranca: dataSeg,
-      usuario_seguranca: userSeg,
+      data_seguranca: isSegChecked ? (dataSeg || new Date().toISOString()) : null,
+      usuario_seguranca: isSegChecked ? (userSeg || 'Planilha Original') : null,
 
       _originalRow: row,
     };
@@ -553,10 +677,34 @@ export function extractDataFromWorksheet(worksheet) {
   }
 
   const rawHeaderRow = rawMatrix[bestHeaderRowIndex] || [];
-  const headers = rawHeaderRow.map((h, colIdx) => {
-    const val = String(h).trim();
-    return val || `Coluna_${colIdx + 1}`;
-  });
+  const prevHeaderRow = bestHeaderRowIndex > 0 ? (rawMatrix[bestHeaderRowIndex - 1] || []) : [];
+  const maxCols = Math.max(rawHeaderRow.length, prevHeaderRow.length);
+
+  const headers = [];
+  for (let colIdx = 0; colIdx < maxCols; colIdx++) {
+    const curVal = String(rawHeaderRow[colIdx] || '').trim();
+    const prevVal = String(prevHeaderRow[colIdx] || '').trim();
+    const isPrevBanner = prevVal.toLowerCase().includes('listagem') || 
+                         prevVal.toLowerCase().includes('relatorio') || 
+                         prevVal.toLowerCase().includes('planilha') ||
+                         prevVal.toLowerCase().includes('inventario');
+
+    let resolvedHeader = '';
+    if (!curVal && prevVal && !isPrevBanner) {
+      resolvedHeader = prevVal;
+    } else if (curVal && prevVal && curVal.toLowerCase() !== prevVal.toLowerCase() && !isPrevBanner) {
+      const curLower = curVal.toLowerCase();
+      // Se a linha atual tiver um status inicial (ex: "Pendente", "Ativo", "Aguardando"), preserva o rótulo da linha superior
+      if (curLower === 'pendente' || curLower === 'ok' || curLower === 'check' || curLower === 'ativo' || curLower === 'em manutenção') {
+        resolvedHeader = `${prevVal} - ${curVal}`;
+      } else {
+        resolvedHeader = curVal;
+      }
+    } else {
+      resolvedHeader = curVal || (!isPrevBanner ? prevVal : '') || `Coluna_${colIdx + 1}`;
+    }
+    headers.push(resolvedHeader);
+  }
 
   const rawJson = [];
   for (let r = bestHeaderRowIndex + 1; r < rawMatrix.length; r++) {
@@ -603,7 +751,7 @@ export function parseWorkbookBuffer(buffer, sourceName = 'Planilha') {
       throw new Error('A planilha está vazia ou não contém dados legíveis.');
     }
     const headers = Object.keys(fallbackJson[0]);
-    const mapping = identifyColumns(headers);
+    const mapping = identifyColumns(headers, fallbackJson);
     const normalized = normalizeRows(fallbackJson, mapping);
     return {
       fileName: sourceName,
@@ -616,7 +764,7 @@ export function parseWorkbookBuffer(buffer, sourceName = 'Planilha') {
     };
   }
 
-  const mapping = identifyColumns(chosenData.headers);
+  const mapping = identifyColumns(chosenData.headers, chosenData.rawJson);
   const normalized = normalizeRows(chosenData.rawJson, mapping);
 
   return {
@@ -697,7 +845,7 @@ export function parseCsvText(csvText, sourceName = 'Google Sheets') {
     headers = Object.keys(rawJson[0]);
   }
 
-  const mapping = identifyColumns(headers);
+  const mapping = identifyColumns(headers, rawJson);
   const normalized = normalizeRows(rawJson, mapping);
 
   return {
