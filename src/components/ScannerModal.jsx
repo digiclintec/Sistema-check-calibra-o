@@ -99,38 +99,40 @@ export default function ScannerModal({
     const raw = (camera.label || '').toLowerCase();
     
     if (isFrontCamera(raw)) {
-      return `🤳 Lente Frontal (${index + 1})`;
+      return `🤳 Lente Frontal (${camera.label || index + 1})`;
     }
     if (isUltraWideLens(raw)) {
-      return `📐 Ultra-Wide 0.5x (${index + 1}) [Embaça de perto]`;
+      return `📐 Ultra-Wide 0.5x (${camera.label || index + 1}) [Visão Ampla]`;
     }
     if (isTelephotoLens(raw)) {
-      return `🔭 Telefoto Óptica (${index + 1})`;
+      return `🔭 Telefoto Óptica (${camera.label || index + 1})`;
     }
     if (raw.includes('macro') || raw.includes('depth')) {
-      return `🔍 Macro (${index + 1})`;
+      return `🔍 Macro (${camera.label || index + 1})`;
     }
-    if (index === 0) {
-      return `📷 Câmera Principal 1x (${index + 1} - Nítida)`;
-    }
-    return `📷 Lente ${index + 1} (Traseira)`;
+    return `📷 Lente ${index + 1} (${camera.label || 'Traseira'})`;
   };
 
   const getShortLensName = (camera, index) => {
     if (!camera) return `Lente ${index + 1}`;
     const raw = (camera.label || '').toLowerCase();
     if (isFrontCamera(raw)) return '🤳 Frontal';
-    if (isUltraWideLens(raw)) return '📐 0.5x';
-    if (isTelephotoLens(raw)) return '🔭 2x';
-    if (raw.includes('macro')) return '🔍 Macro';
-    if (index === 0) return '📷 1x Principal';
+    if (isUltraWideLens(raw)) return '📐 Lente 0.5x';
+    if (isTelephotoLens(raw)) return '🔭 Lente Tele';
+    if (raw.includes('macro')) return '🔍 Lente Macro';
+    
+    // Mostra o número físico da lente identificado pelo Android Camera2 HAL
+    const match = raw.match(/camera2?\s*(\d+)/i) || raw.match(/(\d+),\s*facing/i);
+    if (match) {
+      return `📷 Lente Física ${match[1]}`;
+    }
     return `📷 Lente ${index + 1}`;
   };
 
   const currentLensShortLabel = useMemo(() => {
     if (!cameras || cameras.length === 0) return 'Lente Traseira';
     const idx = cameras.findIndex(c => c.id === selectedCamera);
-    if (idx < 0) return 'Lente 1 (1x)';
+    if (idx < 0) return 'Lente 1';
     return getShortLensName(cameras[idx], idx);
   }, [cameras, selectedCamera]);
 
@@ -377,57 +379,29 @@ export default function ScannerModal({
       });
       html5QrCodeRef.current = html5QrCode;
 
-      // Restrições de vídeo: Garantem troca física de lente (deviceId exato) sem restrições 'min' que causam erro no modo retrato
+      // Restrições de vídeo: Garantem a troca física real da lente no Android e iOS
       let videoConstraints;
       if (cameraId) {
         if (retryCount === 0) {
-          // Tier 0: Lente física EXATA com resolução Full HD 1080p ideal
-          videoConstraints = {
-            deviceId: { exact: cameraId },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 }
-          };
-        } else if (retryCount === 1) {
-          // Tier 1: Lente física EXATA com 720p ideal
-          videoConstraints = {
-            deviceId: { exact: cameraId },
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-          };
-        } else if (retryCount === 2) {
-          // Tier 2: Lente física EXATA pura sem restrição de dimensão
+          // Tier 0: Lente física EXATA pura (100% suportada pelo Android Camera2)
           videoConstraints = {
             deviceId: { exact: cameraId }
           };
         } else {
-          // Tier 3: deviceId ideal
+          // Tier 1: Lente física relaxada (caso o driver do Android rejeite a chave 'exact')
           videoConstraints = {
-            deviceId: { ideal: cameraId }
+            deviceId: cameraId
           };
         }
       } else {
-        if (retryCount === 0) {
-          videoConstraints = {
-            facingMode: { ideal: "environment" },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 }
-          };
-        } else if (retryCount === 1) {
-          videoConstraints = {
-            facingMode: { ideal: "environment" },
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-          };
-        } else {
-          videoConstraints = {
-            facingMode: "environment"
-          };
-        }
+        videoConstraints = {
+          facingMode: { ideal: "environment" }
+        };
       }
 
       const config = {
         fps: 30, // 30 FPS para leitura instantânea e sem lag
-        videoConstraints: Object.keys(videoConstraints).length > 0 ? videoConstraints : undefined,
+        videoConstraints: videoConstraints,
         qrbox: (viewfinderWidth, viewfinderHeight) => {
           // Ampla área horizontal cobrindo 96% da largura útil sem cortar códigos 1D longos
           const width = Math.floor(viewfinderWidth * 0.96);
@@ -524,12 +498,12 @@ export default function ScannerModal({
         }
       }
 
-      // Ativa foco contínuo e zoom 1.5x automático para foco perfeito em códigos de barras de bombas
+      // Ativa foco contínuo e exposição de hardware (mantendo 1x nativo sem zoom digital forçado)
       setTimeout(() => {
         setupTrackFocusAndQuality();
         applyHardwareFocus(0.5, 0.5);
-        applySpecificZoom(1.5);
-      }, 400);
+        applySpecificZoom(1);
+      }, 350);
 
       // Verifica capacidades de lanterna e zoom óptico/digital
       try {
@@ -549,24 +523,23 @@ export default function ScannerModal({
     } catch (err) {
       console.warn(`Tentativa ${retryCount + 1} ao iniciar câmera:`, err);
 
-      // Fallback em cascata inteligente mantendo a lente física selecionada
-      if (retryCount < 3 && cameraId) {
-        const delay = (retryCount + 1) * 180;
+      // Fallback em cascata inteligente mantendo estritamente a lente física selecionada
+      if (retryCount < 2 && cameraId) {
+        const delay = (retryCount + 1) * 200;
         console.log(`Tentando fallback tier ${retryCount + 2} para lente física ${cameraId}...`);
         await new Promise(r => setTimeout(r, delay));
         return startScanner(cameraId, retryCount + 1);
-      } else if (retryCount < 4) {
+      } else if (!cameraId && retryCount < 2) {
         const delay = 250;
-        console.log(`Tentando fallback geral tier ${retryCount + 2}...`);
         await new Promise(r => setTimeout(r, delay));
-        return startScanner(null, 4);
+        return startScanner(null, retryCount + 1);
       }
 
       isStartingRef.current = false;
       setIsCameraStarting(false);
       setScanning(false);
       setCameraError(
-        'Não foi possível abrir a câmera selecionada. Tente alternar para outra lente ou usar o botão "Tirar Foto".'
+        'Não foi possível ativar a lente física selecionada. O sensor pode estar em uso ou não ser suportado. Tente outra lente física da lista.'
       );
     }
   };
@@ -832,11 +805,11 @@ export default function ScannerModal({
     
     try {
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
-        navigator.vibrate(35);
+        navigator.vibrate(40);
       }
     } catch (e) {}
 
-    setFocusFeedbackText(`🔄 Trocando para: ${friendly}...`);
+    setFocusFeedbackText(`🔄 Ativando: ${friendly}...`);
 
     // Para completamente a câmera anterior e libera a trilha de hardware
     await stopScanner(true);
@@ -844,10 +817,16 @@ export default function ScannerModal({
     const videoEl = document.querySelector('#barcode-reader-box video');
     if (videoEl) {
       videoEl.style.transform = 'none';
+      if (videoEl.srcObject) {
+        try {
+          videoEl.srcObject.getTracks().forEach(t => t.stop());
+        } catch (e) {}
+        videoEl.srcObject = null;
+      }
     }
 
-    // Intervalo de segurança (200ms) para o driver do Android/iOS liberar a lente anterior
-    await new Promise(r => setTimeout(r, 200));
+    // Intervalo de segurança (350ms) para o driver do Android Camera2 liberar fisicamente o sensor
+    await new Promise(r => setTimeout(r, 350));
 
     // Inicia a nova câmera física escolhida
     await startScanner(camId);
@@ -857,9 +836,13 @@ export default function ScannerModal({
 
   const handleCycleCamera = () => {
     if (!cameras || cameras.length <= 1) return;
-    const currentIndex = cameras.findIndex(c => c.id === selectedCamera);
-    const nextIndex = (currentIndex + 1) % cameras.length;
-    const nextCam = cameras[nextIndex];
+    // Filtra preferencialmente as câmeras traseiras (foco em bombas)
+    const backCams = cameras.filter(c => !isFrontCamera(c.label));
+    const targetList = backCams.length > 1 ? backCams : cameras;
+
+    const currentIndex = targetList.findIndex(c => c.id === selectedCamera);
+    const nextIndex = (currentIndex + 1) % targetList.length;
+    const nextCam = targetList[nextIndex];
     if (nextCam) {
       handleCameraChange(nextCam.id);
     }
@@ -1620,16 +1603,16 @@ export default function ScannerModal({
               <span>{reticleType === '1d' ? '1D Laser' : '2D QR'}</span>
             </button>
 
-            {/* Botão de Troca Rápida de Lente Física */}
+            {/* Botão de Troca Rápida de Lente Física com estilo Pro */}
             {cameras.length > 1 && (
               <button
                 type="button"
                 onClick={handleCycleCamera}
-                className="px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center gap-1.5 bg-slate-900/90 hover:bg-slate-800 text-white border border-slate-700/80 shadow-lg transition active:scale-95"
+                className="px-3 py-1 rounded-full text-[11px] font-extrabold flex items-center gap-1.5 bg-blue-600/90 hover:bg-blue-500 text-white border border-blue-400/80 shadow-lg shadow-blue-500/25 transition active:scale-95"
                 title="Toque para alternar para a próxima lente física da câmera"
               >
-                <SwitchCamera className="w-3.5 h-3.5 text-blue-400" />
-                <span className="max-w-[120px] truncate">{currentLensShortLabel}</span>
+                <SwitchCamera className="w-3.5 h-3.5 text-white" />
+                <span className="max-w-[130px] truncate">{currentLensShortLabel}</span>
               </button>
             )}
           </div>
