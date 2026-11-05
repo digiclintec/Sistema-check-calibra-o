@@ -82,36 +82,48 @@ export default function ScannerModal({
     return l.includes('ultra') || l.includes('super') || l.includes('0.5') || l.includes('0,5') || l.includes('ultrawide');
   };
 
+  const isTelephotoLens = (label) => {
+    const l = (label || '').toLowerCase();
+    return l.includes('tele') || l.includes('zoom') || l.includes('2x') || l.includes('3x') || l.includes('5x');
+  };
+
+  const isFrontCamera = (label) => {
+    const l = (label || '').toLowerCase();
+    return l.includes('front') || l.includes('user') || l.includes('frontal') || l.includes('selfie') || l.includes('facing front');
+  };
+
   // Rótulos inteligentes e amigáveis para cada lente de hardware do aparelho
   const getFriendlyCameraLabel = (camera, index, total) => {
     if (!camera) return `Lente ${index + 1}`;
     const raw = (camera.label || '').toLowerCase();
     
-    if (raw.includes('front') || raw.includes('user') || raw.includes('frontal') || raw.includes('selfie') || raw.includes('facing front')) {
+    if (isFrontCamera(raw)) {
       return `🤳 Lente Frontal (${index + 1})`;
     }
     if (isUltraWideLens(raw)) {
       return `📐 Ultra-Wide 0.5x (${index + 1}) [Embaça de perto]`;
     }
-    if (raw.includes('tele') || raw.includes('zoom') || raw.includes('2x') || raw.includes('3x') || raw.includes('5x')) {
-      return `🔭 Teleobjetiva Zoom (${index + 1})`;
+    if (isTelephotoLens(raw)) {
+      return `🔭 Telefoto Óptica (${index + 1})`;
     }
     if (raw.includes('macro') || raw.includes('depth')) {
       return `🔍 Macro (${index + 1})`;
     }
     if (index === 0) {
-      return `📷 Lente 1 (Principal 1x - Nítida)`;
+      return `📷 Câmera Principal 1x (${index + 1} - Nítida)`;
     }
-    return `📷 Lente ${index + 1} (Traseira 1x)`;
+    return `📷 Lente ${index + 1} (Traseira)`;
   };
 
   const getShortLensName = (camera, index) => {
     if (!camera) return `Lente ${index + 1}`;
     const raw = (camera.label || '').toLowerCase();
-    if (raw.includes('front') || raw.includes('user') || raw.includes('frontal')) return 'Frontal';
-    if (isUltraWideLens(raw)) return '0.5x Wide';
-    if (index === 0) return 'Lente 1 (1x)';
-    return `Lente ${index + 1}`;
+    if (isFrontCamera(raw)) return '🤳 Frontal';
+    if (isUltraWideLens(raw)) return '📐 0.5x';
+    if (isTelephotoLens(raw)) return '🔭 2x';
+    if (raw.includes('macro')) return '🔍 Macro';
+    if (index === 0) return '📷 1x Principal';
+    return `📷 Lente ${index + 1}`;
   };
 
   const currentLensShortLabel = useMemo(() => {
@@ -363,40 +375,40 @@ export default function ScannerModal({
       });
       html5QrCodeRef.current = html5QrCode;
 
-      // Restrições de vídeo Full HD (1080p ideal) sem forçar aspect ratio fixo
+      // Restrições de vídeo: Garantem troca física de lente (deviceId exato) sem restrições 'min' que causam erro no modo retrato
       let videoConstraints;
       if (cameraId) {
         if (retryCount === 0) {
-          // Tier 0: 1080p Full HD limpo e nítido
+          // Tier 0: Lente física EXATA com resolução Full HD 1080p ideal
           videoConstraints = {
             deviceId: { exact: cameraId },
-            width: { min: 1280, ideal: 1920, max: 3840 },
-            height: { min: 720, ideal: 1080, max: 2160 }
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
           };
         } else if (retryCount === 1) {
-          // Tier 1: 720p HD com deviceId flexível
+          // Tier 1: Lente física EXATA com 720p ideal
           videoConstraints = {
-            deviceId: { ideal: cameraId },
+            deviceId: { exact: cameraId },
             width: { ideal: 1280 },
             height: { ideal: 720 }
           };
         } else if (retryCount === 2) {
-          // Tier 2: deviceId puro sem restrição de dimensão
+          // Tier 2: Lente física EXATA pura sem restrição de dimensão
           videoConstraints = {
-            deviceId: cameraId
+            deviceId: { exact: cameraId }
           };
         } else {
-          // Tier 3: fallback para ambiente
+          // Tier 3: deviceId ideal
           videoConstraints = {
-            facingMode: { ideal: "environment" }
+            deviceId: { ideal: cameraId }
           };
         }
       } else {
         if (retryCount === 0) {
           videoConstraints = {
             facingMode: { ideal: "environment" },
-            width: { min: 1280, ideal: 1920 },
-            height: { min: 720, ideal: 1080 }
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
           };
         } else if (retryCount === 1) {
           videoConstraints = {
@@ -534,17 +546,17 @@ export default function ScannerModal({
     } catch (err) {
       console.warn(`Tentativa ${retryCount + 1} ao iniciar câmera:`, err);
 
-      // Fallback em cascata inteligente mantendo a lente selecionada antes de desistir
-      if (retryCount < 2 && cameraId) {
-        const delay = (retryCount + 1) * 200;
-        console.log(`Tentando fallback tier ${retryCount + 2} para lente ${cameraId}...`);
+      // Fallback em cascata inteligente mantendo a lente física selecionada
+      if (retryCount < 3 && cameraId) {
+        const delay = (retryCount + 1) * 180;
+        console.log(`Tentando fallback tier ${retryCount + 2} para lente física ${cameraId}...`);
         await new Promise(r => setTimeout(r, delay));
         return startScanner(cameraId, retryCount + 1);
-      } else if (retryCount < 3) {
-        const delay = 300;
+      } else if (retryCount < 4) {
+        const delay = 250;
         console.log(`Tentando fallback geral tier ${retryCount + 2}...`);
         await new Promise(r => setTimeout(r, delay));
-        return startScanner(null, 3);
+        return startScanner(null, 4);
       }
 
       isStartingRef.current = false;
@@ -804,7 +816,8 @@ export default function ScannerModal({
     await applySpecificZoom(nextZoom);
   };
 
-  const handleCameraChange = (camId) => {
+  const handleCameraChange = async (camId) => {
+    if (!camId || isStartingRef.current) return;
     setSelectedCamera(camId);
     if (camId) {
       try {
@@ -813,9 +826,30 @@ export default function ScannerModal({
     }
     const idx = cameras.findIndex(c => c.id === camId);
     const friendly = idx >= 0 ? getFriendlyCameraLabel(cameras[idx], idx, cameras.length) : 'Lente Selecionada';
+    
+    try {
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate(35);
+      }
+    } catch (e) {}
+
+    setFocusFeedbackText(`🔄 Trocando para: ${friendly}...`);
+
+    // Para completamente a câmera anterior e libera a trilha de hardware
+    await stopScanner(true);
+    setZoomLevel(1);
+    const videoEl = document.querySelector('#barcode-reader-box video');
+    if (videoEl) {
+      videoEl.style.transform = 'none';
+    }
+
+    // Intervalo de segurança (200ms) para o driver do Android/iOS liberar a lente anterior
+    await new Promise(r => setTimeout(r, 200));
+
+    // Inicia a nova câmera física escolhida
+    await startScanner(camId);
     setFocusFeedbackText(`✓ ${friendly}`);
     setTimeout(() => setFocusFeedbackText(''), 2500);
-    startScanner(camId);
   };
 
   const handleCycleCamera = () => {
@@ -1538,51 +1572,50 @@ export default function ScannerModal({
             </div>
           )}
 
-          {/* Barra Superior de Controles na Câmera: Alternador 1D/2D e Troca Real de Lentes */}
+          {/* Barra Superior de Controles na Câmera: Alternador 1D/2D e Informação da Lente */}
           <div className="absolute top-2.5 left-2.5 z-20 flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
             {/* Alternador 1D/2D */}
             <button
               type="button"
               onClick={() => setReticleType(r => r === '1d' ? '2d' : '1d')}
-              className={`px-2 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 border shadow-lg transition active:scale-95 ${
+              className={`px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 border shadow-lg transition active:scale-95 ${
                 reticleType === '1d'
-                  ? 'bg-red-500/20 text-red-300 border-red-500/40'
-                  : 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                  ? 'bg-red-500/25 text-red-200 border-red-500/50 shadow-red-500/20'
+                  : 'bg-blue-500/25 text-blue-200 border-blue-500/50 shadow-blue-500/20'
               }`}
-              title="Alternar entre mira para Código de Barras e mira para QR Code"
+              title="Alternar entre mira para Código de Barras (1D) e mira para QR Code (2D)"
             >
               <ScanLine className="w-3 h-3" />
               <span>{reticleType === '1d' ? '1D Laser' : '2D QR'}</span>
             </button>
 
-            {/* Botão de Troca Real de Lente (HUD) - Evita a Super-Wide 0.5x que embaça */}
+            {/* Botão de Troca Rápida de Lente (Abre lista completa de hardware) */}
             {cameras.length > 0 && (
               <div className="relative">
                 <button
                   type="button"
-                  onClick={() => {
-                    if (cameras.length > 2) {
-                      setShowLensPicker(prev => !prev);
-                    } else {
-                      handleCycleCamera();
-                    }
-                  }}
-                  className="px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center gap-1.5 bg-slate-900/90 hover:bg-slate-800 text-white border border-slate-700/80 shadow-lg transition active:scale-95"
-                  title="Toque para trocar de lente (seleciona a lente principal 1x e evita a lente ultra-wide)"
+                  onClick={() => setShowLensPicker(prev => !prev)}
+                  className="px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center gap-1.5 bg-slate-950/85 hover:bg-slate-900 text-white border border-slate-700/80 shadow-lg transition active:scale-95"
+                  title="Ver todas as lentes de hardware detectadas neste smartphone"
                 >
                   <SwitchCamera className="w-3 h-3 text-blue-400" />
-                  <span>{currentLensShortLabel}</span>
+                  <span className="max-w-[100px] truncate">{currentLensShortLabel}</span>
                   <ChevronDown className="w-2.5 h-2.5 text-slate-400" />
                 </button>
 
                 {/* Popover com Lista Completa de Lentes Detectadas */}
                 {showLensPicker && (
-                  <div className="absolute left-0 mt-1.5 w-64 bg-slate-900/95 backdrop-blur-md rounded-2xl border border-slate-700/90 p-1.5 shadow-2xl z-40 animate-in fade-in zoom-in-95 duration-150">
-                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1 flex items-center justify-between border-b border-slate-800 pb-1 mb-1">
-                      <span>Lentes Detectadas</span>
-                      <span className="text-blue-400 font-mono">{cameras.length} disponíveis</span>
+                  <div className="absolute left-0 mt-1.5 w-72 bg-slate-900/95 backdrop-blur-md rounded-2xl border border-slate-700/90 p-2 shadow-2xl z-40 animate-in fade-in zoom-in-95 duration-150">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider px-2 py-1 flex items-center justify-between border-b border-slate-800 pb-1.5 mb-1.5">
+                      <span className="flex items-center gap-1">
+                        <Camera className="w-3 h-3 text-blue-400" />
+                        Lentes Físicas do Aparelho
+                      </span>
+                      <span className="text-blue-400 font-mono text-[9px] bg-blue-950/80 px-1.5 py-0.5 rounded-md border border-blue-800/50">
+                        {cameras.length} lentes
+                      </span>
                     </div>
-                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                    <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
                       {cameras.map((c, idx) => {
                         const isSelected = c.id === selectedCamera;
                         const friendly = getFriendlyCameraLabel(c, idx, cameras.length);
@@ -1595,19 +1628,21 @@ export default function ScannerModal({
                               handleCameraChange(c.id);
                               setShowLensPicker(false);
                             }}
-                            className={`w-full text-left px-2.5 py-1.5 rounded-xl text-[11px] transition flex items-center justify-between ${
+                            className={`w-full text-left px-2.5 py-2 rounded-xl text-xs transition flex items-center justify-between gap-2 ${
                               isSelected 
-                                ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-500/25' 
-                                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold shadow-md shadow-blue-500/25 ring-1 ring-white/30' 
+                                : 'text-slate-300 hover:bg-slate-800 hover:text-white border border-transparent hover:border-slate-700'
                             }`}
                           >
-                            <div className="truncate flex-1 pr-1">
-                              <div>{friendly}</div>
-                              {isUltra && (
+                            <div className="truncate flex-1">
+                              <div className="font-bold truncate">{friendly}</div>
+                              {isUltra ? (
                                 <span className="text-[9px] text-amber-300/90 block font-normal">⚠️ Super-wide (pode embaçar no escuro)</span>
+                              ) : (
+                                <span className="text-[9px] text-slate-400 block font-normal">Sensor óptico de alta nitidez</span>
                               )}
                             </div>
-                            {isSelected && <CheckCircle className="w-3.5 h-3.5 text-white shrink-0" />}
+                            {isSelected && <CheckCircle className="w-4 h-4 text-white shrink-0" />}
                           </button>
                         );
                       })}
@@ -1618,7 +1653,48 @@ export default function ScannerModal({
             )}
           </div>
 
-          {/* Botões Flutuantes Rápidos à Direita (Modo 100% Nítido, Zoom 1x/1.5x/2x/2.5x, Focar e Lanterna) */}
+          {/* HUD Pro-Camera Inferior: Seletor Rápido e Físico de Lentes (Estilo Apple / Samsung) */}
+          {cameras.length > 1 && (
+            <div 
+              className="absolute bottom-2.5 left-1/2 -translate-x-1/2 z-20 flex items-center bg-slate-950/85 backdrop-blur-xl px-2.5 py-1 rounded-full border border-white/20 shadow-2xl gap-1 max-w-[94%]"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5">
+                {cameras.map((c, idx) => {
+                  const isSelected = c.id === selectedCamera;
+                  const shortName = getShortLensName(c, idx);
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => handleCameraChange(c.id)}
+                      className={`px-2.5 py-1 rounded-full text-[10px] font-black transition flex items-center gap-1 active:scale-95 whitespace-nowrap shrink-0 ${
+                        isSelected
+                          ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/40 ring-1 ring-white/40 scale-105'
+                          : 'bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white'
+                      }`}
+                      title={`Trocar fisicamente para ${getFriendlyCameraLabel(c, idx, cameras.length)}`}
+                    >
+                      <span>{shortName}</span>
+                      {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Botão de Ciclo Rápido */}
+              <button
+                type="button"
+                onClick={handleCycleCamera}
+                className="p-1 rounded-full bg-white/10 hover:bg-white/20 text-blue-400 hover:text-white transition active:scale-90 shrink-0 ml-0.5"
+                title="Ciclar para a próxima lente física"
+              >
+                <SwitchCamera className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* Botões Flutuantes Rápidos à Direita (Modo 100% Nítido, Zoom Digital, Focar e Lanterna) */}
           <div className="absolute top-2.5 right-2.5 z-20 flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
             {/* Alternador 100% Nítido (Sem corte) vs Preencher Tela */}
             <button
@@ -1639,7 +1715,7 @@ export default function ScannerModal({
               {fitMode === 'contain' ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
             </button>
 
-            {/* Seletor Rápido de Zoom (1.5x é o ideal para Bombas de Infusão) */}
+            {/* Seletor Rápido de Zoom Digital */}
             <div className="flex items-center bg-slate-900/90 p-0.5 rounded-full border border-slate-700/80 shadow-lg">
               {[1, 1.5, 2, 2.5].map((z) => (
                 <button

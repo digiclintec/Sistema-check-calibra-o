@@ -65,15 +65,20 @@ export default function Navbar({
   }, [showMoreMenu]);
 
   return (
-    <header className="sticky top-0 z-40 bg-white/95 dark:bg-[#0c1322]/95 backdrop-blur-xl border-b border-slate-200/80 dark:border-slate-800/80 w-full transition-colors select-none">
-      <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
+    <header className="sticky top-0 z-40 bg-white/95 dark:bg-[#0c1322]/95 backdrop-blur-xl border-b border-slate-200/80 dark:border-slate-800/80 w-full transition-colors select-none shadow-xs">
+      
+      {/* ============================================================
+          LINHA PRINCIPAL DO HEADER (Row 1): Logo, Hospital & Ações
+      ============================================================ */}
+      <div className="max-w-7xl mx-auto px-2.5 sm:px-4 lg:px-6">
         <div className="flex items-center justify-between h-14 sm:h-16 gap-2 sm:gap-4">
           
-          {/* ============================================================
-              ZONA 1 (ESQUERDA): Logo + Seletor Firme de Hospital
-          ============================================================ */}
+          {/* ------------------------------------------------------------
+              ZONA 1 (ESQUERDA): Logo + Seletor de Hospital Protegido
+          ------------------------------------------------------------ */}
           <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0 shrink">
-            {/* Brand Logo */}
+            
+            {/* Brand Logo & Nome */}
             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-blue-500 flex items-center justify-center text-white shadow-md shadow-blue-500/20 shrink-0">
                 <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.5]" />
@@ -95,13 +100,13 @@ export default function Navbar({
             </div>
 
             {/* Separador vertical sutil */}
-            <div className="h-5 w-px bg-slate-200 dark:bg-slate-800 hidden md:block shrink-0"></div>
+            <div className="h-5 w-px bg-slate-200 dark:bg-slate-800 hidden sm:block shrink-0"></div>
 
-            {/* Hospital Selector Pill (Com largura fluida, truncagem inteligente e sem sobreposição) */}
-            <div className="flex items-center bg-slate-100/90 dark:bg-slate-800/80 hover:bg-slate-200/70 dark:hover:bg-slate-700/60 pl-2 pr-1 py-1 rounded-xl border border-slate-200/90 dark:border-slate-700/80 transition shadow-sm min-w-0 max-w-[125px] xs:max-w-[160px] sm:max-w-[210px] lg:max-w-[240px] shrink">
+            {/* Hospital Selector Pill (Com overflow protegido e largura calibrada) */}
+            <div className="flex items-center bg-slate-100/90 dark:bg-slate-800/80 hover:bg-slate-200/70 dark:hover:bg-slate-700/60 pl-2 pr-1 py-1 rounded-xl border border-slate-200/90 dark:border-slate-700/80 transition shadow-xs max-w-[130px] xs:max-w-[170px] sm:max-w-[210px] md:max-w-[240px] shrink min-w-0 overflow-hidden">
               <Building2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
               
-              <div className="flex-1 min-w-0 mx-1">
+              <div className="flex-1 min-w-0 mx-1 overflow-hidden">
                 <select
                   value={activeHospitalId || ''}
                   onChange={(e) => {
@@ -114,7 +119,7 @@ export default function Navbar({
                       onSwitchHospital(val);
                     }
                   }}
-                  className="bg-transparent text-[11px] sm:text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer truncate w-full"
+                  className="bg-transparent text-[11px] sm:text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer truncate w-full block"
                   title={`Hospital ativo: ${activeHospital?.name || 'Selecione'}`}
                 >
                   {hospitals.map(h => (
@@ -132,10 +137,10 @@ export default function Navbar({
                 </select>
               </div>
 
-              {/* Botão rápido + Hospital */}
+              {/* Botão rápido + Hospital (visível a partir de sm) */}
               <button
                 onClick={() => onOpenHospitalModal && onOpenHospitalModal('create')}
-                className="p-1 hover:bg-white dark:hover:bg-slate-700 rounded-lg text-emerald-600 dark:text-emerald-400 transition shrink-0"
+                className="hidden sm:flex p-1 hover:bg-white dark:hover:bg-slate-700 rounded-lg text-emerald-600 dark:text-emerald-400 transition shrink-0"
                 title="Cadastrar Novo Hospital ou Clínica"
               >
                 <PlusCircle className="w-3.5 h-3.5" />
@@ -143,14 +148,14 @@ export default function Navbar({
             </div>
           </div>
 
-          {/* ============================================================
-              ZONA 2 (CENTRO): Abas de Navegação (Desktop Grande lg+)
-          ============================================================ */}
+          {/* ------------------------------------------------------------
+              ZONA 2 (CENTRO): Abas de Navegação (Visível em Telas sm+ >= 640px)
+          ------------------------------------------------------------ */}
           {onChangeMainTab && (
-            <nav className="hidden lg:flex items-center gap-1 bg-slate-100/90 dark:bg-slate-800/70 p-1 rounded-2xl border border-slate-200/90 dark:border-slate-700/70 shadow-inner shrink-0">
+            <nav className="hidden sm:flex items-center gap-1 bg-slate-100/90 dark:bg-slate-800/70 p-1 rounded-2xl border border-slate-200/90 dark:border-slate-700/70 shadow-inner shrink-0">
               <button
                 onClick={() => onChangeMainTab('conferencia')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                className={`px-2.5 lg:px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
                   activeMainTab === 'conferencia'
                     ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25 ring-1 ring-blue-500'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-slate-700/40'
@@ -158,12 +163,13 @@ export default function Navbar({
                 title="Conferência de Equipamentos e Bipagem"
               >
                 <FileCheck className="w-3.5 h-3.5" />
-                <span>Conferência</span>
+                <span className="hidden md:inline">Conferência</span>
+                <span className="md:hidden">Conf.</span>
               </button>
 
               <button
                 onClick={() => onChangeMainTab('auditoria')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                className={`px-2.5 lg:px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
                   activeMainTab === 'auditoria'
                     ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/25 ring-1 ring-emerald-500'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-slate-700/40'
@@ -171,12 +177,13 @@ export default function Navbar({
                 title="Espelho Seguro da planilha e Espelho de Ponto da Equipe"
               >
                 <ShieldCheck className="w-3.5 h-3.5" />
-                <span>Espelho Seguro</span>
+                <span className="hidden md:inline">Espelho Seguro</span>
+                <span className="md:hidden">Espelho</span>
               </button>
 
               <button
                 onClick={() => onChangeMainTab('planejamento')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                className={`px-2.5 lg:px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
                   activeMainTab === 'planejamento'
                     ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/25 ring-1 ring-indigo-500'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-slate-700/40'
@@ -184,7 +191,8 @@ export default function Navbar({
                 title="Planejamento de Cronogramas e Metas Mensais"
               >
                 <Calendar className="w-3.5 h-3.5" />
-                <span>Planejamento</span>
+                <span className="hidden md:inline">Planejamento</span>
+                <span className="md:hidden">Planos</span>
                 {monthlyPlans.length > 0 && (
                   <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
                     activeMainTab === 'planejamento' ? 'bg-white/25 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
@@ -196,76 +204,25 @@ export default function Navbar({
             </nav>
           )}
 
-          {/* ============================================================
-              ZONA 3 (DIREITA): Ações Rápidas, Navegação Compacta e Menu
-          ============================================================ */}
+          {/* ------------------------------------------------------------
+              ZONA 3 (DIREITA): Ações, Menu Unificado e Perfil
+          ------------------------------------------------------------ */}
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             
-            {/* Seletor Compacto de Abas para Telas Menores (< lg: 1024px) */}
-            {onChangeMainTab && (
-              <div className="flex lg:hidden items-center bg-slate-100/90 dark:bg-slate-800/80 p-0.5 rounded-xl border border-slate-200/80 dark:border-slate-700/80 shrink-0">
-                <button
-                  onClick={() => onChangeMainTab('conferencia')}
-                  className={`p-1.5 sm:px-2.5 sm:py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
-                    activeMainTab === 'conferencia'
-                      ? 'bg-blue-600 text-white shadow-xs'
-                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-                  }`}
-                  title="Conferência de Equipamentos"
-                >
-                  <FileCheck className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Conf.</span>
-                </button>
-
-                <button
-                  onClick={() => onChangeMainTab('auditoria')}
-                  className={`p-1.5 sm:px-2.5 sm:py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
-                    activeMainTab === 'auditoria'
-                      ? 'bg-emerald-600 text-white shadow-xs'
-                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-                  }`}
-                  title="Espelho Seguro da Planilha"
-                >
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Espelho</span>
-                </button>
-
-                <button
-                  onClick={() => onChangeMainTab('planejamento')}
-                  className={`p-1.5 sm:px-2.5 sm:py-1 rounded-lg text-xs font-bold transition relative flex items-center gap-1 ${
-                    activeMainTab === 'planejamento'
-                      ? 'bg-indigo-600 text-white shadow-xs'
-                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-                  }`}
-                  title="Planejamento Mensal"
-                >
-                  <Calendar className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Planos</span>
-                  {monthlyPlans.length > 0 && (
-                    <span className={`text-[9px] px-1 py-0.2 rounded-full font-black ${
-                      activeMainTab === 'planejamento' ? 'bg-white/30 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
-                    }`}>
-                      {monthlyPlans.length}
-                    </span>
-                  )}
-                </button>
-              </div>
-            )}
-
-            {/* Equipe & Trabalhos (visível a partir de sm: 640px) */}
+            {/* Equipe & Trabalhos (visível em tablet/desktop md+) */}
             <button
               onClick={onOpenTeamModal}
-              className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/25 transition shadow-sm shrink-0"
-              title="Gerenciar usuários da equipe e auditar todos os trabalhos e pontos realizados"
+              className="hidden md:flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/25 transition shadow-xs shrink-0"
+              title="Gerenciar equipe e auditar trabalhos realizados"
             >
               <Users className="w-3.5 h-3.5 text-blue-500 shrink-0" />
               <span className="hidden xl:inline">Equipe</span>
             </button>
 
-            {/* Alternador de Sons (visível a partir de sm: 640px) */}
+            {/* Alternador de Sons Rápido */}
             <button
               onClick={() => setSoundEnabled(!soundEnabled)}
-              className="hidden sm:flex p-1.5 sm:p-2 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition shrink-0"
+              className="p-1.5 sm:p-2 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition shrink-0"
               title={soundEnabled ? "Desativar sons de bipagem" : "Ativar sons de bipagem"}
             >
               {soundEnabled ? (
@@ -285,7 +242,7 @@ export default function Navbar({
               <span>Ler Código</span>
             </button>
 
-            {/* Menu "Mais Opções" (Dropdown Unificado e Organizado) */}
+            {/* Menu "Mais Opções" (Dropdown Unificado) */}
             <div className="relative shrink-0" ref={moreMenuRef}>
               <button
                 onClick={() => setShowMoreMenu(!showMoreMenu)}
@@ -412,7 +369,7 @@ export default function Navbar({
 
                   <div className="h-px bg-slate-100 dark:bg-slate-800 my-1.5"></div>
 
-                  {/* Seção 3: Ações e Ferramentas */}
+                  {/* Seção 3: Ferramentas */}
                   <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2.5 py-1">
                     Ferramentas
                   </div>
@@ -441,7 +398,7 @@ export default function Navbar({
                     </button>
                   )}
 
-                  {/* Toggle de Som direto no menu */}
+                  {/* Toggle de Som no menu */}
                   <button
                     onClick={() => setSoundEnabled(!soundEnabled)}
                     className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
@@ -520,6 +477,60 @@ export default function Navbar({
 
         </div>
       </div>
+
+      {/* ============================================================
+          LINHA SECUNDÁRIA DO HEADER (Row 2): Abas Nativas no Mobile (< sm)
+          Garante navegação com 100% de largura, sem cortes ou sobreposições
+      ============================================================ */}
+      {onChangeMainTab && (
+        <div className="sm:hidden w-full bg-slate-50/95 dark:bg-slate-900/95 border-t border-slate-200/80 dark:border-slate-800/80 px-2 py-1.5">
+          <nav className="grid grid-cols-3 gap-1 bg-white/80 dark:bg-slate-800/90 p-0.5 rounded-xl border border-slate-200/80 dark:border-slate-700/80 shadow-xs">
+            <button
+              onClick={() => onChangeMainTab('conferencia')}
+              className={`py-1.5 px-1 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 truncate ${
+                activeMainTab === 'conferencia'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <FileCheck className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">Conferência</span>
+            </button>
+
+            <button
+              onClick={() => onChangeMainTab('auditoria')}
+              className={`py-1.5 px-1 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 truncate ${
+                activeMainTab === 'auditoria'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">Espelho</span>
+            </button>
+
+            <button
+              onClick={() => onChangeMainTab('planejamento')}
+              className={`py-1.5 px-1 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 relative truncate ${
+                activeMainTab === 'planejamento'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">Planos</span>
+              {monthlyPlans.length > 0 && (
+                <span className={`text-[9px] px-1 py-0.2 rounded-full font-black shrink-0 ${
+                  activeMainTab === 'planejamento' ? 'bg-white/30 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                }`}>
+                  {monthlyPlans.length}
+                </span>
+              )}
+            </button>
+          </nav>
+        </div>
+      )}
+
     </header>
   );
 }
