@@ -844,7 +844,7 @@ app.post('/api/fetch-google-sheet', async (req, res) => {
 
 // Check or Uncheck an equipment inside active hospital with multi-modality support
 app.post('/api/toggle-check', (req, res) => {
-  const { id, modality = 'calibracao', userEmail, userName, hospitalId } = req.body || {};
+  const { id, modality = 'calibracao', userEmail, userName, hospitalId, setorRetirada } = req.body || {};
   if (!id) {
     return res.status(400).json({ success: false, message: 'ID do equipamento não informado.' });
   }
@@ -887,6 +887,13 @@ app.post('/api/toggle-check', (req, res) => {
     item.usuario_calibracao = nextChecked ? inspectorLabel : null;
   }
 
+  // Se foi informado setor de retirada (coleta) da bomba
+  if (setorRetirada) {
+    item.setor_retirada = String(setorRetirada).trim();
+    item.data_retirada = nowIso;
+    item.usuario_retirada = inspectorLabel;
+  }
+
   // Compatibilidade legada
   item.checado = Boolean(item.check_calibracao || item.check_preventiva || item.check_seguranca);
   item.dataCheck = item.data_calibracao || item.data_preventiva || item.data_seguranca || null;
@@ -921,10 +928,16 @@ app.post('/api/toggle-check', (req, res) => {
   });
 });
 
-// Batch Check multiple equipments at once with modality support
+// Batch Check multiple equipments at once with modality & sector of retrieval support
 app.post('/api/batch-check', (req, res) => {
-  const { ids, modality = 'calibracao', hospitalId, userEmail, userName } = req.body || {};
-  if (!Array.isArray(ids) || ids.length === 0) {
+  const { ids, items, modality = 'calibracao', hospitalId, userEmail, userName, defaultSetorRetirada } = req.body || {};
+  
+  // Suporta tanto lista de IDs simples quanto lista de objetos { id, setorRetirada }
+  const targetIds = Array.isArray(items) && items.length > 0 
+    ? items.map(it => it.id || it.equipment?.id).filter(Boolean)
+    : (Array.isArray(ids) ? ids : []);
+
+  if (targetIds.length === 0) {
     return res.status(400).json({ success: false, message: 'Nenhum equipamento informado para checagem em lote.' });
   }
 
@@ -936,12 +949,23 @@ app.post('/api/batch-check', (req, res) => {
     return res.status(404).json({ success: false, message: 'Hospital não encontrado.' });
   }
 
+  // Mapa de setor de retirada individual para cada equipamento bipado no lote
+  const itemSectorMap = new Map();
+  if (Array.isArray(items)) {
+    items.forEach(it => {
+      const itId = it.id || it.equipment?.id;
+      if (itId && it.setorRetirada) {
+        itemSectorMap.set(String(itId).toLowerCase(), String(it.setorRetirada).trim());
+      }
+    });
+  }
+
   const inspectorLabel = userName ? `${userName} (${userEmail || ''})` : (userEmail || 'Usuário');
   const nowIso = new Date().toISOString();
   const list = db.hospitals[hospIdx].equipments || [];
   let checkedCount = 0;
 
-  const idSet = new Set(ids.map(x => String(x).toLowerCase()));
+  const idSet = new Set(targetIds.map(x => String(x).toLowerCase()));
 
   for (let i = 0; i < list.length; i++) {
     const item = list[i];
@@ -963,6 +987,19 @@ app.post('/api/batch-check', (req, res) => {
         item.check_calibracao = true;
         item.data_calibracao = nowIso;
         item.usuario_calibracao = inspectorLabel;
+      }
+
+      // Atribui o setor de retirada (coleta) específico deste item ou o padrão do lote
+      const assignedSector = itemSectorMap.get(itemId) || 
+                             itemSectorMap.get(itemBarcode) || 
+                             itemSectorMap.get(itemTag) || 
+                             itemSectorMap.get(itemSerie) || 
+                             defaultSetorRetirada;
+
+      if (assignedSector) {
+        item.setor_retirada = assignedSector;
+        item.data_retirada = nowIso;
+        item.usuario_retirada = inspectorLabel;
       }
 
       item.checado = Boolean(item.check_calibracao || item.check_preventiva || item.check_seguranca);
@@ -996,6 +1033,63 @@ app.post('/api/batch-check', (req, res) => {
     equipments: list,
     lastUpdated: db.lastUpdated,
     lastUpdatedBy: inspectorLabel
+  });
+});
+
+// Atualizar setor cadastrado ou setor de retirada de um equipamento
+app.post('/api/equipment/update-sector', (req, res) => {
+  const { id, setor, setorRetirada, hospitalId, userEmail, userName } = req.body || {};
+  if (!id) {
+    return res.status(400).json({ success: false, message: 'ID do equipamento não informado.' });
+  }
+
+  const db = readDb();
+  const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
+  const hospIdx = (db.hospitals || []).findIndex(h => h.id === targetId);
+
+  if (hospIdx === -1) {
+    return res.status(404).json({ success: false, message: 'Hospital não encontrado.' });
+  }
+
+  const list = db.hospitals[hospIdx].equipments || [];
+  const idx = list.findIndex(e => e.id === id || e.codigoBarras === id || e.tag === id || e.serie === id);
+
+  if (idx === -1) {
+    return res.status(404).json({ success: false, message: 'Equipamento não encontrado.' });
+  }
+
+  const inspectorLabel = userName ? `${userName} (${userEmail || ''})` : (userEmail || 'Usuário');
+  const nowIso = new Date().toISOString();
+
+  if (setor !== undefined) {
+    list[idx].setor = String(setor).trim();
+  }
+  if (setorRetirada !== undefined) {
+    list[idx].setor_retirada = String(setorRetirada).trim();
+    list[idx].data_retirada = nowIso;
+    list[idx].usuario_retirada = inspectorLabel;
+  }
+
+  db.hospitals[hospIdx].equipments = list;
+  db.hospitals[hospIdx].lastUpdated = Date.now();
+  db.hospitals[hospIdx].lastUpdatedBy = inspectorLabel;
+
+  if (Array.isArray(db.hospitals[hospIdx].plans)) {
+    const pIdx = db.hospitals[hospIdx].plans.findIndex(p => p.id === db.hospitals[hospIdx].activePlanId);
+    if (pIdx !== -1) {
+      db.hospitals[hospIdx].plans[pIdx].equipments = list;
+      db.hospitals[hospIdx].plans[pIdx].lastUpdated = Date.now();
+    }
+  }
+
+  db.lastUpdated = Date.now();
+  saveDb(db);
+
+  res.json({
+    success: true,
+    message: 'Setor atualizado com sucesso.',
+    item: list[idx],
+    lastUpdated: db.lastUpdated
   });
 });
 

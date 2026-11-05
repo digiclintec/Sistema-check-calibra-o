@@ -26,7 +26,7 @@ import GoogleSheetsModal from './components/GoogleSheetsModal';
 import MasterPanelModal from './components/MasterPanelModal';
 import InstallPromptModal from './components/InstallPromptModal';
 import MobileBottomBar from './components/MobileBottomBar';
-import PlansModal from './components/PlansModal';
+import TeamManagementModal from './components/TeamManagementModal';
 import MonthlyPlanningTab from './components/MonthlyPlanningTab';
 import SerialScanModal from './components/SerialScanModal';
 import MassActionPasswordModal from './components/MassActionPasswordModal';
@@ -99,7 +99,7 @@ export default function App() {
   const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
   const [isMasterPanelOpen, setIsMasterPanelOpen] = useState(false);
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
-  const [isPlansModalOpen, setIsPlansModalOpen] = useState(false);
+  const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [lastScannedId, setLastScannedId] = useState(null);
   const [toast, setToast] = useState(null);
@@ -563,14 +563,37 @@ export default function App() {
     );
   };
 
-  // Conferência em Lote (Staging / Batch Check) para a modalidade ativa
-  const handleBatchCheck = async (ids, targetModality = activeModality) => {
-    if (!ids || ids.length === 0) return;
+  // Conferência em Lote (Staging / Batch Check) para a modalidade ativa com suporte a setor de retirada
+  const handleBatchCheck = async (itemsOrIds, targetModality = activeModality) => {
+    if (!itemsOrIds || itemsOrIds.length === 0) return;
 
     const mod = targetModality === 'geral' ? 'calibracao' : targetModality;
-    const idSet = new Set(ids.map(x => String(x).toLowerCase()));
     const nowIso = new Date().toISOString();
     const inspector = currentUser?.name ? `${currentUser.name} (${currentUser.email})` : (currentUser?.email || 'Operador');
+
+    // Normaliza tanto lista de IDs simples quanto lista de objetos { id, setorRetirada }
+    const idSet = new Set();
+    const sectorMap = new Map();
+    const payloadItems = [];
+
+    itemsOrIds.forEach(it => {
+      if (typeof it === 'string') {
+        const k = it.toLowerCase();
+        idSet.add(k);
+        payloadItems.push({ id: it });
+      } else if (it && (it.id || it.equipment?.id)) {
+        const realId = it.id || it.equipment?.id;
+        const k = String(realId).toLowerCase();
+        idSet.add(k);
+        if (it.setorRetirada) {
+          sectorMap.set(k, String(it.setorRetirada).trim());
+        }
+        payloadItems.push({
+          id: realId,
+          setorRetirada: it.setorRetirada
+        });
+      }
+    });
 
     let checkedCount = 0;
     const updated = equipments.map(item => {
@@ -596,6 +619,17 @@ export default function App() {
           copy.usuario_calibracao = inspector;
         }
 
+        // Setor de retirada / coleta registrado para esta bomba
+        const assignedSector = sectorMap.get(id) || 
+                               sectorMap.get(code) || 
+                               sectorMap.get(tag) || 
+                               sectorMap.get(serie);
+        if (assignedSector) {
+          copy.setor_retirada = assignedSector;
+          copy.data_retirada = nowIso;
+          copy.usuario_retirada = inspector;
+        }
+
         copy.checado = true;
         copy.dataCheck = nowIso;
         copy.conferidoPor = inspector;
@@ -606,13 +640,14 @@ export default function App() {
 
     setEquipments(updated);
 
-    // Envia ao servidor via endpoint em lote
+    // Envia ao servidor via endpoint em lote com payload detalhado
     try {
       fetch('/api/batch-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ids,
+          items: payloadItems,
+          ids: Array.from(idSet),
           modality: mod,
           hospitalId: activeHospitalId,
           userEmail: currentUser?.email,
@@ -969,7 +1004,7 @@ export default function App() {
         hospitals={hospitals}
         activeHospitalId={activeHospitalId}
         onSwitchHospital={handleSwitchHospital}
-        onOpenPlansModal={() => setIsPlansModalOpen(true)}
+        onOpenTeamModal={() => setIsTeamModalOpen(true)}
         activeMainTab={activeMainTab}
         onChangeMainTab={setActiveMainTab}
         monthlyPlans={monthlyPlans}
@@ -1140,13 +1175,14 @@ export default function App() {
         onRefreshHospitals={loadHospitals}
       />
 
-      {/* SaaS Subscription Plans Modal */}
-      <PlansModal
-        isOpen={isPlansModalOpen}
-        onClose={() => setIsPlansModalOpen(false)}
-        activeHospital={activeHospital}
-        onUpdateHospitalPlan={handleUpdateHospitalPlan}
-        isMaster={isMaster}
+      {/* Team Management & Work Audit Modal */}
+      <TeamManagementModal
+        isOpen={isTeamModalOpen}
+        onClose={() => setIsTeamModalOpen(false)}
+        currentUser={currentUser}
+        equipments={equipments}
+        hospitalName={activeHospital?.name || 'Hospital'}
+        activeHospitalId={activeHospitalId}
       />
 
       {/* PWA Android / iOS Install Modal */}

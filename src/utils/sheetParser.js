@@ -97,6 +97,7 @@ export function identifyColumns(headers) {
     modelo: null,
     serie: null,
     setor: null,
+    setorRetirada: null,
     validadeCalibracao: null,
     statusCalibracao: null,
     checadoGeral: null,
@@ -272,6 +273,14 @@ export function identifyColumns(headers) {
     )) {
       mapping.setor = h;
     }
+    // Setor de Retirada / Coleta (Bomba retirada de outro setor)
+    else if (!mapping.setorRetirada && (
+      norm.includes('retirad') ||
+      norm.includes('colet') ||
+      norm.includes('origem')
+    )) {
+      mapping.setorRetirada = h;
+    }
     // Validade / Vencimento da Calibração
     else if (!mapping.validadeCalibracao && (
       norm.includes('validade') ||
@@ -370,6 +379,7 @@ export function normalizeRows(rows, mapping) {
     const rawModelo = mapping.modelo ? String(row[mapping.modelo] ?? '').trim() : '';
     const rawSerie = mapping.serie ? String(row[mapping.serie] ?? '').trim() : '';
     const rawSetor = mapping.setor ? String(row[mapping.setor] ?? '').trim() : 'Geral';
+    const rawSetorRetirada = mapping.setorRetirada && row[mapping.setorRetirada] ? String(row[mapping.setorRetirada]).trim() : (row.setor_retirada || null);
     const rawValidade = mapping.validadeCalibracao ? String(row[mapping.validadeCalibracao] ?? '').trim() : '';
     const rawStatus = mapping.statusCalibracao ? String(row[mapping.statusCalibracao] ?? '').trim() : '';
     
@@ -467,6 +477,9 @@ export function normalizeRows(rows, mapping) {
       modelo: rawModelo,
       serie: rawSerie,
       setor: rawSetor,
+      setor_retirada: rawSetorRetirada,
+      data_retirada: row.data_retirada || (rawSetorRetirada ? new Date().toISOString() : null),
+      usuario_retirada: row.usuario_retirada || null,
       validadeCalibracao: rawValidade || 'N/A',
       statusCalibracao: calculatedStatus || 'Válido',
       checado: isGlobalChecked,
@@ -725,7 +738,10 @@ export function exportToExcel(equipments, fileName = 'conferencia_multiequipes.x
       'Fabricante': item.fabricante || '',
       'Modelo': item.modelo || '',
       'Nº de Série': item.serie || '',
-      'Setor': item.setor || '',
+      'Setor Cadastrado': item.setor || '',
+      'Setor de Retirada (Coleta)': item.setor_retirada || item.setor || '',
+      'Data da Retirada': item.data_retirada ? new Date(item.data_retirada).toLocaleString('pt-BR') : '',
+      'Técnico Coleta': item.usuario_retirada || '',
       'Validade Calibração': item.validadeCalibracao || '',
       'Status Calibração': item.statusCalibracao || '',
       
@@ -760,7 +776,10 @@ export function exportToExcel(equipments, fileName = 'conferencia_multiequipes.x
     { wch: 16 }, // Fabricante
     { wch: 16 }, // Modelo
     { wch: 18 }, // Série
-    { wch: 20 }, // Setor
+    { wch: 20 }, // Setor Cadastrado
+    { wch: 24 }, // Setor Retirada
+    { wch: 20 }, // Data Retirada
+    { wch: 22 }, // Técnico Coleta
     { wch: 16 }, // Validade
     { wch: 16 }, // Status
     { wch: 20 }, // Calibração Status

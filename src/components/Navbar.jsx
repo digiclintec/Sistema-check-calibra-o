@@ -34,7 +34,7 @@ export default function Navbar({
   hospitals = [],
   activeHospitalId,
   onSwitchHospital,
-  onOpenPlansModal,
+  onOpenTeamModal,
   activeMainTab = 'conferencia',
   onChangeMainTab,
   monthlyPlans = [],
@@ -174,17 +174,14 @@ export default function Navbar({
               </button>
             )}
 
-            {/* Plans Modal Button */}
+            {/* Team Management & Work Audit Button (Substitui painel de preços) */}
             <button
-              onClick={onOpenPlansModal}
-              className={`flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-2 rounded-xl text-[11px] sm:text-xs font-bold border transition shadow-sm ${
-                planBadgeClasses[activeHospital?.plano || 'pro']
-              }`}
-              title="Ver ou trocar o plano de assinatura deste hospital"
+              onClick={onOpenTeamModal}
+              className="flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-2 rounded-xl text-[11px] sm:text-xs font-bold bg-blue-600/10 hover:bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 transition shadow-sm"
+              title="Gerenciar usuários da equipe e auditar todos os trabalhos realizados"
             >
-              <Crown className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
-              <span className="hidden sm:inline">Plano:</span>
-              <span>{planName}</span>
+              <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-500 shrink-0" />
+              <span className="hidden sm:inline">Equipe & Trabalhos</span>
             </button>
 
             {/* Sound Toggle */}

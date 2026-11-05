@@ -22,7 +22,8 @@ import {
   ShieldCheck,
   Crosshair,
   Target,
-  ScanLine
+  ScanLine,
+  MapPin
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { playSuccessSound, playWarningSound, playErrorSound } from '../utils/audio';
@@ -81,6 +82,19 @@ export default function ScannerModal({
   
   // Feedback do último item bipado
   const [lastScannedFeedback, setLastScannedFeedback] = useState(null);
+
+  // Setor de retirada padrão do lote (Ex: 'UTIN', 'Centro Cirúrgico', etc.)
+  const [batchSector, setBatchSector] = useState('');
+
+  // Setores disponíveis sugeridos a partir da planilha
+  const availableSectors = useMemo(() => {
+    const set = new Set();
+    equipments.forEach(e => {
+      if (e.setor && e.setor !== 'Geral') set.add(e.setor);
+      if (e.setor_retirada && e.setor_retirada !== 'Geral') set.add(e.setor_retirada);
+    });
+    return Array.from(set).sort();
+  }, [equipments]);
 
   const html5QrCodeRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -528,11 +542,12 @@ export default function ScannerModal({
         return prev;
       }
 
-      // Adiciona ao topo da fila de bipagem
+      // Adiciona ao topo da fila de bipagem com setor de retirada configurado
       const newItem = {
         equipment: targetEq,
         match: bestMatch,
         scannedCode: cleanCode,
+        setorRetirada: batchSector || targetEq.setor_retirada || targetEq.setor || '',
         timestamp: new Date().toLocaleTimeString('pt-BR')
       };
 
@@ -549,6 +564,22 @@ export default function ScannerModal({
     });
   };
 
+  // Atualizar setor de retirada de uma bomba específica dentro da fila
+  const handleUpdateItemSector = (id, newSector) => {
+    setStagedItems(prev => prev.map(item => {
+      if (item.equipment.id === id) {
+        return { ...item, setorRetirada: newSector };
+      }
+      return item;
+    }));
+  };
+
+  // Aplicar setor de retirada a todas as bombas já bipadas na fila atual
+  const handleApplySectorToAllStaged = (sectorToApply) => {
+    if (!sectorToApply) return;
+    setStagedItems(prev => prev.map(item => ({ ...item, setorRetirada: sectorToApply })));
+  };
+
   // Remover item individual da fila
   const handleRemoveStagedItem = (idToRemove) => {
     setStagedItems(prev => prev.filter(item => item.equipment.id !== idToRemove));
@@ -560,14 +591,19 @@ export default function ScannerModal({
     setLastScannedFeedback(null);
   };
 
-  // Confirmar check em todos os itens da fila
+  // Confirmar check em todos os itens da fila com seus setores de retirada
   const handleConfirmBatchCheck = async () => {
     if (stagedItems.length === 0) return;
 
-    const ids = stagedItems.map(item => item.equipment.id);
+    // Envia lista detalhada com id e setor de retirada individual de cada bomba
+    const itemsPayload = stagedItems.map(item => ({
+      id: item.equipment.id,
+      equipment: item.equipment,
+      setorRetirada: item.setorRetirada || batchSector || item.equipment.setor || 'Geral'
+    }));
     
     if (onBatchCheck) {
-      await onBatchCheck(ids, activeModality);
+      await onBatchCheck(itemsPayload, activeModality);
     }
 
     confetti({
@@ -1087,12 +1123,47 @@ export default function ScannerModal({
             )}
           </div>
 
+          {/* Barra de Seleção / Alteração do Setor de Retirada do Lote */}
+          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-2.5 mb-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 shrink-0 text-slate-300 font-bold text-xs">
+              <MapPin className="w-3.5 h-3.5 text-teal-400 shrink-0" />
+              <span>Setor de Retirada do Lote:</span>
+            </div>
+
+            <div className="flex items-center gap-1.5 flex-1 min-w-[200px]">
+              <input
+                type="text"
+                list="scanner-sector-suggestions"
+                value={batchSector}
+                onChange={(e) => setBatchSector(e.target.value)}
+                placeholder="Ex: UTIN, Centro Cirúrgico, UTI..."
+                className="bg-slate-950 border border-slate-700 focus:border-teal-400 rounded-xl px-2.5 py-1 text-xs text-white placeholder-slate-500 flex-1 focus:outline-none"
+              />
+              <datalist id="scanner-sector-suggestions">
+                {availableSectors.map(s => (
+                  <option key={s} value={s} />
+                ))}
+              </datalist>
+
+              {stagedItems.length > 0 && batchSector && (
+                <button
+                  type="button"
+                  onClick={() => handleApplySectorToAllStaged(batchSector)}
+                  className="px-2.5 py-1 bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/40 rounded-xl text-[11px] font-bold shrink-0 transition"
+                  title="Aplicar este setor a todas as bombas que já foram bipadas na fila"
+                >
+                  Aplicar a todas
+                </button>
+              )}
+            </div>
+          </div>
+
           {stagedItems.length === 0 ? (
             <div className="h-full min-h-[120px] flex flex-col items-center justify-center text-center p-6 text-slate-500">
               <Layers className="w-8 h-8 mb-2 opacity-40 text-blue-400" />
               <p className="text-xs font-semibold text-slate-400">Nenhum equipamento na fila ainda</p>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                Aponte a câmera para as bombas. Se a imagem estiver embaçada, toque na tela ou aperte <strong>Focar</strong>.
+                Defina o setor acima (ex: <strong>UTIN</strong>) e aponte a câmera para as bombas. Se alguma for de outro setor, você pode alterar diretamente no card dela!
               </p>
             </div>
           ) : (
@@ -1106,60 +1177,80 @@ export default function ScannerModal({
                 return (
                   <div
                     key={`${eq.id}-${idx}`}
-                    className="p-3 bg-slate-800/70 hover:bg-slate-800 border border-slate-700/60 rounded-2xl flex items-center justify-between gap-3 transition"
+                    className="p-3 bg-slate-800/70 hover:bg-slate-800 border border-slate-700/60 rounded-2xl flex flex-col gap-2 transition"
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-7 h-7 rounded-xl bg-blue-600/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0 border border-blue-500/30">
-                        {stagedItems.length - idx}
-                      </div>
-
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-bold text-white text-xs sm:text-sm truncate">
-                            {eq.equipamento || 'Bomba de Infusão'}
-                          </span>
-                          
-                          {/* Tag ou Identificação */}
-                          {eq.tag && (
-                            <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-300 border border-blue-500/30 font-bold">
-                              {eq.tag}
-                            </span>
-                          )}
-
-                          {/* Badge de Similaridade / Coincidência de Dígitos */}
-                          {match && (
-                            <span className={`text-[10px] font-semibold px-2 py-0.2 rounded-full ${
-                              match.isExact 
-                                ? 'bg-emerald-500/20 text-emerald-300' 
-                                : 'bg-amber-500/20 text-amber-300'
-                            }`}>
-                              {match.isExact ? '100% Exato' : `${match.matchingDigits} dígitos iguais (${match.confidence}%)`}
-                            </span>
-                          )}
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-7 h-7 rounded-xl bg-blue-600/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0 border border-blue-500/30">
+                          {stagedItems.length - idx}
                         </div>
 
-                        <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5">
-                          {eq.serie && (
-                            <span>Série: <span className="font-mono text-slate-300">{eq.serie}</span></span>
-                          )}
-                          {eq.setor && (
-                            <span>• Setor: <span className="text-slate-300">{eq.setor}</span></span>
-                          )}
-                          {isAlreadyChecked && (
-                            <span className="text-amber-400 font-bold">• Já possui {currentMod.shortName} conferida</span>
-                          )}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-bold text-white text-xs sm:text-sm truncate">
+                              {eq.equipamento || 'Bomba de Infusão'}
+                            </span>
+                            
+                            {/* Tag ou Identificação */}
+                            {eq.tag && (
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-300 border border-blue-500/30 font-bold">
+                                {eq.tag}
+                              </span>
+                            )}
+
+                            {/* Badge de Similaridade / Coincidência de Dígitos */}
+                            {match && (
+                              <span className={`text-[10px] font-semibold px-2 py-0.2 rounded-full ${
+                                match.isExact 
+                                  ? 'bg-emerald-500/20 text-emerald-300' 
+                                  : 'bg-amber-500/20 text-amber-300'
+                              }`}>
+                                {match.isExact ? '100% Exato' : `${match.matchingDigits} dígitos iguais (${match.confidence}%)`}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5 flex-wrap">
+                            {eq.serie && (
+                              <span>Série: <span className="font-mono text-slate-300">{eq.serie}</span></span>
+                            )}
+                            {eq.setor && (
+                              <span>• Setor Cadastrado: <span className="text-slate-300">{eq.setor}</span></span>
+                            )}
+                            {isAlreadyChecked && (
+                              <span className="text-amber-400 font-bold">• Já possui {currentMod.shortName} conferida</span>
+                            )}
+                          </div>
                         </div>
                       </div>
+
+                      {/* Botão de Remover da Fila */}
+                      <button
+                        onClick={() => handleRemoveStagedItem(eq.id)}
+                        className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition shrink-0"
+                        title="Remover desta lista"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
 
-                    {/* Botão de Remover da Fila */}
-                    <button
-                      onClick={() => handleRemoveStagedItem(eq.id)}
-                      className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition shrink-0"
-                      title="Remover desta lista"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {/* Setor de Retirada Individual desta Bomba dentro do Lote */}
+                    <div className="pt-2 border-t border-slate-700/50 flex items-center justify-between gap-2 text-xs flex-wrap">
+                      <div className="flex items-center gap-1 text-[11px] text-teal-300 font-semibold shrink-0">
+                        <MapPin className="w-3 h-3 text-teal-400 shrink-0" />
+                        <span>Retirado de:</span>
+                      </div>
+                      <div className="flex-1 min-w-[170px] max-w-[260px]">
+                        <input
+                          type="text"
+                          list="scanner-sector-suggestions"
+                          value={item.setorRetirada || ''}
+                          onChange={(e) => handleUpdateItemSector(eq.id, e.target.value)}
+                          placeholder={eq.setor || "Informar setor..."}
+                          className="w-full bg-slate-950/90 border border-teal-500/40 focus:border-teal-400 rounded-lg px-2 py-0.5 text-xs text-teal-200 font-bold focus:outline-none placeholder-slate-500"
+                        />
+                      </div>
+                    </div>
                   </div>
                 );
               })}

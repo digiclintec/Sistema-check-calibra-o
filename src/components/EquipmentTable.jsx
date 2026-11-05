@@ -341,6 +341,11 @@ export default function EquipmentTable({
                   <div>
                     <span className="text-[10px] text-slate-400 block">Setor:</span>
                     <span className="font-medium text-slate-700 dark:text-slate-200">{item.setor || 'Geral'}</span>
+                    {item.setor_retirada && (
+                      <span className="block text-[10px] text-teal-600 dark:text-teal-400 font-bold mt-0.5">
+                        📍 Retirado em: {item.setor_retirada}
+                      </span>
+                    )}
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-400 block">Validade:</span>
@@ -561,9 +566,16 @@ export default function EquipmentTable({
                     </td>
 
                     <td className="py-3 px-4 hidden lg:table-cell text-slate-600 dark:text-slate-300">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs">
-                        {item.setor || 'Geral'}
-                      </span>
+                      <div className="flex flex-col gap-0.5 items-start">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs">
+                          {item.setor || 'Geral'}
+                        </span>
+                        {item.setor_retirada && (
+                          <span className="inline-flex items-center gap-1 text-[10px] text-teal-600 dark:text-teal-400 font-bold" title={`Retirado em: ${item.setor_retirada}`}>
+                            📍 Retirado: {item.setor_retirada}
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     <td className="py-3 px-4 text-slate-600 dark:text-slate-300 font-mono">
