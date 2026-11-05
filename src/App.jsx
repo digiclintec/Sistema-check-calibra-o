@@ -864,11 +864,19 @@ export default function App() {
     }
   };
 
-  // Conferência em Lote (Staging / Batch Check) para a modalidade ativa com suporte a setor de retirada
+  // Conferência em Lote (Staging / Batch Check) com suporte a múltiplas modalidades e setor de retirada
   const handleBatchCheck = async (itemsOrIds, targetModality = activeModality) => {
     if (!itemsOrIds || itemsOrIds.length === 0) return;
 
-    const mod = targetModality === 'geral' ? 'calibracao' : targetModality;
+    // Normaliza modalidades selecionadas (suporta array, string composta 'calibracao+preventiva', 'all', ou string individual)
+    const targetMods = Array.isArray(targetModality)
+      ? targetModality
+      : targetModality === 'all' || targetModality === 'todos'
+        ? ['calibracao', 'preventiva', 'seguranca']
+        : targetModality === 'calibracao+preventiva'
+          ? ['calibracao', 'preventiva']
+          : [targetModality === 'geral' ? 'calibracao' : (targetModality || 'calibracao')];
+
     const nowIso = new Date().toISOString();
     const inspector = currentUser?.name ? `${currentUser.name} (${currentUser.email})` : (currentUser?.email || 'Operador');
 
@@ -906,18 +914,21 @@ export default function App() {
       if (idSet.has(id) || idSet.has(code) || idSet.has(tag) || idSet.has(serie)) {
         checkedCount++;
         const copy = { ...item };
-        if (mod === 'preventiva') {
-          copy.check_preventiva = true;
-          copy.data_preventiva = nowIso;
-          copy.usuario_preventiva = inspector;
-        } else if (mod === 'seguranca') {
-          copy.check_seguranca = true;
-          copy.data_seguranca = nowIso;
-          copy.usuario_seguranca = inspector;
-        } else {
+        
+        if (targetMods.includes('calibracao')) {
           copy.check_calibracao = true;
           copy.data_calibracao = nowIso;
           copy.usuario_calibracao = inspector;
+        }
+        if (targetMods.includes('preventiva')) {
+          copy.check_preventiva = true;
+          copy.data_preventiva = nowIso;
+          copy.usuario_preventiva = inspector;
+        }
+        if (targetMods.includes('seguranca')) {
+          copy.check_seguranca = true;
+          copy.data_seguranca = nowIso;
+          copy.usuario_seguranca = inspector;
         }
 
         // Setor de retirada / coleta registrado para esta bomba
@@ -941,7 +952,7 @@ export default function App() {
 
     setEquipments(updated);
 
-    // Envia ao servidor via endpoint em lote com payload detalhado
+    // Envia ao servidor via endpoint em lote com payload detalhado e modalidades
     try {
       fetch('/api/batch-check', {
         method: 'POST',
@@ -949,7 +960,8 @@ export default function App() {
         body: JSON.stringify({
           items: payloadItems,
           ids: Array.from(idSet),
-          modality: mod,
+          modality: targetMods[0],
+          modalities: targetMods,
           hospitalId: activeHospitalId,
           userEmail: currentUser?.email,
           userName: currentUser?.name
@@ -961,15 +973,15 @@ export default function App() {
       }).catch(() => {});
     } catch (e) {}
 
-    const modName = MODALITIES[mod]?.name || mod;
+    const modLabels = targetMods.map(m => MODALITIES[m]?.shortName || m).join(' + ');
     await pushServerUpdate(
       updated, 
       activeSheetName, 
-      `Check em lote [${modName}]: ${checkedCount} equipamentos conferidos com sucesso`
+      `Check em lote [${modLabels}]: ${checkedCount} equipamentos conferidos com sucesso`
     );
 
     if (soundEnabled) playSuccessSound();
-    showToast('success', `🎉 ${checkedCount} equipamentos conferidos para [${modName}]!`);
+    showToast('success', `🎉 ${checkedCount} equipamentos conferidos para [${modLabels}]!`);
   };
 
   // Ações em Massa com Senha (Marcar / Desmarcar em Lote) com suporte inteligente multi-modalidade e técnico
@@ -1040,7 +1052,7 @@ export default function App() {
   };
 
   // Main barcode lookup & check logic com busca inteligente e suporte à modalidade ativa
-  const handleScanCode = async (code) => {
+  const handleScanCode = async (code, customMods = null) => {
     if (!code || !equipments || equipments.length === 0) {
       if (soundEnabled) playErrorSound();
       showToast('error', 'Nenhuma planilha carregada ainda para este hospital.');
@@ -1049,7 +1061,11 @@ export default function App() {
 
     // Modalidades que o bip vai validar
     let targetMods = [];
-    if (serviceConfig?.executionMode === 'all_at_once') {
+    if (customMods && Array.isArray(customMods) && customMods.length > 0) {
+      targetMods = customMods;
+    } else if (typeof customMods === 'string' && customMods) {
+      targetMods = [customMods];
+    } else if (serviceConfig?.executionMode === 'all_at_once') {
       if (serviceConfig.enableCalibracao) targetMods.push('calibracao');
       if (serviceConfig.enablePreventiva) targetMods.push('preventiva');
       if (serviceConfig.enableSeguranca) targetMods.push('seguranca');
@@ -1560,7 +1576,7 @@ export default function App() {
 
       </main>
 
-      {/* Scanner Modal com Conferência em Lote e Fuzzy Matching */}
+      {/* Scanner Modal com Conferência em Lote, Ajuste Exato de Tipos e Painel Redimensionável */}
       <ScannerModal
         isOpen={isScannerOpen}
         onClose={() => setIsScannerOpen(false)}
@@ -1569,6 +1585,7 @@ export default function App() {
         equipments={equipments}
         soundEnabled={soundEnabled}
         activeModality={activeModality}
+        onChangeModality={setActiveModality}
         serviceConfig={serviceConfig}
       />
 

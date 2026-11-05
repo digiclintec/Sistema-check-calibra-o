@@ -1419,8 +1419,22 @@ app.post('/api/toggle-check', (req, res) => {
 
 // Batch Check multiple equipments at once with modality & sector of retrieval support
 app.post('/api/batch-check', (req, res) => {
-  const { ids, items, modality = 'calibracao', hospitalId, userEmail, userName, defaultSetorRetirada } = req.body || {};
+  const { ids, items, modality = 'calibracao', modalities, hospitalId, userEmail, userName, defaultSetorRetirada } = req.body || {};
   
+  // Normaliza lista de modalidades a serem checadas
+  let targetModalities = [];
+  if (Array.isArray(modalities) && modalities.length > 0) {
+    targetModalities = modalities;
+  } else if (typeof modalities === 'string' && modalities.trim()) {
+    targetModalities = modalities.split(',').map(m => m.trim());
+  } else if (modality === 'all' || modality === 'todos' || modality === 'geral') {
+    targetModalities = ['calibracao', 'preventiva', 'seguranca'];
+  } else if (modality === 'calibracao+preventiva') {
+    targetModalities = ['calibracao', 'preventiva'];
+  } else {
+    targetModalities = [modality || 'calibracao'];
+  }
+
   // Suporta tanto lista de IDs simples quanto lista de objetos { id, setorRetirada }
   const targetIds = Array.isArray(items) && items.length > 0 
     ? items.map(it => it.id || it.equipment?.id).filter(Boolean)
@@ -1464,15 +1478,17 @@ app.post('/api/batch-check', (req, res) => {
     const itemSerie = String(item.serie || '').toLowerCase();
 
     if (idSet.has(itemId) || idSet.has(itemBarcode) || idSet.has(itemTag) || idSet.has(itemSerie)) {
-      if (modality === 'preventiva') {
+      if (targetModalities.includes('preventiva')) {
         item.check_preventiva = true;
         item.data_preventiva = nowIso;
         item.usuario_preventiva = inspectorLabel;
-      } else if (modality === 'seguranca') {
+      }
+      if (targetModalities.includes('seguranca')) {
         item.check_seguranca = true;
         item.data_seguranca = nowIso;
         item.usuario_seguranca = inspectorLabel;
-      } else {
+      }
+      if (targetModalities.includes('calibracao')) {
         item.check_calibracao = true;
         item.data_calibracao = nowIso;
         item.usuario_calibracao = inspectorLabel;

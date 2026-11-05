@@ -23,7 +23,9 @@ import {
   Crosshair,
   Target,
   ScanLine,
-  MapPin
+  MapPin,
+  GripHorizontal,
+  SlidersHorizontal
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { playSuccessSound, playWarningSound, playErrorSound } from '../utils/audio';
@@ -55,6 +57,7 @@ export default function ScannerModal({
   equipments = [], 
   soundEnabled = true,
   activeModality = 'calibracao',
+  onChangeModality,
   serviceConfig = null
 }) {
   const [cameras, setCameras] = useState([]);
@@ -65,10 +68,114 @@ export default function ScannerModal({
   const [torchOn, setTorchOn] = useState(false);
   const [hasTorch, setHasTorch] = useState(false);
   const [hasZoom, setHasZoom] = useState(false);
-  const [zoomLevel, setZoomLevel] = useState(1.5); // Inicia em 1.5x para evitar borrão de macro
+  const [zoomLevel, setZoomLevel] = useState(1);
   const [viewMode, setViewMode] = useState('split'); // 'split' | 'full_camera'
   const [reticleType, setReticleType] = useState('1d'); // '1d' (Linha Laser) | '2d' (Caixa QR)
   
+  // Modalidades ativas selecionadas para bipar (ex: ['calibracao'], ['preventiva'], ou ['calibracao', 'preventiva'])
+  const [selectedModalities, setSelectedModalities] = useState(() => {
+    if (activeModality && activeModality !== 'geral') {
+      return [activeModality];
+    }
+    return ['calibracao'];
+  });
+
+  // Sincroniza se a modalidade mudar pelo componente pai
+  useEffect(() => {
+    if (activeModality && activeModality !== 'geral') {
+      setSelectedModalities([activeModality]);
+    }
+  }, [activeModality]);
+
+  // Altura customizável e arrastável: Câmera vs Lista de Bombas
+  // cameraHeightPercent: Porcentagem da altura central dedicada à Câmera (default 36%)
+  // O restante (64%) fica para a lista de conferência, garantindo que nunca fique comprimida!
+  const [cameraHeightPercent, setCameraHeightPercent] = useState(36);
+  const [isDraggingDivider, setIsDraggingDivider] = useState(false);
+  const containerRef = useRef(null);
+  const dragStartYRef = useRef(0);
+  const dragStartPercentRef = useRef(36);
+
+  // Manipulador de arraste via mouse no divisor
+  const handleDividerMouseDown = (e) => {
+    e.preventDefault();
+    setIsDraggingDivider(true);
+    dragStartYRef.current = e.clientY;
+    dragStartPercentRef.current = cameraHeightPercent;
+
+    const onMouseMove = (moveEvent) => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const deltaY = moveEvent.clientY - dragStartYRef.current;
+      const deltaPercent = (deltaY / rect.height) * 100;
+      let newPercent = dragStartPercentRef.current + deltaPercent;
+      newPercent = Math.max(18, Math.min(75, newPercent));
+      setCameraHeightPercent(newPercent);
+    };
+
+    const onMouseUp = () => {
+      setIsDraggingDivider(false);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  };
+
+  // Manipulador de arraste via toque (touchscreen / celular) no divisor
+  const handleDividerTouchStart = (e) => {
+    if (e.touches.length !== 1) return;
+    setIsDraggingDivider(true);
+    dragStartYRef.current = e.touches[0].clientY;
+    dragStartPercentRef.current = cameraHeightPercent;
+
+    const onTouchMove = (moveEvent) => {
+      if (!containerRef.current || moveEvent.touches.length !== 1) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const deltaY = moveEvent.touches[0].clientY - dragStartYRef.current;
+      const deltaPercent = (deltaY / rect.height) * 100;
+      let newPercent = dragStartPercentRef.current + deltaPercent;
+      newPercent = Math.max(18, Math.min(75, newPercent));
+      setCameraHeightPercent(newPercent);
+    };
+
+    const onTouchEnd = () => {
+      setIsDraggingDivider(false);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+      window.removeEventListener('touchcancel', onTouchEnd);
+    };
+
+    window.addEventListener('touchmove', onTouchMove, { passive: true });
+    window.addEventListener('touchend', onTouchEnd);
+    window.addEventListener('touchcancel', onTouchEnd);
+  };
+
+  // Funções de alternar / definir exatamente os tipos a bipar
+  const handleToggleModality = (modKey) => {
+    setSelectedModalities(prev => {
+      let next;
+      if (prev.includes(modKey)) {
+        if (prev.length === 1) return prev; // Mantém ao menos uma modalidade ativa
+        next = prev.filter(m => m !== modKey);
+      } else {
+        next = [...prev, modKey];
+      }
+      if (next.length === 1 && onChangeModality) {
+        onChangeModality(next[0]);
+      }
+      return next;
+    });
+  };
+
+  const handleSetExactModalities = (mods) => {
+    setSelectedModalities(mods);
+    if (mods.length === 1 && onChangeModality) {
+      onChangeModality(mods[0]);
+    }
+  };
+
   // Feedback visual do toque para focar (Tap to Focus)
   const [focusRing, setFocusRing] = useState({ x: 0, y: 0, visible: false, status: 'idle' });
   const [focusFeedbackText, setFocusFeedbackText] = useState('');
@@ -584,13 +691,13 @@ export default function ScannerModal({
     const bestMatch = matches[0];
     const targetEq = bestMatch.equipment;
 
-    // SEGURANÇA INTELIGENTE: Bloqueia bipar equipamento já conferido para a modalidade ativa!
-    const isAlreadyChecked = isEquipmentChecked(targetEq, activeModality, serviceConfig);
-    const meta = getCheckMeta(targetEq, activeModality);
-    const modConfig = MODALITIES[activeModality] || MODALITIES.calibracao;
-    const modName = modConfig.shortName || 'Calibração';
+    // SEGURANÇA INTELIGENTE: Bloqueia se TODAS as modalidades selecionadas já estiverem concluídas!
+    const effectiveMods = selectedModalities.length > 0 ? selectedModalities : ['calibracao'];
+    const uncompletedMods = effectiveMods.filter(m => !isEquipmentChecked(targetEq, m, serviceConfig));
+    const isAlreadyCheckedAll = uncompletedMods.length === 0;
+    const modLabels = effectiveMods.map(m => MODALITIES[m]?.shortName || m).join(' + ');
 
-    if (isAlreadyChecked) {
+    if (isAlreadyCheckedAll) {
       if (soundEnabled) {
         playWarningSound();
       }
@@ -598,6 +705,7 @@ export default function ScannerModal({
         navigator.vibrate([100, 50, 100]);
       }
 
+      const meta = getCheckMeta(targetEq, effectiveMods[0]);
       const whoChecked = meta.user ? `por ${meta.user}` : '';
       const whenChecked = meta.date ? ` em ${new Date(meta.date).toLocaleDateString('pt-BR')}` : '';
 
@@ -607,8 +715,8 @@ export default function ScannerModal({
         match: bestMatch,
         equipment: targetEq,
         meta,
-        modality: activeModality,
-        message: `⚠️ ATENÇÃO: Esta bomba já possui [${modName}] realizada anteriormente ${whoChecked}${whenChecked}! Bip bloqueado para evitar duplicação.`,
+        modalities: effectiveMods,
+        message: `⚠️ ATENÇÃO: Esta bomba já possui [${modLabels}] concluída anteriormente ${whoChecked}${whenChecked}! Bip bloqueado para evitar duplicação.`,
         timestamp: new Date().toLocaleTimeString('pt-BR')
       });
       return;
@@ -624,16 +732,25 @@ export default function ScannerModal({
       ? `Série ${gs1Info.serialNumber} isolado do GS1`
       : `${bestMatch.reason}`;
 
-    let detailMsg = `${baseIdentification} • ${targetEq.equipamento} (IDEC: ${targetEq.tag || 'N/A'} | Série: ${targetEq.serie || 'N/A'})`;
-    if (activeModality === 'preventiva' && targetEq.check_calibracao) {
-      detailMsg = `🎯 Calibração já OK • Adicionada para Preventiva: ${targetEq.equipamento} (${targetEq.tag || targetEq.serie})`;
-    } else if (activeModality === 'seguranca' && targetEq.check_calibracao) {
-      detailMsg = `🎯 Calibração já OK • Adicionada para Seg. Elétrica: ${targetEq.equipamento} (${targetEq.tag || targetEq.serie})`;
+    const alreadyCompleted = effectiveMods.filter(m => isEquipmentChecked(targetEq, m, serviceConfig));
+    let detailMsg;
+    if (alreadyCompleted.length > 0) {
+      const doneLabels = alreadyCompleted.map(m => MODALITIES[m]?.shortName || m).join(', ');
+      const pendingLabels = uncompletedMods.map(m => MODALITIES[m]?.shortName || m).join(', ');
+      detailMsg = `✓ [${doneLabels}] já OK • Bipando para [${pendingLabels}]: ${targetEq.equipamento} (${targetEq.tag || targetEq.serie})`;
+    } else {
+      detailMsg = `${baseIdentification} • [${modLabels}]: ${targetEq.equipamento} (IDEC: ${targetEq.tag || 'N/A'} | Série: ${targetEq.serie || 'N/A'})`;
     }
 
     if (mode === 'instant') {
-      if (onScan) {
-        onScan(targetEq.id || cleanCode);
+      if (onBatchCheck) {
+        onBatchCheck([{
+          id: targetEq.id,
+          equipment: targetEq,
+          setorRetirada: batchSector || targetEq.setor_retirada || targetEq.setor || ''
+        }], effectiveMods);
+      } else if (onScan) {
+        onScan(targetEq.id || cleanCode, effectiveMods);
       }
       setLastScannedFeedback({
         status: 'found',
@@ -668,6 +785,7 @@ export default function ScannerModal({
         equipment: targetEq,
         match: bestMatch,
         scannedCode: cleanCode,
+        targetModalities: effectiveMods,
         setorRetirada: batchSector || targetEq.setor_retirada || targetEq.setor || '',
         timestamp: new Date().toLocaleTimeString('pt-BR')
       };
@@ -723,8 +841,10 @@ export default function ScannerModal({
       setorRetirada: item.setorRetirada || batchSector || item.equipment.setor || 'Geral'
     }));
     
+    const effectiveMods = selectedModalities.length > 0 ? selectedModalities : ['calibracao'];
+
     if (onBatchCheck) {
-      await onBatchCheck(itemsPayload, activeModality);
+      await onBatchCheck(itemsPayload, effectiveMods);
     }
 
     confetti({
@@ -878,26 +998,29 @@ export default function ScannerModal({
         className="hidden"
       />
 
-      <div className="bg-slate-900 border border-slate-800 w-full h-full sm:h-[94vh] sm:max-w-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col">
+      <div 
+        ref={containerRef}
+        className="bg-slate-900 border border-slate-800 w-full h-full sm:h-[94vh] sm:max-w-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col select-none"
+      >
         
         {/* Top Header */}
-        <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between bg-slate-900/95 shrink-0 safe-area-top">
+        <div className="px-3.5 py-2.5 sm:px-4 sm:py-3 border-b border-slate-800 flex items-center justify-between bg-slate-900/95 shrink-0 safe-area-top">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-blue-600/20 text-blue-400 flex items-center justify-center border border-blue-500/30">
-              <Camera className="w-5 h-5 text-blue-400 animate-pulse" />
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-blue-600/20 text-blue-400 flex items-center justify-center border border-blue-500/30 shrink-0">
+              <Camera className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400 animate-pulse" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-sm sm:text-base font-bold text-white leading-tight">
-                  Leitor com Toque para Focar
+                <h3 className="text-xs sm:text-base font-bold text-white leading-tight">
+                  Leitor de Alta Performance (1080p)
                 </h3>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                <span className="text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hidden xs:flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
-                  Tap-to-Focus
+                  Ao Vivo 30fps
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400">
-                Toque na tela para focar em etiquetas embaçadas
+              <p className="text-[10px] sm:text-[11px] text-slate-400">
+                Toque na tela para focar • Arraste o divisor para aumentar a lista
               </p>
             </div>
           </div>
@@ -905,16 +1028,24 @@ export default function ScannerModal({
           <div className="flex items-center gap-1.5">
             {/* View Mode Toggle */}
             <button
-              onClick={() => setViewMode(prev => prev === 'full_camera' ? 'split' : 'full_camera')}
-              className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition"
-              title={viewMode === 'full_camera' ? "Dividir tela com a lista" : "Expandir câmera completa"}
+              onClick={() => {
+                if (viewMode === 'full_camera') {
+                  setViewMode('split');
+                  setCameraHeightPercent(38);
+                } else {
+                  setViewMode('full_camera');
+                  setCameraHeightPercent(70);
+                }
+              }}
+              className="p-1.5 sm:p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition"
+              title={viewMode === 'full_camera' ? "Dividir tela com a lista" : "Expandir câmera"}
             >
               {viewMode === 'full_camera' ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
             </button>
 
             <button
               onClick={onClose}
-              className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition"
+              className="p-1.5 sm:p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition"
               title="Fechar leitor"
             >
               <X className="w-5 h-5" />
@@ -922,12 +1053,133 @@ export default function ScannerModal({
           </div>
         </div>
 
-        {/* Mode Selector Tab (Fila em Lote vs Check Imediato) */}
-        <div className="px-4 py-2 bg-slate-950/60 border-b border-slate-800 flex items-center justify-between text-xs shrink-0">
-          <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800">
+        {/* ============================================================
+            SELETOR EXATO DE TIPOS A BIPAR (Calibração, Preventiva, TSE ou Ambos)
+        ============================================================ */}
+        <div className="px-3 py-2 bg-slate-950 border-b border-slate-800/80 flex flex-col gap-1.5 shrink-0">
+          <div className="flex items-center justify-between text-xs flex-wrap gap-1">
+            <span className="text-[10px] sm:text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
+              <SlidersHorizontal className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+              <span>Bipar para:</span>
+            </span>
+
+            {/* Presets Rápidos */}
+            <div className="flex items-center gap-1 flex-wrap">
+              <button
+                type="button"
+                onClick={() => handleSetExactModalities(['calibracao'])}
+                className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition flex items-center gap-1 ${
+                  selectedModalities.length === 1 && selectedModalities.includes('calibracao')
+                    ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-400'
+                    : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+                title="Bipar exclusivamente Calibração Metrológica"
+              >
+                <span>🎯 Somente Calibração</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSetExactModalities(['preventiva'])}
+                className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition flex items-center gap-1 ${
+                  selectedModalities.length === 1 && selectedModalities.includes('preventiva')
+                    ? 'bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-400'
+                    : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+                title="Bipar exclusivamente Manutenção Preventiva"
+              >
+                <span>🔧 Somente Preventiva</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSetExactModalities(['calibracao', 'preventiva'])}
+                className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition flex items-center gap-1 ${
+                  selectedModalities.length === 2 && selectedModalities.includes('calibracao') && selectedModalities.includes('preventiva')
+                    ? 'bg-gradient-to-r from-blue-600 to-emerald-600 text-white shadow-sm ring-1 ring-teal-400'
+                    : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+                title="Bipar Calibração + Preventiva juntas no mesmo bip"
+              >
+                <span>🎯+🔧 Calibração + Prev</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSetExactModalities(['calibracao', 'preventiva', 'seguranca'])}
+                className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition flex items-center gap-1 ${
+                  selectedModalities.length === 3
+                    ? 'bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-400'
+                    : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+                title="Bipar todos os 3 serviços de uma vez só"
+              >
+                <span>📋 Todos (3)</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Chips / Toggles Individuais */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+            <button
+              type="button"
+              onClick={() => handleToggleModality('calibracao')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold transition border shrink-0 ${
+                selectedModalities.includes('calibracao')
+                  ? 'bg-blue-600/20 text-blue-300 border-blue-500/50 shadow-xs'
+                  : 'bg-slate-900/60 text-slate-500 border-slate-800 hover:text-slate-400'
+              }`}
+            >
+              <div className={`w-3.5 h-3.5 rounded flex items-center justify-center border text-[9px] font-black ${
+                selectedModalities.includes('calibracao') ? 'bg-blue-600 border-blue-400 text-white' : 'border-slate-700 bg-slate-950'
+              }`}>
+                {selectedModalities.includes('calibracao') ? '✓' : ''}
+              </div>
+              <span>🎯 Calibração</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleToggleModality('preventiva')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold transition border shrink-0 ${
+                selectedModalities.includes('preventiva')
+                  ? 'bg-emerald-600/20 text-emerald-300 border-emerald-500/50 shadow-xs'
+                  : 'bg-slate-900/60 text-slate-500 border-slate-800 hover:text-slate-400'
+              }`}
+            >
+              <div className={`w-3.5 h-3.5 rounded flex items-center justify-center border text-[9px] font-black ${
+                selectedModalities.includes('preventiva') ? 'bg-emerald-600 border-emerald-400 text-white' : 'border-slate-700 bg-slate-950'
+              }`}>
+                {selectedModalities.includes('preventiva') ? '✓' : ''}
+              </div>
+              <span>🔧 Preventiva</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleToggleModality('seguranca')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold transition border shrink-0 ${
+                selectedModalities.includes('seguranca')
+                  ? 'bg-amber-600/20 text-amber-300 border-amber-500/50 shadow-xs'
+                  : 'bg-slate-900/60 text-slate-500 border-slate-800 hover:text-slate-400'
+              }`}
+            >
+              <div className={`w-3.5 h-3.5 rounded flex items-center justify-center border text-[9px] font-black ${
+                selectedModalities.includes('seguranca') ? 'bg-amber-600 border-amber-400 text-white' : 'border-slate-700 bg-slate-950'
+              }`}>
+                {selectedModalities.includes('seguranca') ? '✓' : ''}
+              </div>
+              <span>⚡ Seg. Elétrica</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Mode Selector Tab (Fila em Lote vs Check Imediato) + Comparar */}
+        <div className="px-3 py-1.5 bg-slate-950/60 border-b border-slate-800 flex items-center justify-between text-xs shrink-0 flex-wrap gap-1.5">
+          <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded-xl border border-slate-800">
             <button
               onClick={() => setMode('batch')}
-              className={`px-3 py-1 rounded-lg font-bold flex items-center gap-1.5 transition ${
+              className={`px-2.5 py-1 rounded-lg font-bold flex items-center gap-1.5 transition text-[11px] ${
                 mode === 'batch' 
                   ? 'bg-blue-600 text-white shadow-sm' 
                   : 'text-slate-400 hover:text-slate-200'
@@ -938,7 +1190,7 @@ export default function ScannerModal({
             </button>
             <button
               onClick={() => setMode('instant')}
-              className={`px-3 py-1 rounded-lg font-bold flex items-center gap-1.5 transition ${
+              className={`px-2.5 py-1 rounded-lg font-bold flex items-center gap-1.5 transition text-[11px] ${
                 mode === 'instant' 
                   ? 'bg-indigo-600 text-white shadow-sm' 
                   : 'text-slate-400 hover:text-slate-200'
@@ -949,51 +1201,44 @@ export default function ScannerModal({
             </button>
           </div>
 
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="text-blue-400 hover:text-blue-300 text-xs flex items-center gap-1 font-semibold transition"
-          >
-            <ImageIcon className="w-3.5 h-3.5" />
-            <span>Tirar Foto</span>
-          </button>
-        </div>
+          <div className="flex items-center gap-1">
+            <div className="flex items-center gap-0.5 bg-slate-900 p-0.5 rounded-xl border border-slate-800 text-[10px]">
+              <button
+                onClick={() => setSearchTarget('all')}
+                className={`px-2 py-0.5 rounded font-bold transition ${
+                  searchTarget === 'all' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                }`}
+                title="Lê todo o código composto (IDEC ou Série)"
+              >
+                🔍 Auto
+              </button>
+              <button
+                onClick={() => setSearchTarget('idec')}
+                className={`px-2 py-0.5 rounded font-bold transition ${
+                  searchTarget === 'idec' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-white'
+                }`}
+                title="Compara somente IDEC / Tag"
+              >
+                🏷️ IDEC
+              </button>
+              <button
+                onClick={() => setSearchTarget('serie')}
+                className={`px-2 py-0.5 rounded font-bold transition ${
+                  searchTarget === 'serie' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-white'
+                }`}
+                title="Compara somente Nº de Série"
+              >
+                🔢 Série
+              </button>
+            </div>
 
-        {/* Seletor de Comparação no Código (Código Completo / Apenas IDEC / Apenas Série) */}
-        <div className="px-3 py-1.5 bg-slate-900/90 border-b border-slate-800/80 flex items-center justify-between gap-1.5 text-xs shrink-0 overflow-x-auto">
-          <span className="text-[10px] sm:text-xs text-slate-400 font-semibold shrink-0">Comparar:</span>
-          <div className="flex items-center gap-1 bg-slate-950/80 p-0.5 rounded-xl border border-slate-800 shrink-0">
             <button
-              onClick={() => setSearchTarget('all')}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 ${
-                searchTarget === 'all'
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-              title="Lê todo o código composto e localiza tanto o IDEC quanto a Série"
+              onClick={() => fileInputRef.current?.click()}
+              className="px-2 py-1 rounded-xl bg-slate-900 hover:bg-slate-800 text-blue-400 border border-slate-800 text-[11px] flex items-center gap-1 font-semibold transition shrink-0"
+              title="Ler código a partir de foto"
             >
-              <span>🔍 Código Completo</span>
-            </button>
-            <button
-              onClick={() => setSearchTarget('idec')}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 ${
-                searchTarget === 'idec'
-                  ? 'bg-amber-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-              title="Compara exclusivamente com o IDEC / Identificação do Equipamento (ex: CCHL-0075)"
-            >
-              <span>🏷️ Somente IDEC</span>
-            </button>
-            <button
-              onClick={() => setSearchTarget('serie')}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 ${
-                searchTarget === 'serie'
-                  ? 'bg-purple-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-              title="Compara exclusivamente com o Número de Série (ex: 2104010003)"
-            >
-              <span>🔢 Somente Série</span>
+              <ImageIcon className="w-3.5 h-3.5" />
+              <span>Foto</span>
             </button>
           </div>
         </div>
@@ -1002,11 +1247,11 @@ export default function ScannerModal({
         <div 
           ref={viewfinderRef}
           onClick={handleViewfinderClick}
-          className={`relative bg-black flex flex-col items-center justify-center transition-all duration-200 overflow-hidden cursor-crosshair select-none ${
-            viewMode === 'full_camera' 
-              ? 'flex-1 min-h-[60vh]' 
-              : 'h-[42vh] sm:h-[48vh]'
-          }`}
+          style={{
+            height: viewMode === 'full_camera' ? '70%' : `${cameraHeightPercent}%`,
+            minHeight: '120px'
+          }}
+          className="relative bg-black flex flex-col items-center justify-center transition-[height] duration-150 overflow-hidden cursor-crosshair select-none shrink-0"
           title="Toque em qualquer ponto da imagem para focar"
         >
           
@@ -1021,31 +1266,31 @@ export default function ScannerModal({
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-3">
               {reticleType === '1d' ? (
                 // Mira 1D: Ampla e horizontal ideal para bombas de infusão (Code 128 / GS1)
-                <div className="relative w-[96%] max-w-[480px] h-[120px] sm:h-[140px] border-2 border-dashed border-red-500/80 rounded-2xl shadow-[0_0_25px_rgba(239,68,68,0.35)] flex items-center justify-center">
+                <div className="relative w-[96%] max-w-[480px] h-[100px] sm:h-[130px] border-2 border-dashed border-red-500/80 rounded-2xl shadow-[0_0_25px_rgba(239,68,68,0.35)] flex items-center justify-center">
                   {/* Linha Laser Vermelha Horizontal Contínua e Brilhante */}
                   <div className="absolute left-0 right-0 h-1 bg-gradient-to-r from-red-600 via-rose-300 to-red-600 shadow-[0_0_14px_#ef4444] animate-pulse"></div>
                   
                   {/* Marcadores de Canto Vermelhos */}
-                  <div className="absolute -top-1 -left-1 w-6 h-6 border-t-4 border-l-4 border-red-500 rounded-tl-lg"></div>
-                  <div className="absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 border-red-500 rounded-tr-lg"></div>
-                  <div className="absolute -bottom-1 -left-1 w-6 h-6 border-b-4 border-l-4 border-red-500 rounded-bl-lg"></div>
-                  <div className="absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 border-red-500 rounded-br-lg"></div>
+                  <div className="absolute -top-1 -left-1 w-5 h-5 border-t-4 border-l-4 border-red-500 rounded-tl-lg"></div>
+                  <div className="absolute -top-1 -right-1 w-5 h-5 border-t-4 border-r-4 border-red-500 rounded-tr-lg"></div>
+                  <div className="absolute -bottom-1 -left-1 w-5 h-5 border-b-4 border-l-4 border-red-500 rounded-bl-lg"></div>
+                  <div className="absolute -bottom-1 -right-1 w-5 h-5 border-b-4 border-r-4 border-red-500 rounded-br-lg"></div>
 
                   {/* Dica da Linha Laser no rodapé da mira */}
-                  <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 whitespace-nowrap text-[11px] font-semibold text-white/95 bg-slate-900/95 px-3 py-0.5 rounded-full border border-red-500/40 shadow-md flex items-center gap-1.5">
-                    <ScanLine className="w-3.5 h-3.5 text-red-400" />
-                    <span>Alinhe o laser vermelho sobre todo o código de barras</span>
+                  <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-semibold text-white/95 bg-slate-900/95 px-2.5 py-0.5 rounded-full border border-red-500/40 shadow-md flex items-center gap-1.5">
+                    <ScanLine className="w-3 h-3 text-red-400" />
+                    <span>Laser vermelho sobre o código</span>
                   </div>
                 </div>
               ) : (
                 // Mira 2D: Caixa quadrada para QR Code / DataMatrix
-                <div className="relative w-full max-w-[280px] h-[260px] border-2 border-dashed border-blue-400/80 rounded-2xl shadow-[0_0_30px_rgba(59,130,246,0.35)]">
+                <div className="relative w-full max-w-[260px] h-[220px] border-2 border-dashed border-blue-400/80 rounded-2xl shadow-[0_0_30px_rgba(59,130,246,0.35)]">
                   <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-cyan-300 to-blue-500 shadow-[0_0_12px_#3b82f6] animate-[bounce_2s_infinite]"></div>
-                  <div className="absolute -top-1 -left-1 w-6 h-6 border-t-4 border-l-4 border-blue-500 rounded-tl-lg"></div>
-                  <div className="absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 border-blue-500 rounded-tr-lg"></div>
-                  <div className="absolute -bottom-1 -left-1 w-6 h-6 border-b-4 border-l-4 border-blue-500 rounded-bl-lg"></div>
-                  <div className="absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 border-blue-500 rounded-br-lg"></div>
-                  <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 whitespace-nowrap text-[11px] font-semibold text-white/95 bg-slate-900/90 px-3 py-0.5 rounded-full border border-slate-700/80 shadow-md flex items-center gap-1.5">
+                  <div className="absolute -top-1 -left-1 w-5 h-5 border-t-4 border-l-4 border-blue-500 rounded-tl-lg"></div>
+                  <div className="absolute -top-1 -right-1 w-5 h-5 border-t-4 border-r-4 border-blue-500 rounded-tr-lg"></div>
+                  <div className="absolute -bottom-1 -left-1 w-5 h-5 border-b-4 border-l-4 border-blue-500 rounded-bl-lg"></div>
+                  <div className="absolute -bottom-1 -right-1 w-5 h-5 border-b-4 border-r-4 border-blue-500 rounded-br-lg"></div>
+                  <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-semibold text-white/95 bg-slate-900/90 px-2.5 py-0.5 rounded-full border border-slate-700/80 shadow-md flex items-center gap-1.5">
                     <Crosshair className="w-3 h-3 text-amber-400 animate-spin" />
                     <span>Enquadre o código QR</span>
                   </div>
@@ -1060,7 +1305,7 @@ export default function ScannerModal({
               className={`absolute pointer-events-none -translate-x-1/2 -translate-y-1/2 transition-transform duration-200 z-30 ${
                 focusRing.status === 'focused' ? 'scale-95 text-emerald-400' : 'scale-110 text-amber-400 animate-pulse'
               }`}
-              style={{ left: focusRing.x, top: focusRing.y, width: 72, height: 72 }}
+              style={{ left: focusRing.x, top: focusRing.y, width: 64, height: 64 }}
             >
               <div className="w-full h-full border-2 border-dashed border-current rounded-2xl relative shadow-[0_0_15px_currentColor]">
                 <div className="absolute -top-1 -left-1 w-3 h-3 border-t-2 border-l-2 border-current"></div>
@@ -1074,8 +1319,8 @@ export default function ScannerModal({
 
           {/* Toast Pill de Confirmação de Foco */}
           {focusFeedbackText && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 pointer-events-none animate-in fade-in slide-in-from-top-2 duration-150">
-              <div className="bg-slate-950/90 text-white border border-slate-700/80 px-3.5 py-1.5 rounded-full text-xs font-bold shadow-xl flex items-center gap-2">
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 pointer-events-none animate-in fade-in slide-in-from-top-2 duration-150">
+              <div className="bg-slate-950/90 text-white border border-slate-700/80 px-3 py-1 rounded-full text-[11px] font-bold shadow-xl flex items-center gap-1.5">
                 <Target className="w-3.5 h-3.5 text-amber-400" />
                 <span>{focusFeedbackText}</span>
               </div>
@@ -1083,31 +1328,30 @@ export default function ScannerModal({
           )}
 
           {/* Barra Superior de Controles na Câmera: Alternador 1D/2D à Esquerda */}
-          <div className="absolute top-3 left-3 z-20" onClick={e => e.stopPropagation()}>
+          <div className="absolute top-2.5 left-2.5 z-20" onClick={e => e.stopPropagation()}>
             <button
               onClick={() => setReticleType(r => r === '1d' ? '2d' : '1d')}
-              className={`px-2.5 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 border shadow-lg transition active:scale-95 ${
+              className={`px-2 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 border shadow-lg transition active:scale-95 ${
                 reticleType === '1d'
                   ? 'bg-red-500/20 text-red-300 border-red-500/40'
                   : 'bg-blue-500/20 text-blue-300 border-blue-500/40'
               }`}
               title="Alternar entre mira para Código de Barras e mira para QR Code"
             >
-              <ScanLine className="w-3.5 h-3.5" />
-              <span>{reticleType === '1d' ? '1D Barras (Laser)' : '2D QR Code'}</span>
+              <ScanLine className="w-3 h-3" />
+              <span>{reticleType === '1d' ? '1D Laser' : '2D QR'}</span>
             </button>
           </div>
 
           {/* Botões Flutuantes Rápidos à Direita (Focar, Seletor de Zoom 1x/1.5x/2x e Lanterna) */}
-          <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
-            
-            {/* Seletor Rápido de Zoom (Evita borrão macro) */}
+          <div className="absolute top-2.5 right-2.5 z-20 flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+            {/* Seletor Rápido de Zoom */}
             <div className="flex items-center bg-slate-900/90 p-0.5 rounded-full border border-slate-700/80 shadow-lg">
               {[1, 1.5, 2].map((z) => (
                 <button
                   key={z}
                   onClick={() => applySpecificZoom(z)}
-                  className={`px-2 py-1 rounded-full text-[11px] font-bold transition ${
+                  className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold transition ${
                     zoomLevel === z
                       ? 'bg-blue-600 text-white shadow-sm'
                       : 'text-slate-400 hover:text-white'
@@ -1122,72 +1366,131 @@ export default function ScannerModal({
             {/* Botão Dedicado de Focar */}
             <button
               onClick={handleTriggerCenterFocus}
-              className="p-2 rounded-full bg-slate-900/85 hover:bg-slate-800 text-amber-300 font-bold text-xs flex items-center gap-1 border border-amber-500/40 shadow-lg transition active:scale-95"
+              className="p-1.5 rounded-full bg-slate-900/85 hover:bg-slate-800 text-amber-300 font-bold text-xs flex items-center gap-1 border border-amber-500/40 shadow-lg transition active:scale-95"
               title="Focar câmera agora"
             >
-              <Crosshair className="w-4 h-4 text-amber-400" />
+              <Crosshair className="w-3.5 h-3.5 text-amber-400" />
             </button>
 
             {/* Lanterna */}
             {hasTorch && (
               <button
                 onClick={toggleTorch}
-                className={`w-9 h-9 rounded-full flex items-center justify-center shadow-lg transition border ${
+                className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center shadow-lg transition border ${
                   torchOn 
                     ? 'bg-amber-400 text-slate-950 font-bold border-amber-300' 
                     : 'bg-slate-900/85 text-white hover:bg-slate-800 border-slate-700/80'
                 }`}
                 title="Ligar Lanterna"
               >
-                <Zap className="w-4 h-4" />
+                <Zap className="w-3.5 h-3.5" />
               </button>
             )}
-          </div>
-
-          {/* Dica de Foco no rodapé da câmera */}
-          <div className="absolute bottom-2 left-3 right-3 pointer-events-none text-center">
-            <span className="text-[10px] text-white/70 bg-black/60 px-2.5 py-1 rounded-full backdrop-blur-xs">
-              💡 Imagem embaçada? Toque na tela ou use o botão <strong>1.5x/2x</strong> afastando o celular a 20cm
-            </span>
           </div>
 
           {/* Indicador de Inicialização Suave da Câmera */}
           {isCameraStarting && !scanning && !cameraError && (
             <div className="absolute inset-0 z-15 flex flex-col items-center justify-center p-6 text-center bg-slate-950/90 space-y-3 animate-in fade-in duration-150">
-              <div className="w-10 h-10 border-3 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
-              <p className="text-white font-bold text-sm">Iniciando câmera traseira...</p>
-              <p className="text-slate-400 text-xs">Calibrando lente e foco automático</p>
+              <div className="w-8 h-8 border-3 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+              <p className="text-white font-bold text-xs">Iniciando câmera Full HD 1080p...</p>
+              <p className="text-slate-400 text-[10px]">Autofoco e sensor principal ativo</p>
             </div>
           )}
 
           {/* Mensagem de Erro de Câmera */}
           {cameraError && (
-            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-6 text-center bg-slate-900/95 space-y-3">
-              <AlertTriangle className="w-12 h-12 text-amber-500 mb-1" />
-              <p className="text-white font-semibold text-sm">Câmera não iniciada</p>
-              <p className="text-slate-400 text-xs max-w-sm">{cameraError}</p>
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-4 text-center bg-slate-900/95 space-y-2">
+              <AlertTriangle className="w-8 h-8 text-amber-500" />
+              <p className="text-white font-semibold text-xs">Câmera não iniciada</p>
+              <p className="text-slate-400 text-[11px] max-w-sm">{cameraError}</p>
               
               <div className="pt-2 flex flex-col sm:flex-row gap-2 w-full max-w-xs">
                 <button
                   onClick={() => startScanner(selectedCamera)}
-                  className="py-2.5 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5"
+                  className="py-2 px-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5"
                 >
-                  <RefreshCw className="w-4 h-4" /> Tentar Novamente
+                  <RefreshCw className="w-3.5 h-3.5" /> Tentar Novamente
                 </button>
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5"
+                  className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5"
                 >
-                  <ImageIcon className="w-4 h-4" /> Tirar Foto
+                  <ImageIcon className="w-3.5 h-3.5" /> Tirar Foto
                 </button>
               </div>
             </div>
           )}
         </div>
 
+        {/* ============================================================
+            DIVISOR ARRASTÁVEL E REDIMENSIONADOR (CÂMERA vs LISTA DE BOMBAS)
+        ============================================================ */}
+        <div
+          onMouseDown={handleDividerMouseDown}
+          onTouchStart={handleDividerTouchStart}
+          className={`w-full py-2 px-3 bg-slate-950 border-y border-slate-800 cursor-row-resize flex items-center justify-between select-none touch-none shrink-0 transition-colors ${
+            isDraggingDivider 
+              ? 'bg-blue-950/80 border-blue-500 ring-2 ring-blue-500/30' 
+              : 'hover:bg-slate-900'
+          }`}
+          title="Arraste para cima ou para baixo para aumentar/diminuir o tamanho da lista de bombas"
+        >
+          {/* Alça tátil de puxar */}
+          <div className="flex items-center gap-2">
+            <div className="flex flex-col items-center justify-center gap-0.5 cursor-row-resize">
+              <div className="w-10 h-1 bg-slate-500 hover:bg-slate-300 rounded-full transition" />
+              <div className="w-6 h-0.5 bg-slate-600 rounded-full" />
+            </div>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+              <GripHorizontal className="w-3.5 h-3.5 text-blue-400" />
+              <span>Arraste para redimensionar lista</span>
+            </span>
+          </div>
+
+          {/* Atalhos Rápidos de Tamanho (1 Toque) */}
+          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setCameraHeightPercent(22)}
+              className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
+                cameraHeightPercent <= 26 
+                  ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-400' 
+                  : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+              }`}
+              title="Expandir lista para quase tela cheia (75% da altura)"
+            >
+              📋 Lista 75%
+            </button>
+            <button
+              type="button"
+              onClick={() => setCameraHeightPercent(38)}
+              className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
+                cameraHeightPercent > 26 && cameraHeightPercent < 55 
+                  ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-400' 
+                  : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+              }`}
+              title="Dividir meio a meio (50% câmera / 50% lista)"
+            >
+              ⚖️ 50/50
+            </button>
+            <button
+              type="button"
+              onClick={() => setCameraHeightPercent(60)}
+              className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
+                cameraHeightPercent >= 55 
+                  ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-400' 
+                  : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+              }`}
+              title="Câmera grande (60% câmera / 40% lista)"
+            >
+              📷 Câmera 60%
+            </button>
+          </div>
+        </div>
+
         {/* Banner do Último Item Bipado com Indicador de Similaridade e Alerta de Já Conferido */}
         {lastScannedFeedback && (
-          <div className={`px-4 py-2.5 border-t shrink-0 text-xs transition-all ${
+          <div className={`px-3.5 py-2 border-b shrink-0 text-xs transition-all ${
             lastScannedFeedback.status === 'not_found'
               ? 'bg-red-500/15 border-red-500/30 text-red-200'
               : lastScannedFeedback.status === 'already_checked'
@@ -1242,6 +1545,7 @@ export default function ScannerModal({
                           equipment: eq,
                           match: lastScannedFeedback.match,
                           scannedCode: lastScannedFeedback.code,
+                          targetModalities: selectedModalities,
                           setorRetirada: batchSector || eq.setor_retirada || eq.setor || '',
                           isForced: true,
                           timestamp: new Date().toLocaleTimeString('pt-BR')
@@ -1269,15 +1573,21 @@ export default function ScannerModal({
           </div>
         )}
 
-        {/* Seção da Fila de Equipamentos Bipados (Staged List) */}
-        <div className="flex-1 overflow-y-auto bg-slate-950/40 p-3 sm:p-4 divide-y divide-slate-800/60">
+        {/* ============================================================
+            SEÇÃO DA FILA DE EQUIPAMENTOS BIPADOS (STAGED LIST)
+            Altura flexível e garantida com scroll suave
+        ============================================================ */}
+        <div className="flex-1 overflow-y-auto bg-slate-950/50 p-3 sm:p-4 min-h-[140px] flex flex-col">
           
-          <div className="flex items-center justify-between pb-2 mb-2">
+          <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-800/80 shrink-0">
             <div className="flex items-center gap-2">
               <ListChecks className="w-4 h-4 text-blue-400" />
               <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">
                 Fila de Conferência ({stagedItems.length} {stagedItems.length === 1 ? 'bomba' : 'bombas'})
               </h4>
+              <span className="text-[10px] font-semibold text-slate-400 bg-slate-800/80 px-2 py-0.5 rounded-full">
+                {selectedModalities.map(m => MODALITIES[m]?.shortName || m).join(' + ')}
+              </span>
             </div>
 
             {stagedItems.length > 0 && (
@@ -1293,7 +1603,7 @@ export default function ScannerModal({
           </div>
 
           {/* Barra de Seleção / Alteração do Setor de Retirada do Lote */}
-          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-2.5 mb-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
+          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-2.5 mb-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 shrink-0 shadow-sm">
             <div className="flex items-center gap-1.5 shrink-0 text-slate-300 font-bold text-xs">
               <MapPin className="w-3.5 h-3.5 text-teal-400 shrink-0" />
               <span>Setor de Retirada do Lote:</span>
@@ -1328,25 +1638,23 @@ export default function ScannerModal({
           </div>
 
           {stagedItems.length === 0 ? (
-            <div className="h-full min-h-[120px] flex flex-col items-center justify-center text-center p-6 text-slate-500">
+            <div className="flex-1 min-h-[140px] flex flex-col items-center justify-center text-center p-6 text-slate-500">
               <Layers className="w-8 h-8 mb-2 opacity-40 text-blue-400" />
               <p className="text-xs font-semibold text-slate-400">Nenhum equipamento na fila ainda</p>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Defina o setor acima (ex: <strong>UTIN</strong>) e aponte a câmera para as bombas. Se alguma for de outro setor, você pode alterar diretamente no card dela!
+              <p className="text-[11px] text-slate-500 mt-0.5 max-w-md">
+                Aponte a câmera para os códigos de barras das bombas. Cada bomba bipada aparecerá aqui nesta lista. Quando terminar o lote, basta clicar em <strong>Confirmar Check</strong> abaixo!
               </p>
             </div>
           ) : (
-            <div className="space-y-2 pt-1">
+            <div className="space-y-2.5 pt-1 pb-2">
               {stagedItems.map((item, idx) => {
                 const eq = item.equipment;
                 const match = item.match;
-                const isAlreadyChecked = isEquipmentChecked(eq, activeModality);
-                const currentMod = MODALITIES[activeModality] || MODALITIES.calibracao;
 
                 return (
                   <div
                     key={`${eq.id}-${idx}`}
-                    className="p-3 bg-slate-800/70 hover:bg-slate-800 border border-slate-700/60 rounded-2xl flex flex-col gap-2 transition"
+                    className="p-3 bg-slate-800/80 hover:bg-slate-800 border border-slate-700/70 rounded-2xl flex flex-col gap-2 transition shadow-sm"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2.5 min-w-0">
@@ -1367,27 +1675,45 @@ export default function ScannerModal({
                               </span>
                             )}
 
-                            {/* Badge de Similaridade / Coincidência de Dígitos */}
+                            {/* Badge de Similaridade */}
                             {match && (
                               <span className={`text-[10px] font-semibold px-2 py-0.2 rounded-full ${
                                 match.isExact 
                                   ? 'bg-emerald-500/20 text-emerald-300' 
                                   : 'bg-amber-500/20 text-amber-300'
                               }`}>
-                                {match.isExact ? '100% Exato' : `${match.matchingDigits} dígitos iguais (${match.confidence}%)`}
+                                {match.isExact ? '100% Exato' : `${match.matchingDigits} dígitos (${match.confidence}%)`}
                               </span>
                             )}
+
+                            {/* Badges de Serviços que serão aplicados */}
+                            {selectedModalities.map(m => {
+                              const isAlready = isEquipmentChecked(eq, m, serviceConfig);
+                              return (
+                                <span
+                                  key={m}
+                                  className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded-full border ${
+                                    isAlready 
+                                      ? 'bg-emerald-950/60 text-emerald-400 border-emerald-800'
+                                      : m === 'calibracao'
+                                      ? 'bg-blue-900/60 text-blue-300 border-blue-700'
+                                      : m === 'preventiva'
+                                      ? 'bg-emerald-900/60 text-emerald-300 border-emerald-700'
+                                      : 'bg-amber-900/60 text-amber-300 border-amber-700'
+                                  }`}
+                                >
+                                  {isAlready ? `✓ ${MODALITIES[m]?.shortName || m} OK` : `+ ${MODALITIES[m]?.shortName || m}`}
+                                </span>
+                              );
+                            })}
                           </div>
 
-                          <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5 flex-wrap">
+                          <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-1 flex-wrap">
                             {eq.serie && (
                               <span>Série: <span className="font-mono text-slate-300">{eq.serie}</span></span>
                             )}
                             {eq.setor && (
-                              <span>• Setor Cadastrado: <span className="text-slate-300">{eq.setor}</span></span>
-                            )}
-                            {isAlreadyChecked && (
-                              <span className="text-amber-400 font-bold">• Já possui {currentMod.shortName} conferida</span>
+                              <span>• Setor Original: <span className="text-slate-300">{eq.setor}</span></span>
                             )}
                           </div>
                         </div>
@@ -1434,10 +1760,12 @@ export default function ScannerModal({
           {stagedItems.length > 0 ? (
             <button
               onClick={handleConfirmBatchCheck}
-              className="w-full py-3.5 px-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 text-white rounded-2xl text-sm font-extrabold shadow-lg shadow-emerald-600/30 transition active:scale-[0.98] flex items-center justify-center gap-2"
+              className="w-full py-3.5 px-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 text-white rounded-2xl text-xs sm:text-sm font-extrabold shadow-lg shadow-emerald-600/30 transition active:scale-[0.98] flex items-center justify-center gap-2"
             >
               <CheckCircle className="w-5 h-5 stroke-[2.5]" />
-              <span>Confirmar Check em Todos da Lista ({stagedItems.length} {stagedItems.length === 1 ? 'bomba' : 'bombas'})</span>
+              <span>
+                Confirmar [{selectedModalities.map(m => MODALITIES[m]?.shortName || m).join(' + ')}] em Todas ({stagedItems.length} {stagedItems.length === 1 ? 'bomba' : 'bombas'})
+              </span>
             </button>
           ) : (
             <div className="flex items-center justify-between text-xs text-slate-400 px-1">
