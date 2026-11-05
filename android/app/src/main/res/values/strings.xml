@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">CalibraCheck</string>
+    <string name="title_activity_main">CalibraCheck</string>
+    <string name="package_name">com.digiclintec.calibracheck</string>
+    <string name="custom_url_scheme">com.digiclintec.calibracheck</string>
+</resources>

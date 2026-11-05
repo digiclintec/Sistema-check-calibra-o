@@ -10,7 +10,7 @@ echo "🚀 Iniciando configuração do ambiente Nativo Android (Capacitor)..."
 
 # 1. Instala dependências do Capacitor e plugins de câmera nativa
 echo "📦 Instalando pacotes do Capacitor e plugins de hardware..."
-npm install @capacitor/core @capacitor/android @capacitor/camera @capacitor-community/barcode-scanner
+npm install @capacitor/core @capacitor/android @capacitor/camera @capacitor-mlkit/barcode-scanning
 npm install -D @capacitor/cli
 
 # 2. Build de produção do Vite
@@ -29,3 +29,4 @@ npx cap sync android
 
 echo "✅ Ambiente Nativo Android preparado com sucesso!"
 echo "👉 Para abrir no Android Studio e gerar o APK: npx cap open android"
+

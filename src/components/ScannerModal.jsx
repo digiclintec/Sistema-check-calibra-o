@@ -37,6 +37,7 @@ import { findBestEquipmentMatches } from '../utils/fuzzyMatch';
 import { parseCompositeBarcode } from '../utils/gs1Parser';
 import { processPhotoTextWithAgent } from '../utils/serialAgent';
 import { MODALITIES, isEquipmentChecked, getCheckMeta } from '../utils/modalities';
+import { isNativeAndroidApp, scanWithNativeGoogleScanner } from '../utils/nativeBarcodeScanner';
 
 // Suporte a todos os formatos padrão industriais e hospitalares
 const SUPPORTED_FORMATS = [
@@ -1117,6 +1118,23 @@ export default function ScannerModal({
     setLastScannedFeedback(null);
   };
 
+  // Dispara o Scanner Nativo do Android (Google Code Scanner no APK ou Câmera Oficial no Browser)
+  const handleTriggerNativeScanner = async () => {
+    if (isNativeAndroidApp()) {
+      setFocusFeedbackText('🚀 Abrindo Google Code Scanner...');
+      const res = await scanWithNativeGoogleScanner();
+      if (res.success && res.code) {
+        setFocusFeedbackText(`✓ Lido: ${res.code}`);
+        handleDecoded(res.code);
+      } else if (res.error && res.error !== 'Nenhum código lido' && res.error !== 'User canceled') {
+        // Fallback suave para Câmera fotográfica
+        fileInputRef.current?.click();
+      }
+    } else {
+      fileInputRef.current?.click();
+    }
+  };
+
   // Leitura ultra-inteligente a partir de foto/câmera nativa (Código de Barras + OCR Automático)
   const handlePhotoScan = async (e) => {
     const file = e.target.files?.[0];
@@ -1612,9 +1630,9 @@ export default function ScannerModal({
 
                 <button
                   type="button"
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={handleTriggerNativeScanner}
                   className="px-2.5 py-1 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white border border-emerald-400/60 text-[11px] flex items-center gap-1.5 font-bold shadow-md shadow-emerald-600/25 transition active:scale-95 shrink-0"
-                  title="Abrir o aplicativo de Câmera Oficial do celular (Samsung, Motorola, Xiaomi) com todas as lentes nativas"
+                  title="Abrir o leitor ou câmera oficial do celular (Google Code Scanner / Samsung / Motorola / Xiaomi) com foco nativo"
                 >
                   <Camera className="w-3.5 h-3.5 text-white" />
                   <span>📸 Câmera Nativa</span>
@@ -1798,10 +1816,10 @@ export default function ScannerModal({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  fileInputRef.current?.click();
+                  handleTriggerNativeScanner();
                 }}
                 className="pointer-events-auto px-3 py-1 rounded-full bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 text-white font-extrabold text-[11px] shadow-xl shadow-emerald-950/70 border border-emerald-400/80 flex items-center gap-1.5 transition active:scale-95 shrink-0"
-                title="Abrir o aplicativo de Câmera Oficial do celular (Samsung, Motorola, Xiaomi) com todas as lentes nativas"
+                title="Abrir o leitor ou câmera oficial do celular (Google Code Scanner / Samsung / Motorola / Xiaomi)"
               >
                 <Camera className="w-3.5 h-3.5 text-white animate-pulse" />
                 <span>📸 Câmera do Celular</span>
