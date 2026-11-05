@@ -126,8 +126,16 @@ export function identifyColumns(headers) {
     if (!norm) return;
 
     // --- FRENTE 1: CALIBRAÇÃO (Detecção Prioritária) ---
+    // Status de validade do certificado (ex: "Status Calibração", "Situação Calibração")
+    if (!mapping.statusCalibracao && (
+      norm.startsWith('statuscalibr') ||
+      norm === 'statuscalibracao' ||
+      norm === 'situacaocalibracao'
+    )) {
+      mapping.statusCalibracao = h;
+    }
     // Data da calibração
-    if (!mapping.dataCalibracao && (
+    else if (!mapping.dataCalibracao && (
       (norm.includes('data') || norm.includes('dt')) && (norm.includes('calibr') || norm.includes('calib'))
     )) {
       mapping.dataCalibracao = h;
@@ -145,7 +153,7 @@ export function identifyColumns(headers) {
     )) {
       mapping.certificadoCalibracao = h;
     }
-    // Check / Status da calibração (ex: "CALIBRAÇÃO - Status", "CALIBRAÇÃO", "CALIBRADO", "CHECK CALIBRAÇÃO")
+    // Check / Execução da calibração (ex: "CALIBRAÇÃO - Status", "CALIBRAÇÃO", "CALIBRADO", "CHECK CALIBRAÇÃO")
     else if (!mapping.checkCalibracao && (
       (norm.includes('calibr') || norm.includes('calib')) &&
       (norm.includes('status') || norm.includes('check') || norm.includes('situacao') || norm.includes('ok') || norm === 'calibracao' || norm === 'calibrado' || norm === 'calib')
@@ -178,20 +186,20 @@ export function identifyColumns(headers) {
     // --- FRENTE 3: TESTE DE SEGURANÇA ELÉTRICA (TSE) ---
     // Data da segurança
     else if (!mapping.dataSeguranca && (
-      (norm.includes('data') || norm.includes('dt')) && (norm.includes('seguranc') || norm.includes('tse') || norm.includes('eletric'))
+      (norm.includes('data') || norm.includes('dt')) && (norm.includes('seguranc') || norm.includes('seg') || norm.includes('tse') || norm.includes('eletric'))
     )) {
       mapping.dataSeguranca = h;
     }
     // Responsável / Técnico da segurança
     else if (!mapping.usuarioSeguranca && (
       (norm.includes('tecnico') || norm.includes('resp') || norm.includes('executor') || norm.includes('usuario')) &&
-      (norm.includes('seguranc') || norm.includes('tse'))
+      (norm.includes('seguranc') || norm.includes('seg') || norm.includes('tse') || norm.includes('eletric'))
     )) {
       mapping.usuarioSeguranca = h;
     }
     // Check / Status da segurança elétrica (ex: "SEG. ELÉTRICA - Status", "SEGURANÇA ELÉTRICA", "TSE")
     else if (!mapping.checkSeguranca && (
-      (norm.includes('seguranc') || norm.includes('tse') || norm.includes('eletric')) &&
+      (norm.includes('seguranc') || norm.includes('seg') || norm.includes('tse') || norm.includes('eletric')) &&
       (norm.includes('status') || norm.includes('check') || norm.includes('situacao') || norm.includes('ok') || norm === 'seguranca' || norm === 'tse' || norm === 'segeletrica' || norm === 'segurancaeletrica')
     )) {
       mapping.checkSeguranca = h;
@@ -213,6 +221,7 @@ export function identifyColumns(headers) {
     // Código de barras
     else if (!mapping.codigoBarras && (
       norm.includes('codigobarras') ||
+      norm.includes('codigodebarras') ||
       norm.includes('codbarras') ||
       norm.includes('barcode') ||
       norm.includes('ean') ||
@@ -555,7 +564,61 @@ export function extractDataFromWorksheet(worksheet) {
 }
 
 /**
- * Lê arquivo Excel (.xlsx, .xls) ou CSV via FileReader (Suporta qualquer arquivo cru)
+ * Converte um buffer binário ou Uint8Array de planilha em dados estruturados
+ */
+export function parseWorkbookBuffer(buffer, sourceName = 'Planilha') {
+  const workbook = XLSX.read(buffer, { type: 'array', cellDates: true, dateNF: 'yyyy-mm-dd' });
+  
+  // Procura a melhor aba (a que tiver mais linhas válidas)
+  let chosenSheetName = workbook.SheetNames[0];
+  let chosenData = null;
+
+  for (const sName of workbook.SheetNames) {
+    const ws = workbook.Sheets[sName];
+    const extracted = extractDataFromWorksheet(ws);
+    if (!chosenData || extracted.rawJson.length > chosenData.rawJson.length) {
+      chosenSheetName = sName;
+      chosenData = extracted;
+    }
+  }
+
+  if (!chosenData || chosenData.rawJson.length === 0) {
+    // Fallback para conversão padrão
+    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+    const fallbackJson = XLSX.utils.sheet_to_json(firstSheet, { defval: '', raw: false });
+    if (!fallbackJson || fallbackJson.length === 0) {
+      throw new Error('A planilha está vazia ou não contém dados legíveis.');
+    }
+    const headers = Object.keys(fallbackJson[0]);
+    const mapping = identifyColumns(headers);
+    const normalized = normalizeRows(fallbackJson, mapping);
+    return {
+      fileName: sourceName,
+      sheetName: workbook.SheetNames[0],
+      allSheets: workbook.SheetNames,
+      headers,
+      mapping,
+      equipments: normalized,
+      total: normalized.length
+    };
+  }
+
+  const mapping = identifyColumns(chosenData.headers);
+  const normalized = normalizeRows(chosenData.rawJson, mapping);
+
+  return {
+    fileName: sourceName,
+    sheetName: chosenSheetName,
+    allSheets: workbook.SheetNames,
+    headers: chosenData.headers,
+    mapping,
+    equipments: normalized,
+    total: normalized.length
+  };
+}
+
+/**
+ * Lê arquivo Excel (.xlsx, .xls) ou CSV via FileReader (Suporta qualquer arquivo cru ou semi-tratado)
  */
 export async function parseSpreadsheetFile(file) {
   return new Promise((resolve, reject) => {
@@ -564,54 +627,8 @@ export async function parseSpreadsheetFile(file) {
     reader.onload = (e) => {
       try {
         const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array', cellDates: true, dateNF: 'yyyy-mm-dd' });
-        
-        // Procura a melhor aba (a que tiver mais linhas válidas)
-        let chosenSheetName = workbook.SheetNames[0];
-        let chosenData = null;
-
-        for (const sName of workbook.SheetNames) {
-          const ws = workbook.Sheets[sName];
-          const extracted = extractDataFromWorksheet(ws);
-          if (!chosenData || extracted.rawJson.length > chosenData.rawJson.length) {
-            chosenSheetName = sName;
-            chosenData = extracted;
-          }
-        }
-
-        if (!chosenData || chosenData.rawJson.length === 0) {
-          // Fallback para conversão padrão
-          const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-          const fallbackJson = XLSX.utils.sheet_to_json(firstSheet, { defval: '', raw: false });
-          if (!fallbackJson || fallbackJson.length === 0) {
-            throw new Error('A planilha está vazia ou não contém dados legíveis.');
-          }
-          const headers = Object.keys(fallbackJson[0]);
-          const mapping = identifyColumns(headers);
-          const normalized = normalizeRows(fallbackJson, mapping);
-          return resolve({
-            fileName: file.name,
-            sheetName: workbook.SheetNames[0],
-            allSheets: workbook.SheetNames,
-            headers,
-            mapping,
-            equipments: normalized,
-            total: normalized.length
-          });
-        }
-
-        const mapping = identifyColumns(chosenData.headers);
-        const normalized = normalizeRows(chosenData.rawJson, mapping);
-
-        resolve({
-          fileName: file.name,
-          sheetName: chosenSheetName,
-          allSheets: workbook.SheetNames,
-          headers: chosenData.headers,
-          mapping,
-          equipments: normalized,
-          total: normalized.length
-        });
+        const result = parseWorkbookBuffer(data, file.name);
+        resolve(result);
       } catch (err) {
         reject(err);
       }

@@ -49,28 +49,29 @@ export default function GoogleSheetsModal({ isOpen, onClose, onImportData }) {
     setError('');
 
     try {
-      const exportUrl = extractGoogleSheetsExportUrl(sheetUrl.trim());
-      
-      const response = await fetch(exportUrl);
-      if (!response.ok) {
-        throw new Error(
-          'O Google bloqueou o acesso direto (restrição de permissão ou CORS). Recomendação: Vá em Arquivo > Fazer o download > Microsoft Excel (.xlsx) e solte o arquivo na primeira aba "Arquivo Direto"!'
-        );
+      // 1. Busca via backend proxy (sem CORS, com suporte a Office rtpof do Google Drive e native Google Sheets)
+      const res = await fetch('/api/fetch-google-sheet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: sheetUrl.trim() })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Falha ao carregar o link da planilha.');
       }
 
-      const csvText = await response.text();
-      const parsed = parseCsvText(csvText, 'Google Sheets');
-
-      if (!parsed.equipments || parsed.equipments.length === 0) {
-        throw new Error('A planilha retornou sem registros válidos.');
+      if (!data.equipments || data.equipments.length === 0) {
+        throw new Error('A planilha retornou sem registros de equipamentos válidos.');
       }
 
-      onImportData(parsed);
+      onImportData(data);
       onClose();
     } catch (err) {
       console.error(err);
       setError(
-        err.message || 'Erro ao carregar link. O Google Sheets normalmente bloqueia acesso sem login. A forma mais rápida e 100% garantida é baixar o arquivo ou usar a aba "Copiar e Colar"!'
+        err.message || 'Erro ao carregar link. O Google bloqueou o acesso direto sem permissão pública. Recomendação: Baixe o arquivo (.xlsx) ou copie e cole na aba ao lado!'
       );
     } finally {
       setLoading(false);

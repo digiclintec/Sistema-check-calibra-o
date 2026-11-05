@@ -3,6 +3,7 @@ import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { parseWorkbookBuffer } from './src/utils/sheetParser.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -739,6 +740,105 @@ app.post('/api/data', (req, res) => {
     equipments: db.hospitals[idx].equipments,
     activeSheetName: db.hospitals[idx].activeSheetName,
     lastUpdated: db.hospitals[idx].lastUpdated
+  });
+});
+
+// Fetch and parse Google Sheets / Google Drive spreadsheet URL
+app.post('/api/fetch-google-sheet', async (req, res) => {
+  const { url } = req.body || {};
+  if (!url || typeof url !== 'string') {
+    return res.status(400).json({ success: false, message: 'URL da planilha não fornecida.' });
+  }
+
+  const cleanUrl = url.trim();
+  const match = cleanUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/) ||
+                cleanUrl.match(/\/file\/d\/([a-zA-Z0-9-_]+)/) ||
+                cleanUrl.match(/[?&]id=([a-zA-Z0-9-_]+)/);
+
+  if (!match || !match[1]) {
+    return res.status(400).json({ success: false, message: 'Link do Google Sheets ou Google Drive inválido.' });
+  }
+
+  const docId = match[1];
+  const gidMatch = cleanUrl.match(/[#&?]gid=([0-9]+)/);
+  const gidParam = gidMatch ? `&gid=${gidMatch[1]}` : '';
+
+  // URLs de download candidatas
+  const candidateUrls = [
+    `https://docs.google.com/spreadsheets/d/${docId}/export?format=xlsx${gidParam}`,
+    `https://drive.usercontent.google.com/download?id=${docId}&export=download&confirm=t`,
+    `https://drive.google.com/uc?export=download&id=${docId}&confirm=t`,
+    `https://docs.google.com/spreadsheets/d/${docId}/export?format=csv${gidParam}`
+  ];
+
+  let lastError = null;
+  let isRestricted = false;
+
+  for (const candidate of candidateUrls) {
+    try {
+      const response = await fetch(candidate, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        },
+        redirect: 'follow'
+      });
+
+      if (response.status === 401 || response.status === 403) {
+        isRestricted = true;
+        continue;
+      }
+
+      const contentType = response.headers.get('content-type') || '';
+      const arrayBuf = await response.arrayBuffer();
+      const uint8 = new Uint8Array(arrayBuf);
+
+      // Verifica se a resposta foi uma página HTML de login / restrição
+      if (contentType.includes('text/html')) {
+        const textSample = new TextDecoder().decode(uint8.slice(0, 4000));
+        if (
+          textSample.includes('accounts.google.com') ||
+          textSample.includes('Acesse a sua conta do Google') ||
+          textSample.includes('Permita que o Google Drive') ||
+          textSample.includes('Sign in')
+        ) {
+          isRestricted = true;
+          continue;
+        }
+      }
+
+      // Tenta decodificar como planilha com SheetJS
+      try {
+        const parsed = parseWorkbookBuffer(uint8, 'Google Sheets');
+        if (parsed && parsed.equipments && parsed.equipments.length > 0) {
+          return res.json({
+            success: true,
+            fileName: 'Google Sheets (' + (parsed.sheetName || 'Planilha') + ')',
+            sheetName: parsed.sheetName,
+            headers: parsed.headers,
+            mapping: parsed.mapping,
+            equipments: parsed.equipments,
+            total: parsed.total
+          });
+        }
+      } catch (parseErr) {
+        lastError = parseErr;
+      }
+    } catch (netErr) {
+      lastError = netErr;
+    }
+  }
+
+  if (isRestricted) {
+    return res.status(403).json({
+      success: false,
+      isRestricted: true,
+      message: 'Esta planilha no Google Drive está com acesso "Restrito". Para permitir a importação via link: no Google Sheets/Drive, clique em "Compartilhar" (canto superior direito) e altere de "Restrito" para "Qualquer pessoa com o link" (Leitor). Ou clique em Arquivo > Fazer o download > Microsoft Excel (.xlsx) e envie o arquivo na primeira aba!'
+    });
+  }
+
+  return res.status(400).json({
+    success: false,
+    message: lastError ? `Não foi possível ler a planilha: ${lastError.message}` : 'Não foi possível baixar ou ler os dados desta planilha do Google.'
   });
 });
 
