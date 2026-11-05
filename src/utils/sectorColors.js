@@ -324,3 +324,4 @@ export function getSectorBadgeStyles(color, isDark = false) {
     boxShadow: `0 0 0 1px ${color.hex}20`
   };
 }
+
