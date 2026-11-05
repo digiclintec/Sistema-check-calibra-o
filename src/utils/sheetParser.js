@@ -201,6 +201,16 @@ export function normalizeRows(rows, mapping) {
       checado: isChecked,
       dataCheck: isChecked ? new Date().toISOString() : null,
       observacao: rawObs,
+      // Suporte multiequipes (Calibração, Preventiva, Segurança Elétrica)
+      check_calibracao: isChecked,
+      data_calibracao: isChecked ? new Date().toISOString() : null,
+      usuario_calibracao: null,
+      check_preventiva: false,
+      data_preventiva: null,
+      usuario_preventiva: null,
+      check_seguranca: false,
+      data_seguranca: null,
+      usuario_seguranca: null,
       _originalRow: row,
     };
   });
@@ -399,24 +409,57 @@ export function parseCsvText(csvText, sourceName = 'Google Sheets') {
 }
 
 /**
- * Exporta os dados atuais para um arquivo .xlsx baixável
+ * Exporta os dados atuais para um arquivo .xlsx baixável com suporte completo a multiequipes
  */
-export function exportToExcel(equipments, fileName = 'calibracao_conferida.xlsx') {
-  const exportData = equipments.map((item, idx) => ({
-    'Ordem': idx + 1,
-    'Código de Barras': item.codigoBarras,
-    'Tag / Patrimônio': item.tag,
-    'Equipamento': item.equipamento,
-    'Fabricante': item.fabricante,
-    'Modelo': item.modelo,
-    'Nº de Série': item.serie,
-    'Setor': item.setor,
-    'Validade Calibração': item.validadeCalibracao,
-    'Status Calibração': item.statusCalibracao,
-    'Checado': item.checado ? 'SIM' : 'NÃO',
-    'Data/Hora da Conferência': item.dataCheck ? new Date(item.dataCheck).toLocaleString('pt-BR') : '',
-    'Observações': item.observacao || ''
-  }));
+export function exportToExcel(equipments, fileName = 'conferencia_multiequipes.xlsx', modality = 'geral') {
+  const exportData = equipments.map((item, idx) => {
+    const isCalOk = Boolean(item.check_calibracao !== undefined ? item.check_calibracao : item.checado);
+    const isPrevOk = Boolean(item.check_preventiva);
+    const isSegOk = Boolean(item.check_seguranca);
+
+    let statusGeral = 'PENDENTE';
+    if (isCalOk && isPrevOk && isSegOk) {
+      statusGeral = '100% CONCLUÍDO (3 Frentes)';
+    } else if (isCalOk || isPrevOk || isSegOk) {
+      const feitas = [];
+      if (isCalOk) feitas.push('Calibração');
+      if (isPrevOk) feitas.push('Preventiva');
+      if (isSegOk) feitas.push('Segurança');
+      statusGeral = `PARCIAL (${feitas.join(' + ')})`;
+    }
+
+    return {
+      'Ordem': idx + 1,
+      'Código de Barras': item.codigoBarras,
+      'Tag / IDEC': item.tag,
+      'Equipamento': item.equipamento,
+      'Fabricante': item.fabricante || '',
+      'Modelo': item.modelo || '',
+      'Nº de Série': item.serie || '',
+      'Setor': item.setor || '',
+      'Validade Calibração': item.validadeCalibracao || '',
+      'Status Calibração': item.statusCalibracao || '',
+      
+      // FRENTE 1: CALIBRAÇÃO
+      'CALIBRAÇÃO - Status': isCalOk ? 'CONFERIDO / OK' : 'PENDENTE',
+      'CALIBRAÇÃO - Data/Hora': item.data_calibracao ? new Date(item.data_calibracao).toLocaleString('pt-BR') : (isCalOk && item.dataCheck ? new Date(item.dataCheck).toLocaleString('pt-BR') : ''),
+      'CALIBRAÇÃO - Responsável': item.usuario_calibracao || (isCalOk ? item.conferidoPor : '') || '',
+
+      // FRENTE 2: MANUTENÇÃO PREVENTIVA
+      'PREVENTIVA - Status': isPrevOk ? 'CONFERIDO / OK' : 'PENDENTE',
+      'PREVENTIVA - Data/Hora': item.data_preventiva ? new Date(item.data_preventiva).toLocaleString('pt-BR') : '',
+      'PREVENTIVA - Responsável': item.usuario_preventiva || '',
+
+      // FRENTE 3: TESTE DE SEGURANÇA ELÉTRICA (TSE)
+      'SEG. ELÉTRICA - Status': isSegOk ? 'CONFERIDO / OK' : 'PENDENTE',
+      'SEG. ELÉTRICA - Data/Hora': item.data_seguranca ? new Date(item.data_seguranca).toLocaleString('pt-BR') : '',
+      'SEG. ELÉTRICA - Responsável': item.usuario_seguranca || '',
+
+      // STATUS GERAL UNIFICADO
+      'STATUS GERAL': statusGeral,
+      'Observações': item.observacao || ''
+    };
+  });
 
   const worksheet = XLSX.utils.json_to_sheet(exportData);
   
@@ -425,20 +468,28 @@ export function exportToExcel(equipments, fileName = 'calibracao_conferida.xlsx'
     { wch: 18 }, // Código de Barras
     { wch: 16 }, // Tag
     { wch: 32 }, // Equipamento
-    { wch: 18 }, // Fabricante
+    { wch: 16 }, // Fabricante
     { wch: 16 }, // Modelo
     { wch: 18 }, // Série
-    { wch: 22 }, // Setor
-    { wch: 18 }, // Validade
+    { wch: 20 }, // Setor
+    { wch: 16 }, // Validade
     { wch: 16 }, // Status
-    { wch: 12 }, // Checado
-    { wch: 24 }, // Data/Hora
+    { wch: 20 }, // Calibração Status
+    { wch: 22 }, // Calibração Data
+    { wch: 26 }, // Calibração Resp
+    { wch: 20 }, // Preventiva Status
+    { wch: 22 }, // Preventiva Data
+    { wch: 26 }, // Preventiva Resp
+    { wch: 20 }, // Seg Status
+    { wch: 22 }, // Seg Data
+    { wch: 26 }, // Seg Resp
+    { wch: 26 }, // Status Geral
     { wch: 30 }  // Observações
   ];
   worksheet['!cols'] = colWidths;
 
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'Calibração Conferida');
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Conferência Hospitalar');
 
   XLSX.writeFile(workbook, fileName);
 }

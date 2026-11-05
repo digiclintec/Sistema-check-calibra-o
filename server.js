@@ -241,6 +241,30 @@ function readDb() {
                 eq.id = eq.serie ? `EQP-${eq.serie}` : (eq.tag ? `EQP-${eq.tag}` : `EQP-${idx + 1}`);
                 changed = true;
               }
+
+              // Normaliza modalidades para trabalho de multiequipes (Preventiva / Calibração / Seg. Elétrica)
+              const isLegacyChecked = Boolean(eq.checado);
+              const legacyDate = eq.dataCheck || null;
+              const legacyUser = eq.conferidoPor || null;
+
+              if (eq.check_calibracao === undefined) {
+                eq.check_calibracao = isLegacyChecked;
+                eq.data_calibracao = eq.data_calibracao || (isLegacyChecked ? legacyDate : null);
+                eq.usuario_calibracao = eq.usuario_calibracao || (isLegacyChecked ? legacyUser : null);
+                changed = true;
+              }
+              if (eq.check_preventiva === undefined) {
+                eq.check_preventiva = false;
+                eq.data_preventiva = null;
+                eq.usuario_preventiva = null;
+                changed = true;
+              }
+              if (eq.check_seguranca === undefined) {
+                eq.check_seguranca = false;
+                eq.data_seguranca = null;
+                eq.usuario_seguranca = null;
+                changed = true;
+              }
             });
           }
         });
@@ -718,9 +742,9 @@ app.post('/api/data', (req, res) => {
   });
 });
 
-// Check or Uncheck an equipment inside active hospital
+// Check or Uncheck an equipment inside active hospital with multi-modality support
 app.post('/api/toggle-check', (req, res) => {
-  const { id, userEmail, userName, hospitalId } = req.body || {};
+  const { id, modality = 'calibracao', userEmail, userName, hospitalId } = req.body || {};
   if (!id) {
     return res.status(400).json({ success: false, message: 'ID do equipamento não informado.' });
   }
@@ -741,15 +765,34 @@ app.post('/api/toggle-check', (req, res) => {
   }
 
   const item = list[idx];
-  const nextChecked = !item.checado;
   const inspectorLabel = userName ? `${userName} (${userEmail || ''})` : (userEmail || 'Usuário');
+  const nowIso = new Date().toISOString();
 
-  list[idx] = {
-    ...item,
-    checado: nextChecked,
-    dataCheck: nextChecked ? new Date().toISOString() : null,
-    conferidoPor: nextChecked ? inspectorLabel : null
-  };
+  let nextChecked = false;
+  if (modality === 'preventiva') {
+    nextChecked = !Boolean(item.check_preventiva);
+    item.check_preventiva = nextChecked;
+    item.data_preventiva = nextChecked ? nowIso : null;
+    item.usuario_preventiva = nextChecked ? inspectorLabel : null;
+  } else if (modality === 'seguranca') {
+    nextChecked = !Boolean(item.check_seguranca);
+    item.check_seguranca = nextChecked;
+    item.data_seguranca = nextChecked ? nowIso : null;
+    item.usuario_seguranca = nextChecked ? inspectorLabel : null;
+  } else {
+    // calibracao (padrão)
+    nextChecked = !Boolean(item.check_calibracao !== undefined ? item.check_calibracao : item.checado);
+    item.check_calibracao = nextChecked;
+    item.data_calibracao = nextChecked ? nowIso : null;
+    item.usuario_calibracao = nextChecked ? inspectorLabel : null;
+  }
+
+  // Compatibilidade legada
+  item.checado = Boolean(item.check_calibracao || item.check_preventiva || item.check_seguranca);
+  item.dataCheck = item.data_calibracao || item.data_preventiva || item.data_seguranca || null;
+  item.conferidoPor = item.usuario_calibracao || item.usuario_preventiva || item.usuario_seguranca || null;
+
+  list[idx] = { ...item };
 
   db.hospitals[hospIdx].equipments = list;
   db.hospitals[hospIdx].lastUpdated = Date.now();
@@ -770,15 +813,17 @@ app.post('/api/toggle-check', (req, res) => {
   res.json({
     success: true,
     item: list[idx],
+    modality,
+    nextChecked,
     equipments: list,
     lastUpdated: db.lastUpdated,
     lastUpdatedBy: inspectorLabel
   });
 });
 
-// Batch Check multiple equipments at once
+// Batch Check multiple equipments at once with modality support
 app.post('/api/batch-check', (req, res) => {
-  const { ids, hospitalId, userEmail, userName } = req.body || {};
+  const { ids, modality = 'calibracao', hospitalId, userEmail, userName } = req.body || {};
   if (!Array.isArray(ids) || ids.length === 0) {
     return res.status(400).json({ success: false, message: 'Nenhum equipamento informado para checagem em lote.' });
   }
@@ -806,12 +851,23 @@ app.post('/api/batch-check', (req, res) => {
     const itemSerie = String(item.serie || '').toLowerCase();
 
     if (idSet.has(itemId) || idSet.has(itemBarcode) || idSet.has(itemTag) || idSet.has(itemSerie)) {
-      list[i] = {
-        ...item,
-        checado: true,
-        dataCheck: nowIso,
-        conferidoPor: inspectorLabel
-      };
+      if (modality === 'preventiva') {
+        item.check_preventiva = true;
+        item.data_preventiva = nowIso;
+        item.usuario_preventiva = inspectorLabel;
+      } else if (modality === 'seguranca') {
+        item.check_seguranca = true;
+        item.data_seguranca = nowIso;
+        item.usuario_seguranca = inspectorLabel;
+      } else {
+        item.check_calibracao = true;
+        item.data_calibracao = nowIso;
+        item.usuario_calibracao = inspectorLabel;
+      }
+
+      item.checado = Boolean(item.check_calibracao || item.check_preventiva || item.check_seguranca);
+      item.dataCheck = item.data_calibracao || item.data_preventiva || item.data_seguranca || nowIso;
+      item.conferidoPor = inspectorLabel;
       checkedCount++;
     }
   }
@@ -834,17 +890,18 @@ app.post('/api/batch-check', (req, res) => {
 
   res.json({
     success: true,
-    message: `${checkedCount} equipamentos conferidos com sucesso!`,
+    message: `${checkedCount} equipamentos conferidos com sucesso para [${modality.toUpperCase()}]!`,
     checkedCount,
+    modality,
     equipments: list,
     lastUpdated: db.lastUpdated,
     lastUpdatedBy: inspectorLabel
   });
 });
 
-// Mass Check (Check All or Uncheck All with simple PIN password protection)
+// Mass Check (Check All or Uncheck All with simple PIN password protection per modality)
 app.post('/api/mass-check', (req, res) => {
-  const { action, password, hospitalId, userEmail, userName } = req.body || {};
+  const { action, modality = 'calibracao', password, hospitalId, userEmail, userName } = req.body || {};
 
   // Senha simples de segurança: padrão 1234 ou senha de usuário/master
   const MASTER_PIN = '1234';
@@ -876,25 +933,46 @@ app.post('/api/mass-check', (req, res) => {
   const nowIso = new Date().toISOString();
   const list = db.hospitals[hospIdx].equipments || [];
 
-  if (action === 'check_all') {
-    for (let i = 0; i < list.length; i++) {
-      list[i] = {
-        ...list[i],
-        checado: true,
-        dataCheck: list[i].dataCheck || nowIso,
-        conferidoPor: list[i].conferidoPor || inspectorLabel
-      };
+  for (let i = 0; i < list.length; i++) {
+    const item = list[i];
+    if (action === 'check_all') {
+      if (modality === 'preventiva' || modality === 'geral') {
+        item.check_preventiva = true;
+        item.data_preventiva = item.data_preventiva || nowIso;
+        item.usuario_preventiva = item.usuario_preventiva || inspectorLabel;
+      }
+      if (modality === 'seguranca' || modality === 'geral') {
+        item.check_seguranca = true;
+        item.data_seguranca = item.data_seguranca || nowIso;
+        item.usuario_seguranca = item.usuario_seguranca || inspectorLabel;
+      }
+      if (modality === 'calibracao' || modality === 'geral') {
+        item.check_calibracao = true;
+        item.data_calibracao = item.data_calibracao || nowIso;
+        item.usuario_calibracao = item.usuario_calibracao || inspectorLabel;
+      }
+    } else {
+      // uncheck_all
+      if (modality === 'preventiva' || modality === 'geral') {
+        item.check_preventiva = false;
+        item.data_preventiva = null;
+        item.usuario_preventiva = null;
+      }
+      if (modality === 'seguranca' || modality === 'geral') {
+        item.check_seguranca = false;
+        item.data_seguranca = null;
+        item.usuario_seguranca = null;
+      }
+      if (modality === 'calibracao' || modality === 'geral') {
+        item.check_calibracao = false;
+        item.data_calibracao = null;
+        item.usuario_calibracao = null;
+      }
     }
-  } else {
-    // uncheck_all
-    for (let i = 0; i < list.length; i++) {
-      list[i] = {
-        ...list[i],
-        checado: false,
-        dataCheck: null,
-        conferidoPor: null
-      };
-    }
+
+    item.checado = Boolean(item.check_calibracao || item.check_preventiva || item.check_seguranca);
+    item.dataCheck = item.data_calibracao || item.data_preventiva || item.data_seguranca || null;
+    item.conferidoPor = item.usuario_calibracao || item.usuario_preventiva || item.usuario_seguranca || null;
   }
 
   db.hospitals[hospIdx].equipments = list;

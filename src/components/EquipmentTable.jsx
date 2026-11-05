@@ -22,9 +22,14 @@ import {
   Lock,
   Unlock,
   RotateCcw,
-  CheckCheck
+  CheckCheck,
+  Target,
+  Wrench,
+  Zap,
+  LayoutGrid
 } from 'lucide-react';
 import { extractCleanSerialNumber, parseCompositeBarcode } from '../utils/gs1Parser';
+import { MODALITIES, isEquipmentChecked, getCheckMeta } from '../utils/modalities';
 
 export default function EquipmentTable({ 
   equipments, 
@@ -34,7 +39,9 @@ export default function EquipmentTable({
   onQuickScanCode,
   lastScannedId,
   onOpenSerialScan,
-  onTriggerMassAction
+  onTriggerMassAction,
+  activeModality = 'calibracao',
+  onChangeModality
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSector, setSelectedSector] = useState('ALL');
@@ -42,6 +49,8 @@ export default function EquipmentTable({
   const [sortAsc, setSortAsc] = useState(true);
   const [quickCodeInput, setQuickCodeInput] = useState('');
   const [expandedId, setExpandedId] = useState(null);
+
+  const currentMod = MODALITIES[activeModality] || MODALITIES.calibracao;
 
   const sectors = useMemo(() => {
     const list = new Set();
@@ -63,9 +72,9 @@ export default function EquipmentTable({
     let result = [...equipments];
 
     if (activeFilter === 'checados') {
-      result = result.filter(e => e.checado);
+      result = result.filter(e => isEquipmentChecked(e, activeModality));
     } else if (activeFilter === 'pendentes') {
-      result = result.filter(e => !e.checado);
+      result = result.filter(e => !isEquipmentChecked(e, activeModality));
     } else if (activeFilter === 'vencidos') {
       result = result.filter(e => 
         e.statusCalibracao?.toLowerCase().includes('vencid') || 
@@ -113,8 +122,8 @@ export default function EquipmentTable({
         valA = a.validadeCalibracao || '';
         valB = b.validadeCalibracao || '';
       } else {
-        valA = a.checado ? 1 : 0;
-        valB = b.checado ? 1 : 0;
+        valA = isEquipmentChecked(a, activeModality) ? 1 : 0;
+        valB = isEquipmentChecked(b, activeModality) ? 1 : 0;
       }
 
       if (valA < valB) return sortAsc ? -1 : 1;
@@ -123,7 +132,7 @@ export default function EquipmentTable({
     });
 
     return result;
-  }, [equipments, activeFilter, selectedSector, searchQuery, sortField, sortAsc]);
+  }, [equipments, activeFilter, selectedSector, searchQuery, sortField, sortAsc, activeModality]);
 
   const toggleSort = (field) => {
     if (sortField === field) {
@@ -300,12 +309,16 @@ export default function EquipmentTable({
         ) : (
           filteredEquipments.map((item) => {
             const isRecentlyScanned = lastScannedId === item.id || lastScannedId === item.codigoBarras;
+            const isCheckedCurrent = isEquipmentChecked(item, activeModality);
+            const isCalOk = Boolean(item.check_calibracao !== undefined ? item.check_calibracao : item.checado);
+            const isPrevOk = Boolean(item.check_preventiva);
+            const isSegOk = Boolean(item.check_seguranca);
 
             return (
               <div
                 key={item.id}
                 className={`p-4 rounded-2xl border transition-all ${
-                  item.checado
+                  isCheckedCurrent
                     ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-300/60 dark:border-emerald-800/50'
                     : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 shadow-sm'
                 } ${isRecentlyScanned ? 'ring-2 ring-blue-500 animate-pulse' : ''}`}
@@ -340,32 +353,108 @@ export default function EquipmentTable({
                       {item.serie && <span>• S/N: {item.serie}</span>}
                     </div>
                   )}
-                  {item.conferidoPor && (
-                    <div className="col-span-2 pt-0.5 text-emerald-600 dark:text-emerald-400 text-[10px]">
-                      ✓ Conferido por: {item.conferidoPor}
-                    </div>
-                  )}
                 </div>
 
-                {/* Big Touch Action Button */}
-                <div className="pt-2.5">
+                {/* 3 Work Modalities Quick Pills (Calibração | Preventiva | Segurança) */}
+                <div className="py-2.5 border-b border-slate-100 dark:border-slate-800/60">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                    Frentes Técnicas / Equipes:
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {/* Calibração Pill */}
+                    <button
+                      type="button"
+                      onClick={() => onToggleCheck(item.id, 'calibracao')}
+                      className={`p-1.5 rounded-xl border text-[10px] font-bold flex flex-col items-center justify-center transition active:scale-95 ${
+                        isCalOk
+                          ? 'bg-blue-100 dark:bg-blue-950/80 border-blue-300 dark:border-blue-800 text-blue-700 dark:text-blue-300'
+                          : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400 hover:border-blue-400'
+                      }`}
+                      title="Clique para alternar o status de Calibração"
+                    >
+                      <span className="flex items-center gap-1">
+                        🎯 Calibração
+                      </span>
+                      <span className={`text-[9px] mt-0.5 font-normal ${isCalOk ? 'text-blue-600 dark:text-blue-400 font-bold' : 'text-slate-400'}`}>
+                        {isCalOk ? '✓ OK' : '⏳ Pendente'}
+                      </span>
+                    </button>
+
+                    {/* Preventiva Pill */}
+                    <button
+                      type="button"
+                      onClick={() => onToggleCheck(item.id, 'preventiva')}
+                      className={`p-1.5 rounded-xl border text-[10px] font-bold flex flex-col items-center justify-center transition active:scale-95 ${
+                        isPrevOk
+                          ? 'bg-emerald-100 dark:bg-emerald-950/80 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
+                          : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400 hover:border-emerald-400'
+                      }`}
+                      title="Clique para alternar o status de Manutenção Preventiva"
+                    >
+                      <span className="flex items-center gap-1">
+                        🔧 Preventiva
+                      </span>
+                      <span className={`text-[9px] mt-0.5 font-normal ${isPrevOk ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-slate-400'}`}>
+                        {isPrevOk ? '✓ OK' : '⏳ Pendente'}
+                      </span>
+                    </button>
+
+                    {/* Teste de Segurança Pill */}
+                    <button
+                      type="button"
+                      onClick={() => onToggleCheck(item.id, 'seguranca')}
+                      className={`p-1.5 rounded-xl border text-[10px] font-bold flex flex-col items-center justify-center transition active:scale-95 ${
+                        isSegOk
+                          ? 'bg-amber-100 dark:bg-amber-950/80 border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300'
+                          : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400 hover:border-amber-400'
+                      }`}
+                      title="Clique para alternar o status de Teste de Segurança Elétrica"
+                    >
+                      <span className="flex items-center gap-1">
+                        ⚡ Seg. TSE
+                      </span>
+                      <span className={`text-[9px] mt-0.5 font-normal ${isSegOk ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-slate-400'}`}>
+                        {isSegOk ? '✓ OK' : '⏳ Pendente'}
+                      </span>
+                    </button>
+                  </div>
+
+                  {/* Auditoria / Quem conferiu a modalidade ativa */}
+                  {(() => {
+                    const meta = getCheckMeta(item, activeModality);
+                    if (meta.checked && meta.user) {
+                      return (
+                        <div className="mt-2 text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1 truncate">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+                          <span className="truncate">
+                            {currentMod.shortName}: {meta.user}
+                          </span>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+                </div>
+
+                {/* Big Touch Action Button (focado na frente de trabalho atual) */}
+                <div className="pt-2">
                   <button
-                    onClick={() => onToggleCheck(item.id)}
+                    onClick={() => onToggleCheck(item.id, activeModality)}
                     className={`w-full py-2.5 px-4 rounded-xl font-bold text-xs transition flex items-center justify-center gap-2 active:scale-95 shadow-sm ${
-                      item.checado
+                      isCheckedCurrent
                         ? 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-red-50 hover:text-red-600'
-                        : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-blue-500/20'
+                        : currentMod.btnClass
                     }`}
                   >
-                    {item.checado ? (
+                    {isCheckedCurrent ? (
                       <>
                         <X className="w-4 h-4 text-slate-500" />
-                        Desmarcar Checagem
+                        Desmarcar {currentMod.shortName}
                       </>
                     ) : (
                       <>
                         <Check className="w-4 h-4 stroke-[3]" />
-                        Confirmar Check
+                        Confirmar {currentMod.shortName}
                       </>
                     )}
                   </button>
@@ -401,8 +490,8 @@ export default function EquipmentTable({
                   <ArrowUpDown className="w-3 h-3" />
                 </div>
               </th>
-              <th className="py-3.5 px-4 text-center">Calibração</th>
-              <th className="py-3.5 px-4 text-center w-28">Ação Check</th>
+              <th className="py-3.5 px-4 text-center">Frentes Técnicas (3 Equipes)</th>
+              <th className="py-3.5 px-4 text-center w-32">Ação ({currentMod.shortName})</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
@@ -419,25 +508,29 @@ export default function EquipmentTable({
             ) : (
               filteredEquipments.map((item) => {
                 const isRecentlyScanned = lastScannedId === item.id || lastScannedId === item.codigoBarras;
+                const isCheckedCurrent = isEquipmentChecked(item, activeModality);
+                const isCalOk = Boolean(item.check_calibracao !== undefined ? item.check_calibracao : item.checado);
+                const isPrevOk = Boolean(item.check_preventiva);
+                const isSegOk = Boolean(item.check_seguranca);
 
                 return (
                   <tr 
                     key={item.id}
                     className={`transition-colors duration-200 group ${
-                      item.checado 
+                      isCheckedCurrent 
                         ? 'bg-emerald-50/40 dark:bg-emerald-950/15' 
                         : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
                     } ${isRecentlyScanned ? 'animate-pulse bg-blue-100/60 dark:bg-blue-900/40' : ''}`}
                   >
                     <td className="py-3 px-4 text-center">
                       <button
-                        onClick={() => onToggleCheck(item.id)}
+                        onClick={() => onToggleCheck(item.id, activeModality)}
                         className={`w-7 h-7 mx-auto rounded-full flex items-center justify-center transition-transform active:scale-90 ${
-                          item.checado
+                          isCheckedCurrent
                             ? 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/30'
                             : 'border-2 border-slate-300 dark:border-slate-700 text-transparent hover:border-blue-500'
                         }`}
-                        title={item.checado ? "Desmarcar equipamento" : "Marcar como checado"}
+                        title={isCheckedCurrent ? `Desmarcar ${currentMod.shortName}` : `Marcar ${currentMod.shortName}`}
                       >
                         <Check className="w-4 h-4 stroke-[3]" />
                       </button>
@@ -446,9 +539,9 @@ export default function EquipmentTable({
                     <td className="py-3 px-4">
                       <div className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
                         <span>{item.equipamento}</span>
-                        {item.checado && (
+                        {isCheckedCurrent && (
                           <span className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 px-1.5 py-0.2 rounded font-semibold">
-                            OK
+                            OK ({currentMod.shortName})
                           </span>
                         )}
                       </div>
@@ -480,20 +573,63 @@ export default function EquipmentTable({
                       </div>
                     </td>
 
+                    {/* 3 Work Modalities Interactive Pills */}
                     <td className="py-3 px-4 text-center">
-                      {getStatusBadge(item.statusCalibracao)}
+                      <div className="inline-flex items-center gap-1.5">
+                        {/* Calibração */}
+                        <button
+                          type="button"
+                          onClick={() => onToggleCheck(item.id, 'calibracao')}
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold border transition active:scale-95 ${
+                            isCalOk
+                              ? 'bg-blue-100 dark:bg-blue-950/80 border-blue-300 dark:border-blue-800 text-blue-700 dark:text-blue-300'
+                              : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 hover:text-slate-600'
+                          }`}
+                          title={`Calibração: ${isCalOk ? 'Conferido' : 'Pendente'}. Clique para alternar.`}
+                        >
+                          🎯 {isCalOk ? '✓ Calib' : '⏳ Calib'}
+                        </button>
+
+                        {/* Preventiva */}
+                        <button
+                          type="button"
+                          onClick={() => onToggleCheck(item.id, 'preventiva')}
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold border transition active:scale-95 ${
+                            isPrevOk
+                              ? 'bg-emerald-100 dark:bg-emerald-950/80 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
+                              : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 hover:text-slate-600'
+                          }`}
+                          title={`Preventiva: ${isPrevOk ? 'Conferido' : 'Pendente'}. Clique para alternar.`}
+                        >
+                          🔧 {isPrevOk ? '✓ Prev' : '⏳ Prev'}
+                        </button>
+
+                        {/* Segurança */}
+                        <button
+                          type="button"
+                          onClick={() => onToggleCheck(item.id, 'seguranca')}
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold border transition active:scale-95 ${
+                            isSegOk
+                              ? 'bg-amber-100 dark:bg-amber-950/80 border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300'
+                              : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 hover:text-slate-600'
+                          }`}
+                          title={`Teste de Segurança: ${isSegOk ? 'Conferido' : 'Pendente'}. Clique para alternar.`}
+                        >
+                          ⚡ {isSegOk ? '✓ Seg' : '⏳ Seg'}
+                        </button>
+                      </div>
                     </td>
 
                     <td className="py-3 px-4 text-center">
                       <button
-                        onClick={() => onToggleCheck(item.id)}
+                        onClick={() => onToggleCheck(item.id, activeModality)}
                         className={`w-full py-1.5 px-3 rounded-xl font-semibold text-xs transition duration-150 flex items-center justify-center gap-1.5 ${
-                          item.checado
+                          isCheckedCurrent
                             ? 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-red-100 hover:text-red-700 dark:hover:bg-red-950/60 dark:hover:text-red-400'
-                            : 'bg-blue-600 hover:bg-blue-500 text-white shadow-sm shadow-blue-500/20'
+                            : currentMod.btnClass
                         }`}
                       >
-                        {item.checado ? (
+                        {isCheckedCurrent ? (
                           <>
                             <X className="w-3.5 h-3.5" />
                             Desmarcar
@@ -517,16 +653,16 @@ export default function EquipmentTable({
       {/* Footer stats summary */}
       <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 dark:text-slate-400 gap-2">
         <div>
-          Exibindo <strong>{filteredEquipments.length}</strong> de <strong>{equipments.length}</strong> equipamentos
+          Exibindo <strong>{filteredEquipments.length}</strong> de <strong>{equipments.length}</strong> equipamentos ({currentMod.name})
         </div>
         <div className="flex items-center gap-3">
           <span className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-            Checados: {equipments.filter(e => e.checado).length}
+            Checados: {equipments.filter(e => isEquipmentChecked(e, activeModality)).length}
           </span>
           <span className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-slate-300 dark:bg-slate-600"></span>
-            Pendentes: {equipments.filter(e => !e.checado).length}
+            Pendentes: {equipments.filter(e => !isEquipmentChecked(e, activeModality)).length}
           </span>
         </div>
       </div>

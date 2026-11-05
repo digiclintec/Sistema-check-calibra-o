@@ -29,6 +29,7 @@ import { playSuccessSound, playWarningSound, playErrorSound } from '../utils/aud
 import { findBestEquipmentMatches } from '../utils/fuzzyMatch';
 import { parseCompositeBarcode } from '../utils/gs1Parser';
 import { processPhotoTextWithAgent } from '../utils/serialAgent';
+import { MODALITIES, isEquipmentChecked } from '../utils/modalities';
 
 // Suporte a todos os formatos padrão industriais e hospitalares
 const SUPPORTED_FORMATS = [
@@ -51,7 +52,8 @@ export default function ScannerModal({
   onScan, 
   onBatchCheck, 
   equipments = [], 
-  soundEnabled = true 
+  soundEnabled = true,
+  activeModality = 'calibracao'
 }) {
   const [cameras, setCameras] = useState([]);
   const [selectedCamera, setSelectedCamera] = useState('');
@@ -565,7 +567,7 @@ export default function ScannerModal({
     const ids = stagedItems.map(item => item.equipment.id);
     
     if (onBatchCheck) {
-      await onBatchCheck(ids);
+      await onBatchCheck(ids, activeModality);
     }
 
     confetti({
@@ -1098,7 +1100,8 @@ export default function ScannerModal({
               {stagedItems.map((item, idx) => {
                 const eq = item.equipment;
                 const match = item.match;
-                const isAlreadyChecked = eq.checado;
+                const isAlreadyChecked = isEquipmentChecked(eq, activeModality);
+                const currentMod = MODALITIES[activeModality] || MODALITIES.calibracao;
 
                 return (
                   <div
@@ -1143,7 +1146,7 @@ export default function ScannerModal({
                             <span>• Setor: <span className="text-slate-300">{eq.setor}</span></span>
                           )}
                           {isAlreadyChecked && (
-                            <span className="text-amber-400 font-bold">• Já checado antes</span>
+                            <span className="text-amber-400 font-bold">• Já possui {currentMod.shortName} conferida</span>
                           )}
                         </div>
                       </div>

@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { processPhotoTextWithAgent } from '../utils/serialAgent';
 import { playSuccessSound, playWarningSound, playErrorSound } from '../utils/audio';
+import { MODALITIES } from '../utils/modalities';
 
 export default function SerialScanModal({
   isOpen,
@@ -28,7 +29,8 @@ export default function SerialScanModal({
   onBatchCheck,
   soundEnabled = true,
   hospitalName = '',
-  planTitle = ''
+  planTitle = '',
+  activeModality = 'calibracao'
 }) {
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -190,8 +192,8 @@ export default function SerialScanModal({
       setOcrStatusText('Cruzando Números de Série (NS) e IDEC com a planilha...');
       setExtractedRawText(textResult);
 
-      // Processa o texto com nosso Agente
-      const agentResult = processPhotoTextWithAgent(textResult, equipments);
+      // Processa o texto com nosso Agente considerando a frente de trabalho ativa
+      const agentResult = processPhotoTextWithAgent(textResult, equipments, activeModality);
 
       setMatchedResults(agentResult.matchedEquipments);
       setUnmatchedCandidates(agentResult.unmatchedTokens);
@@ -252,7 +254,7 @@ export default function SerialScanModal({
     if (ids.length === 0) return;
 
     if (onBatchCheck) {
-      await onBatchCheck(ids);
+      await onBatchCheck(ids, activeModality);
       if (soundEnabled) playSuccessSound();
       onClose();
     }
@@ -296,12 +298,12 @@ export default function SerialScanModal({
                 <h3 className="font-bold text-base sm:text-lg text-slate-900 dark:text-white leading-tight">
                   Agente Digitalizador de Série (OCR)
                 </h3>
-                <span className="text-[10px] bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-semibold px-2 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800">
-                  IA de Visão
+                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${MODALITIES[activeModality]?.badgeClass || ''}`}>
+                  {MODALITIES[activeModality]?.icon} {MODALITIES[activeModality]?.shortName}
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Identifica siglas <strong className="text-slate-700 dark:text-slate-300">NS, S/N, IDEC</strong> e números direto da foto da etiqueta
+                Identifica siglas <strong className="text-slate-700 dark:text-slate-300">NS, S/N, IDEC</strong> para validação de <strong>{MODALITIES[activeModality]?.name}</strong>
               </p>
             </div>
           </div>

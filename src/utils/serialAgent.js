@@ -146,7 +146,7 @@ export function extractSerialCandidates(rawText) {
  *   unmatchedTokens: Array
  * }}
  */
-export function processPhotoTextWithAgent(rawText, equipments = []) {
+export function processPhotoTextWithAgent(rawText, equipments = [], targetModality = 'calibracao') {
   const candidates = extractSerialCandidates(rawText);
   
   const matchedEquipments = [];
@@ -176,6 +176,16 @@ export function processPhotoTextWithAgent(rawText, equipments = []) {
 
       if (!seenEquipmentIds.has(eqId)) {
         seenEquipmentIds.add(eqId);
+
+        let isAlreadyChecked = false;
+        if (targetModality === 'preventiva') {
+          isAlreadyChecked = Boolean(match.equipment.check_preventiva);
+        } else if (targetModality === 'seguranca') {
+          isAlreadyChecked = Boolean(match.equipment.check_seguranca);
+        } else {
+          isAlreadyChecked = Boolean(match.equipment.check_calibracao !== undefined ? match.equipment.check_calibracao : match.equipment.checado);
+        }
+
         matchedEquipments.push({
           equipment: match.equipment,
           matchedToken: cand.token,
@@ -184,7 +194,7 @@ export function processPhotoTextWithAgent(rawText, equipments = []) {
           matchScore: match.score,
           matchingDigits: match.matchingDigits,
           reason: match.reason,
-          alreadyChecked: Boolean(match.equipment.checado)
+          alreadyChecked: isAlreadyChecked
         });
       }
     } else {

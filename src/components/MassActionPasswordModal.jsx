@@ -12,11 +12,13 @@ import {
   Eye,
   EyeOff
 } from 'lucide-react';
+import { MODALITIES } from '../utils/modalities';
 
 export default function MassActionPasswordModal({
   isOpen,
   onClose,
   action = 'check_all', // 'check_all' | 'uncheck_all'
+  modality = 'calibracao',
   totalEquipments = 0,
   hospitalName = '',
   planTitle = '',
@@ -29,6 +31,7 @@ export default function MassActionPasswordModal({
 
   if (!isOpen) return null;
 
+  const currentMod = MODALITIES[modality] || MODALITIES.calibracao;
   const isCheckAll = action === 'check_all';
 
   const handleSubmit = async (e) => {
@@ -42,7 +45,7 @@ export default function MassActionPasswordModal({
     setIsLoading(true);
 
     try {
-      const res = await onConfirm(action, password.trim());
+      const res = await onConfirm(action, password.trim(), modality);
       if (res && res.success === false) {
         setError(res.message || 'Senha incorreta.');
       } else {
@@ -99,10 +102,10 @@ export default function MassActionPasswordModal({
 
           <div className="pr-6">
             <h3 className="text-lg font-bold text-slate-900 dark:text-white leading-tight">
-              {isCheckAll ? 'Marcar Todos como Conferidos' : 'Desmarcar Todos os Equipamentos'}
+              {isCheckAll ? `Marcar Todos (${currentMod.shortName})` : `Desmarcar Todos (${currentMod.shortName})`}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              {hospitalName} {planTitle ? `• ${planTitle}` : ''}
+              Frente: <strong className="text-blue-600 dark:text-blue-400">{currentMod.name}</strong> {planTitle ? `• ${planTitle}` : ''}
             </p>
           </div>
         </div>
@@ -115,11 +118,11 @@ export default function MassActionPasswordModal({
         }`}>
           {isCheckAll ? (
             <p>
-              Esta ação marcará <strong>todos os {totalEquipments} equipamentos</strong> da planilha ativa como <strong>CONFERIDOS</strong> com data, hora e seu usuário de inspetor.
+              Esta ação marcará a frente <strong>{currentMod.name}</strong> para <strong>todos os {totalEquipments} equipamentos</strong>. Não interfere nas demais equipes ou frentes!
             </p>
           ) : (
             <p>
-              <strong>Atenção:</strong> Esta ação <strong>removerá o check de todos os {totalEquipments} equipamentos</strong>, zerando a conferência do planejamento para reiniciar a validação.
+              <strong>Atenção:</strong> Esta ação <strong>removerá o check de {currentMod.name}</strong> em todos os {totalEquipments} equipamentos, preservando as outras frentes de trabalho.
             </p>
           )}
         </div>

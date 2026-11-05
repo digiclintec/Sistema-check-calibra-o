@@ -30,11 +30,13 @@ import PlansModal from './components/PlansModal';
 import MonthlyPlanningTab from './components/MonthlyPlanningTab';
 import SerialScanModal from './components/SerialScanModal';
 import MassActionPasswordModal from './components/MassActionPasswordModal';
+import ModalityBar from './components/ModalityBar';
 
 import { parseSpreadsheetFile, exportToExcel } from './utils/sheetParser';
 import { SAMPLE_EQUIPMENT } from './utils/sampleData';
 import { playSuccessSound, playWarningSound, playErrorSound } from './utils/audio';
 import { findBestEquipmentMatches } from './utils/fuzzyMatch';
+import { MODALITIES, normalizeEquipmentModalities, isEquipmentChecked } from './utils/modalities';
 
 export default function App() {
   // LocalStorage keys
@@ -43,6 +45,12 @@ export default function App() {
   const SHEET_NAME_KEY = 'calibracheck_sheet_name';
   const USER_KEY = 'calibracheck_user_v1';
   const HOSP_KEY = 'calibracheck_active_hosp_v1';
+  const MODALITY_KEY = 'calibracheck_work_modality_v1';
+
+  // Modalidade de Serviço / Equipe Ativa (Calibração, Preventiva, Segurança Elétrica, Visão Geral)
+  const [activeModality, setActiveModality] = useState(() => {
+    return localStorage.getItem(MODALITY_KEY) || 'calibracao';
+  });
 
   // User session state
   const [currentUser, setCurrentUser] = useState(() => {
@@ -66,7 +74,7 @@ export default function App() {
   const [equipments, setEquipments] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      return saved ? JSON.parse(saved) : [];
+      return saved ? JSON.parse(saved).map(normalizeEquipmentModalities) : [];
     } catch (e) {
       return [];
     }
@@ -291,7 +299,7 @@ export default function App() {
         const { type, payload } = event.data || {};
         if (type === 'STATE_UPDATE') {
           if (!payload.hospitalId || payload.hospitalId === activeHospitalId) {
-            setEquipments(payload.equipments || []);
+            setEquipments((payload.equipments || []).map(normalizeEquipmentModalities));
             if (payload.activeSheetName !== undefined) setActiveSheetName(payload.activeSheetName);
             if (payload.lastAction) {
               showToast('info', payload.lastAction);
@@ -334,6 +342,10 @@ export default function App() {
     localStorage.setItem(SOUND_KEY, String(soundEnabled));
   }, [soundEnabled]);
 
+  useEffect(() => {
+    localStorage.setItem(MODALITY_KEY, activeModality);
+  }, [activeModality]);
+
   // Toast auto-dismiss
   useEffect(() => {
     if (!toast) return;
@@ -357,7 +369,7 @@ export default function App() {
         
         // If server data differs, update local state
         if (data.equipments && data.equipments.length >= 0) {
-          setEquipments(data.equipments);
+          setEquipments(data.equipments.map(normalizeEquipmentModalities));
           if (data.activeSheetName !== undefined) {
             setActiveSheetName(data.activeSheetName);
           }
@@ -447,10 +459,10 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [equipments, soundEnabled, currentUser, activeHospitalId]);
 
-  // Statistics calculation
+  // Statistics calculation baseada na modalidade / equipe ativa
   const stats = useMemo(() => {
     const total = equipments.length;
-    const checked = equipments.filter(e => e.checado).length;
+    const checked = equipments.filter(e => isEquipmentChecked(e, activeModality)).length;
     const pending = total - checked;
     
     let expired = 0;
@@ -467,7 +479,7 @@ export default function App() {
 
     const percent = total > 0 ? Math.round((checked / total) * 100) : 0;
     return { total, checked, pending, expired, expiringSoon, percent };
-  }, [equipments]);
+  }, [equipments, activeModality]);
 
   // Confetti when 100% checked
   const prevCheckedRef = useRef(stats.checked);
@@ -478,36 +490,60 @@ export default function App() {
         spread: 70,
         origin: { y: 0.6 }
       });
-      showToast('success', `🎉 Parabéns! Todos os equipamentos do ${activeHospital?.name || 'hospital'} foram conferidos!`);
+      const modName = MODALITIES[activeModality]?.shortName || 'Equipe';
+      showToast('success', `🎉 Parabéns! Todos os equipamentos do ${activeHospital?.name || 'hospital'} foram validados para [${modName}]!`);
     }
     prevCheckedRef.current = stats.checked;
-  }, [stats.checked, stats.total, activeHospital?.name]);
+  }, [stats.checked, stats.total, activeHospital?.name, activeModality]);
 
-  // Toggle item check status
-  const handleToggleCheck = async (id) => {
+  // Toggle item check status com suporte a multiequipes (Calibração / Preventiva / TSE)
+  const handleToggleCheck = async (id, targetModality = activeModality) => {
+    const mod = targetModality === 'geral' ? 'calibracao' : targetModality;
     const target = equipments.find(e => e.id === id || e.codigoBarras === id);
     if (!target) return;
 
-    const nextState = !target.checado;
+    const currentChecked = isEquipmentChecked(target, mod);
+    const nextState = !currentChecked;
+    const inspector = currentUser?.name ? `${currentUser.name} (${currentUser.email})` : (currentUser?.email || 'Operador');
+    const nowIso = new Date().toISOString();
+
     const updatedList = equipments.map(item => {
       if (item.id === id || item.codigoBarras === id) {
-        return {
-          ...item,
-          checado: nextState,
-          dataCheck: nextState ? new Date().toISOString() : null,
-          conferidoPor: nextState ? (currentUser?.name ? `${currentUser.name} (${currentUser.email})` : currentUser?.email) : null
-        };
+        const copy = { ...item };
+        if (mod === 'preventiva') {
+          copy.check_preventiva = nextState;
+          copy.data_preventiva = nextState ? nowIso : null;
+          copy.usuario_preventiva = nextState ? inspector : null;
+        } else if (mod === 'seguranca') {
+          copy.check_seguranca = nextState;
+          copy.data_seguranca = nextState ? nowIso : null;
+          copy.usuario_seguranca = nextState ? inspector : null;
+        } else {
+          // calibracao
+          copy.check_calibracao = nextState;
+          copy.data_calibracao = nextState ? nowIso : null;
+          copy.usuario_calibracao = nextState ? inspector : null;
+        }
+
+        // Mantém compatibilidade
+        copy.checado = Boolean(copy.check_calibracao || copy.check_preventiva || copy.check_seguranca);
+        copy.dataCheck = copy.data_calibracao || copy.data_preventiva || copy.data_seguranca || null;
+        copy.conferidoPor = copy.usuario_calibracao || copy.usuario_preventiva || copy.usuario_seguranca || null;
+        return copy;
       }
       return item;
     });
 
-    // Notify server via API
+    setEquipments(updatedList);
+
+    // Notifica backend com a modalidade correspondente
     try {
       fetch('/api/toggle-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id,
+          modality: mod,
           hospitalId: activeHospitalId,
           userEmail: currentUser?.email,
           userName: currentUser?.name
@@ -519,17 +555,19 @@ export default function App() {
       }).catch(() => {});
     } catch (e) {}
 
+    const modName = MODALITIES[mod]?.shortName || mod;
     await pushServerUpdate(
       updatedList, 
       activeSheetName, 
-      `${target.equipamento} foi ${nextState ? 'checado' : 'desmarcado'}`
+      `${target.equipamento} teve ${modName} ${nextState ? 'confirmada' : 'desmarcada'}`
     );
   };
 
-  // Conferência em Lote (Staging / Batch Check)
-  const handleBatchCheck = async (ids) => {
+  // Conferência em Lote (Staging / Batch Check) para a modalidade ativa
+  const handleBatchCheck = async (ids, targetModality = activeModality) => {
     if (!ids || ids.length === 0) return;
 
+    const mod = targetModality === 'geral' ? 'calibracao' : targetModality;
     const idSet = new Set(ids.map(x => String(x).toLowerCase()));
     const nowIso = new Date().toISOString();
     const inspector = currentUser?.name ? `${currentUser.name} (${currentUser.email})` : (currentUser?.email || 'Operador');
@@ -543,12 +581,25 @@ export default function App() {
 
       if (idSet.has(id) || idSet.has(code) || idSet.has(tag) || idSet.has(serie)) {
         checkedCount++;
-        return {
-          ...item,
-          checado: true,
-          dataCheck: nowIso,
-          conferidoPor: inspector
-        };
+        const copy = { ...item };
+        if (mod === 'preventiva') {
+          copy.check_preventiva = true;
+          copy.data_preventiva = nowIso;
+          copy.usuario_preventiva = inspector;
+        } else if (mod === 'seguranca') {
+          copy.check_seguranca = true;
+          copy.data_seguranca = nowIso;
+          copy.usuario_seguranca = inspector;
+        } else {
+          copy.check_calibracao = true;
+          copy.data_calibracao = nowIso;
+          copy.usuario_calibracao = inspector;
+        }
+
+        copy.checado = true;
+        copy.dataCheck = nowIso;
+        copy.conferidoPor = inspector;
+        return copy;
       }
       return item;
     });
@@ -562,6 +613,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ids,
+          modality: mod,
           hospitalId: activeHospitalId,
           userEmail: currentUser?.email,
           userName: currentUser?.name
@@ -573,24 +625,26 @@ export default function App() {
       }).catch(() => {});
     } catch (e) {}
 
+    const modName = MODALITIES[mod]?.name || mod;
     await pushServerUpdate(
       updated, 
       activeSheetName, 
-      `Check em lote: ${checkedCount} equipamentos conferidos com sucesso`
+      `Check em lote [${modName}]: ${checkedCount} equipamentos conferidos com sucesso`
     );
 
     if (soundEnabled) playSuccessSound();
-    showToast('success', `🎉 ${checkedCount} equipamentos conferidos com sucesso!`);
+    showToast('success', `🎉 ${checkedCount} equipamentos conferidos para [${modName}]!`);
   };
 
-  // Ações em Massa com Senha (Marcar Todos / Desmarcar Todos)
-  const handleMassCheck = async (action, password) => {
+  // Ações em Massa com Senha (Marcar Todos / Desmarcar Todos) para a modalidade ativa
+  const handleMassCheck = async (action, password, targetModality = activeModality) => {
     try {
       const res = await fetch('/api/mass-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action,
+          modality: targetModality,
           password,
           hospitalId: activeHospitalId,
           userEmail: currentUser?.email,
@@ -604,12 +658,13 @@ export default function App() {
       }
 
       if (data.equipments) {
-        setEquipments(data.equipments);
+        setEquipments(data.equipments.map(normalizeEquipmentModalities));
       }
       if (data.lastUpdated) {
         lastUpdatedServerRef.current = data.lastUpdated;
       }
 
+      const modName = MODALITIES[targetModality]?.shortName || targetModality;
       if (action === 'check_all') {
         if (soundEnabled) playSuccessSound();
         confetti({
@@ -617,10 +672,10 @@ export default function App() {
           spread: 80,
           origin: { y: 0.5 }
         });
-        showToast('success', `Todos os ${data.count || equipments.length} equipamentos foram marcados como conferidos!`);
+        showToast('success', `Todos os equipamentos foram marcados para [${modName}]!`);
       } else {
         if (soundEnabled) playWarningSound();
-        showToast('info', `Todos os equipamentos foram desmarcados.`);
+        showToast('info', `Todos os equipamentos foram desmarcados para [${modName}].`);
       }
 
       loadMonthlyPlans(activeHospitalId);
@@ -631,13 +686,16 @@ export default function App() {
     }
   };
 
-  // Main barcode lookup & check logic com busca inteligente (maior quantidade de números parecidos)
+  // Main barcode lookup & check logic com busca inteligente e suporte à modalidade ativa
   const handleScanCode = async (code) => {
     if (!code || !equipments || equipments.length === 0) {
       if (soundEnabled) playErrorSound();
       showToast('error', 'Nenhuma planilha carregada ainda para este hospital.');
       return { status: 'not_found', message: 'Nenhuma planilha carregada' };
     }
+
+    const mod = activeModality === 'geral' ? 'calibracao' : activeModality;
+    const currentMod = MODALITIES[mod] || MODALITIES.calibracao;
 
     // Busca inteligente com algoritmo de similaridade de dígitos e caracteres
     const matches = findBestEquipmentMatches(code, equipments);
@@ -662,40 +720,77 @@ export default function App() {
 
     setLastScannedId(targetItem.id);
 
-    if (targetItem.checado) {
+    // Verifica se já está conferido especificamente para a modalidade ativa
+    const isAlreadyCheckedForMod = isEquipmentChecked(targetItem, mod);
+
+    if (isAlreadyCheckedForMod) {
       if (soundEnabled) playWarningSound();
-      showToast('warning', `Equipamento já estava checado: ${targetItem.equipamento} (${targetItem.tag || targetItem.serie})`);
+      showToast('warning', `Equipamento já possui [${currentMod.shortName}] conferida: ${targetItem.equipamento} (${targetItem.tag || targetItem.serie})`);
       return {
         status: 'already_checked',
         equipment: targetItem,
         match: bestMatch,
-        message: `Já estava conferido: ${targetItem.equipamento}`
+        message: `Já conferido para ${currentMod.shortName}: ${targetItem.equipamento}`
       };
     }
 
-    // Mark as checked
+    // Mark as checked para a modalidade ativa
     if (soundEnabled) playSuccessSound();
 
     const inspector = currentUser?.name ? `${currentUser.name} (${currentUser.email})` : (currentUser?.email || 'Operador');
+    const nowIso = new Date().toISOString();
     const updated = [...equipments];
-    updated[targetIndex] = {
-      ...updated[targetIndex],
-      checado: true,
-      dataCheck: new Date().toISOString(),
-      conferidoPor: inspector
-    };
+    const copy = { ...updated[targetIndex] };
+
+    if (mod === 'preventiva') {
+      copy.check_preventiva = true;
+      copy.data_preventiva = nowIso;
+      copy.usuario_preventiva = inspector;
+    } else if (mod === 'seguranca') {
+      copy.check_seguranca = true;
+      copy.data_seguranca = nowIso;
+      copy.usuario_seguranca = inspector;
+    } else {
+      copy.check_calibracao = true;
+      copy.data_calibracao = nowIso;
+      copy.usuario_calibracao = inspector;
+    }
+
+    copy.checado = true;
+    copy.dataCheck = nowIso;
+    copy.conferidoPor = inspector;
+    updated[targetIndex] = copy;
 
     setEquipments(updated);
     const reasonLabel = bestMatch.isExact ? '100% Exato' : `${bestMatch.matchingDigits} dígitos iguais`;
-    showToast('success', `Check confirmado: ${targetItem.equipamento} (${targetItem.tag || targetItem.serie}) [${reasonLabel}]`);
+    showToast('success', `Check [${currentMod.shortName}] confirmado: ${targetItem.equipamento} (${targetItem.tag || targetItem.serie}) [${reasonLabel}]`);
 
-    await pushServerUpdate(updated, activeSheetName, `Check: ${targetItem.equipamento}`);
+    // Notifica backend
+    try {
+      fetch('/api/toggle-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: targetItem.id,
+          modality: mod,
+          hospitalId: activeHospitalId,
+          userEmail: currentUser?.email,
+          userName: currentUser?.name
+        })
+      }).then(res => res.json()).then(data => {
+        if (data.success && data.lastUpdated) {
+          lastUpdatedServerRef.current = data.lastUpdated;
+        }
+      }).catch(() => {});
+    } catch (e) {}
+
+    await pushServerUpdate(updated, activeSheetName, `Check [${currentMod.shortName}]: ${targetItem.equipamento}`);
 
     return {
       status: 'found',
       equipment: targetItem,
       match: bestMatch,
-      message: `Check OK: ${targetItem.equipamento}`
+      message: `Check [${currentMod.shortName}] OK: ${targetItem.equipamento}`
     };
   };
 
@@ -770,15 +865,16 @@ export default function App() {
     }
   };
 
-  // Export to Excel
+  // Export to Excel com suporte a multiequipes (todas as frentes)
   const handleExport = () => {
     if (equipments.length === 0) return;
     const dateStr = new Date().toISOString().split('T')[0];
     const hospSlug = (activeHospital?.name || 'calibracao').replace(/[^a-zA-Z0-9]/g, '_');
     const baseName = activeSheetName ? activeSheetName.replace(/\.[^/.]+$/, "") : hospSlug;
-    const fileName = `${baseName}_conferido_${dateStr}.xlsx`;
-    exportToExcel(equipments, fileName);
-    showToast('success', `Arquivo "${fileName}" baixado com sucesso!`);
+    const currentMod = MODALITIES[activeModality] || MODALITIES.calibracao;
+    const fileName = `${baseName}_multiequipes_${dateStr}.xlsx`;
+    exportToExcel(equipments, fileName, activeModality);
+    showToast('success', `Planilha completa multiequipes baixada com sucesso!`);
   };
 
   // Login handler
@@ -879,6 +975,8 @@ export default function App() {
         monthlyPlans={monthlyPlans}
         activePlanId={activePlanId}
         onSwitchPlan={handleSwitchPlan}
+        activeModality={activeModality}
+        onChangeModality={setActiveModality}
       />
 
       {/* Main Content Area */}
@@ -955,11 +1053,19 @@ export default function App() {
               </div>
             </div>
 
+            {/* Seletor de Frente de Trabalho / Equipes Técnicas */}
+            <ModalityBar
+              activeModality={activeModality}
+              onChangeModality={setActiveModality}
+              equipments={equipments}
+            />
+
             {/* Stats Cards & Progress */}
             <StatsCards
               stats={stats}
               activeFilter={activeFilter}
               onSelectFilter={setActiveFilter}
+              activeModality={activeModality}
             />
 
             {/* Equipment Table with Search & Scanner Bar (Mobile cards + Desktop table) */}
@@ -972,6 +1078,8 @@ export default function App() {
               lastScannedId={lastScannedId}
               onOpenSerialScan={() => setIsSerialScanOpen(true)}
               onTriggerMassAction={(action) => setMassActionModal({ isOpen: true, action })}
+              activeModality={activeModality}
+              onChangeModality={setActiveModality}
             />
 
           </div>
@@ -987,6 +1095,7 @@ export default function App() {
         onBatchCheck={handleBatchCheck}
         equipments={equipments}
         soundEnabled={soundEnabled}
+        activeModality={activeModality}
       />
 
       {/* Agente Digitalizador de Número de Série por Foto / OCR */}
@@ -998,6 +1107,7 @@ export default function App() {
         soundEnabled={soundEnabled}
         hospitalName={activeHospital?.name}
         planTitle={activeSheetName}
+        activeModality={activeModality}
       />
 
       {/* Modal de Confirmação com Senha para Ações em Massa (Marcar / Desmarcar Tudo) */}
@@ -1005,6 +1115,7 @@ export default function App() {
         isOpen={massActionModal.isOpen}
         onClose={() => setMassActionModal(prev => ({ ...prev, isOpen: false }))}
         action={massActionModal.action}
+        modality={activeModality}
         totalEquipments={equipments.length}
         hospitalName={activeHospital?.name}
         planTitle={activeSheetName}

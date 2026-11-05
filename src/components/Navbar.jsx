@@ -39,7 +39,9 @@ export default function Navbar({
   onChangeMainTab,
   monthlyPlans = [],
   activePlanId,
-  onSwitchPlan
+  onSwitchPlan,
+  activeModality = 'calibracao',
+  onChangeModality
 }) {
   const isMaster = currentUser?.role === 'master' || currentUser?.email?.toLowerCase() === 'digiclintec@gmail.com';
   const activeHospital = hospitals.find(h => h.id === activeHospitalId) || hospitals[0];
@@ -97,6 +99,23 @@ export default function Navbar({
                     🏥 {h.name}
                   </option>
                 ))}
+              </select>
+            </div>
+          )}
+
+          {/* Work Modality Selector (Equipes: Calibração / Preventiva / TSE) */}
+          {onChangeModality && (
+            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 sm:p-1.5 rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700/60 shrink min-w-0">
+              <select
+                value={activeModality || 'calibracao'}
+                onChange={(e) => onChangeModality(e.target.value)}
+                className="bg-transparent text-[11px] sm:text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer truncate"
+                title="Selecione sua frente de trabalho / equipe"
+              >
+                <option value="calibracao" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">🎯 Calibração</option>
+                <option value="preventiva" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">🔧 Preventiva</option>
+                <option value="seguranca" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">⚡ Seg. Elétrica</option>
+                <option value="geral" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">📋 Visão Integrada</option>
               </select>
             </div>
           )}

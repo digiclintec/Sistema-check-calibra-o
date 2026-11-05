@@ -1,8 +1,47 @@
 import React from 'react';
-import { CheckCircle2, Clock, AlertTriangle, Layers, Percent } from 'lucide-react';
+import { CheckCircle2, Clock, AlertTriangle, Layers, Percent, Target, Wrench, Zap, LayoutGrid } from 'lucide-react';
+import { MODALITIES } from '../utils/modalities';
 
-export default function StatsCards({ stats, activeFilter, onSelectFilter }) {
+export default function StatsCards({ stats, activeFilter, onSelectFilter, activeModality = 'calibracao' }) {
   const { total, checked, pending, expired, expiringSoon, percent } = stats;
+  const currentMod = MODALITIES[activeModality] || MODALITIES.calibracao;
+
+  const modalityLabels = {
+    calibracao: {
+      checkedTitle: 'Calibrações / OK',
+      checkedSubtext: `${percent}% da Calibração concluída`,
+      pendingTitle: 'Pendentes de Calibração',
+      pendingSubtext: 'Aguardando validação metrológica',
+      progressGradient: 'bg-gradient-to-r from-blue-600 to-indigo-500'
+    },
+    preventiva: {
+      checkedTitle: 'Preventivas / OK',
+      checkedSubtext: `${percent}% da Preventiva concluída`,
+      pendingTitle: 'Pendentes de Preventiva',
+      pendingSubtext: 'Aguardando manutenção preventiva',
+      progressGradient: 'bg-gradient-to-r from-emerald-600 to-teal-500'
+    },
+    seguranca: {
+      checkedTitle: 'Testes de Seg. / OK',
+      checkedSubtext: `${percent}% dos testes TSE realizados`,
+      pendingTitle: 'Pendentes de Teste Seg.',
+      pendingSubtext: 'Aguardando teste de segurança elétrica',
+      progressGradient: 'bg-gradient-to-r from-amber-600 to-orange-500'
+    },
+    geral: {
+      checkedTitle: '100% Concluídos (3 Frentes)',
+      checkedSubtext: `${percent}% com Calibração + Prev + Seg`,
+      pendingTitle: 'Pendentes em Alguma Frente',
+      pendingSubtext: 'Falta calibração, preventiva ou TSE',
+      progressGradient: 'bg-gradient-to-r from-indigo-600 to-purple-500'
+    }
+  }[activeModality] || {
+    checkedTitle: 'Checados / OK',
+    checkedSubtext: `${percent}% da meta concluída`,
+    pendingTitle: 'Pendentes de Bipagem',
+    pendingSubtext: 'Aguardando conferência',
+    progressGradient: 'bg-gradient-to-r from-blue-600 to-indigo-500'
+  };
 
   const cards = [
     {
@@ -19,11 +58,11 @@ export default function StatsCards({ stats, activeFilter, onSelectFilter }) {
     },
     {
       id: 'checados',
-      label: 'Checados / OK',
+      label: modalityLabels.checkedTitle,
       value: checked,
-      subtext: `${percent}% da meta concluída`,
+      subtext: modalityLabels.checkedSubtext,
       icon: CheckCircle2,
-      color: 'emerald',
+      color: activeModality === 'preventiva' ? 'emerald' : (activeModality === 'seguranca' ? 'amber' : 'blue'),
       borderColor: 'border-emerald-500/20',
       bgColor: 'bg-emerald-500/10',
       textColor: 'text-emerald-600 dark:text-emerald-400',
@@ -31,9 +70,9 @@ export default function StatsCards({ stats, activeFilter, onSelectFilter }) {
     },
     {
       id: 'pendentes',
-      label: 'Pendentes de Bipagem',
+      label: modalityLabels.pendingTitle,
       value: pending,
-      subtext: 'Aguardando conferência',
+      subtext: modalityLabels.pendingSubtext,
       icon: Clock,
       color: 'amber',
       borderColor: 'border-amber-500/20',
@@ -62,7 +101,7 @@ export default function StatsCards({ stats, activeFilter, onSelectFilter }) {
         <div className="flex items-center justify-between gap-1.5 mb-2 flex-wrap">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Progresso
+              Progresso ({currentMod.shortName})
             </span>
             <span className="text-[11px] sm:text-xs px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 font-semibold font-mono">
               {checked} de {total} itens
@@ -79,7 +118,7 @@ export default function StatsCards({ stats, activeFilter, onSelectFilter }) {
             className={`h-full rounded-full transition-all duration-500 ease-out ${
               percent === 100
                 ? 'bg-gradient-to-r from-emerald-500 to-teal-400'
-                : 'bg-gradient-to-r from-blue-600 to-indigo-500'
+                : modalityLabels.progressGradient
             }`}
             style={{ width: `${percent}%` }}
           ></div>
