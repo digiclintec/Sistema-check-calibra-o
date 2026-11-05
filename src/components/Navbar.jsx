@@ -16,7 +16,8 @@ import {
   FileCheck,
   ShieldCheck,
   PlusCircle,
-  MoreVertical
+  MoreVertical,
+  Check
 } from 'lucide-react';
 
 export default function Navbar({ 
@@ -64,9 +65,9 @@ export default function Navbar({
   }, [showMoreMenu]);
 
   return (
-    <header className="sticky top-0 z-40 bg-white/90 dark:bg-[#0c1322]/90 backdrop-blur-xl border-b border-slate-200/80 dark:border-slate-800/80 w-full transition-colors select-none">
+    <header className="sticky top-0 z-40 bg-white/95 dark:bg-[#0c1322]/95 backdrop-blur-xl border-b border-slate-200/80 dark:border-slate-800/80 w-full transition-colors select-none">
       <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
-        <div className="flex items-center justify-between h-14 sm:h-16 gap-1.5 sm:gap-3">
+        <div className="flex items-center justify-between h-14 sm:h-16 gap-2 sm:gap-4">
           
           {/* ============================================================
               ZONA 1 (ESQUERDA): Logo + Seletor Firme de Hospital
@@ -78,16 +79,16 @@ export default function Navbar({
                 <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.5]" />
               </div>
               <div className="shrink-0">
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1 sm:gap-1.5">
                   <h1 className="text-xs sm:text-base font-black text-slate-900 dark:text-white tracking-tight leading-none">
                     Calibra<span className="text-blue-600 dark:text-blue-400">Check</span>
                   </h1>
-                  <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-950/80 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60 hidden sm:inline-flex items-center gap-1">
+                  <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-950/80 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60 hidden xl:inline-flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
                     Online
                   </span>
                 </div>
-                <p className="text-[9px] text-slate-400 dark:text-slate-500 font-semibold tracking-wide hidden xs:block">
+                <p className="text-[9px] text-slate-400 dark:text-slate-500 font-semibold tracking-wide hidden sm:block">
                   Digiclintec
                 </p>
               </div>
@@ -96,8 +97,8 @@ export default function Navbar({
             {/* Separador vertical sutil */}
             <div className="h-5 w-px bg-slate-200 dark:bg-slate-800 hidden md:block shrink-0"></div>
 
-            {/* Hospital Selector Pill (Com largura fluida e sem estourar layout) */}
-            <div className="flex items-center bg-slate-100/90 dark:bg-slate-800/80 hover:bg-slate-200/70 dark:hover:bg-slate-700/60 pl-2 pr-1 py-1 rounded-xl border border-slate-200/90 dark:border-slate-700/80 transition shadow-sm min-w-[110px] max-w-[170px] sm:max-w-[210px] lg:max-w-[230px] shrink">
+            {/* Hospital Selector Pill (Com largura fluida, truncagem inteligente e sem sobreposição) */}
+            <div className="flex items-center bg-slate-100/90 dark:bg-slate-800/80 hover:bg-slate-200/70 dark:hover:bg-slate-700/60 pl-2 pr-1 py-1 rounded-xl border border-slate-200/90 dark:border-slate-700/80 transition shadow-sm min-w-0 max-w-[125px] xs:max-w-[160px] sm:max-w-[210px] lg:max-w-[240px] shrink">
               <Building2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
               
               <div className="flex-1 min-w-0 mx-1">
@@ -143,13 +144,13 @@ export default function Navbar({
           </div>
 
           {/* ============================================================
-              ZONA 2 (CENTRO): Abas de Navegação (Conferência / Espelho / Planejamento)
+              ZONA 2 (CENTRO): Abas de Navegação (Desktop Grande lg+)
           ============================================================ */}
           {onChangeMainTab && (
-            <div className="hidden md:flex items-center gap-1 bg-slate-100/90 dark:bg-slate-800/70 p-1 rounded-2xl border border-slate-200/90 dark:border-slate-700/70 shadow-inner shrink-0">
+            <nav className="hidden lg:flex items-center gap-1 bg-slate-100/90 dark:bg-slate-800/70 p-1 rounded-2xl border border-slate-200/90 dark:border-slate-700/70 shadow-inner shrink-0">
               <button
                 onClick={() => onChangeMainTab('conferencia')}
-                className={`px-2.5 xl:px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
                   activeMainTab === 'conferencia'
                     ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25 ring-1 ring-blue-500'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-slate-700/40'
@@ -157,13 +158,12 @@ export default function Navbar({
                 title="Conferência de Equipamentos e Bipagem"
               >
                 <FileCheck className="w-3.5 h-3.5" />
-                <span className="hidden xl:inline">Conferência</span>
-                <span className="xl:hidden">Conf.</span>
+                <span>Conferência</span>
               </button>
 
               <button
                 onClick={() => onChangeMainTab('auditoria')}
-                className={`px-2.5 xl:px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
                   activeMainTab === 'auditoria'
                     ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/25 ring-1 ring-emerald-500'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-slate-700/40'
@@ -171,13 +171,12 @@ export default function Navbar({
                 title="Espelho Seguro da planilha e Espelho de Ponto da Equipe"
               >
                 <ShieldCheck className="w-3.5 h-3.5" />
-                <span className="hidden xl:inline">Espelho Seguro</span>
-                <span className="xl:hidden">Espelho</span>
+                <span>Espelho Seguro</span>
               </button>
 
               <button
                 onClick={() => onChangeMainTab('planejamento')}
-                className={`px-2.5 xl:px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
                   activeMainTab === 'planejamento'
                     ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/25 ring-1 ring-indigo-500'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-slate-700/40'
@@ -185,8 +184,7 @@ export default function Navbar({
                 title="Planejamento de Cronogramas e Metas Mensais"
               >
                 <Calendar className="w-3.5 h-3.5" />
-                <span className="hidden xl:inline">Planejamento</span>
-                <span className="xl:hidden">Planos</span>
+                <span>Planejamento</span>
                 {monthlyPlans.length > 0 && (
                   <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
                     activeMainTab === 'planejamento' ? 'bg-white/25 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
@@ -195,92 +193,79 @@ export default function Navbar({
                   </span>
                 )}
               </button>
-            </div>
+            </nav>
           )}
 
           {/* ============================================================
-              ZONA 3 (DIREITA): Ações Rápidas, Menu e Perfil
+              ZONA 3 (DIREITA): Ações Rápidas, Navegação Compacta e Menu
           ============================================================ */}
-          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             
-            {/* Mobile Navigation Toggles (< 768px) */}
+            {/* Seletor Compacto de Abas para Telas Menores (< lg: 1024px) */}
             {onChangeMainTab && (
-              <div className="flex md:hidden items-center gap-1">
+              <div className="flex lg:hidden items-center bg-slate-100/90 dark:bg-slate-800/80 p-0.5 rounded-xl border border-slate-200/80 dark:border-slate-700/80 shrink-0">
                 <button
-                  onClick={() => onChangeMainTab(activeMainTab === 'auditoria' ? 'conferencia' : 'auditoria')}
-                  className={`p-1.5 rounded-xl border text-[11px] font-bold transition ${
-                    activeMainTab === 'auditoria'
-                      ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                  onClick={() => onChangeMainTab('conferencia')}
+                  className={`p-1.5 sm:px-2.5 sm:py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+                    activeMainTab === 'conferencia'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                   }`}
-                  title="Espelho Seguro da Planilha"
+                  title="Conferência de Equipamentos"
                 >
-                  <ShieldCheck className="w-4 h-4" />
+                  <FileCheck className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Conf.</span>
                 </button>
 
                 <button
-                  onClick={() => onChangeMainTab(activeMainTab === 'planejamento' ? 'conferencia' : 'planejamento')}
-                  className={`p-1.5 rounded-xl border text-[11px] font-bold transition ${
-                    activeMainTab === 'planejamento'
-                      ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                  onClick={() => onChangeMainTab('auditoria')}
+                  className={`p-1.5 sm:px-2.5 sm:py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+                    activeMainTab === 'auditoria'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                   }`}
-                  title="Planejamento do Mês"
+                  title="Espelho Seguro da Planilha"
                 >
-                  <Calendar className="w-4 h-4" />
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Espelho</span>
+                </button>
+
+                <button
+                  onClick={() => onChangeMainTab('planejamento')}
+                  className={`p-1.5 sm:px-2.5 sm:py-1 rounded-lg text-xs font-bold transition relative flex items-center gap-1 ${
+                    activeMainTab === 'planejamento'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                  title="Planejamento Mensal"
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Planos</span>
+                  {monthlyPlans.length > 0 && (
+                    <span className={`text-[9px] px-1 py-0.2 rounded-full font-black ${
+                      activeMainTab === 'planejamento' ? 'bg-white/30 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                    }`}>
+                      {monthlyPlans.length}
+                    </span>
+                  )}
                 </button>
               </div>
             )}
 
-            {/* Equipe & Trabalhos (Audit & Users) */}
+            {/* Equipe & Trabalhos (visível a partir de sm: 640px) */}
             <button
               onClick={onOpenTeamModal}
-              className="flex items-center gap-1 px-2 py-1.5 sm:px-2.5 sm:py-2 rounded-xl text-xs font-bold bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/25 transition shadow-sm"
+              className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/25 transition shadow-sm shrink-0"
               title="Gerenciar usuários da equipe e auditar todos os trabalhos e pontos realizados"
             >
-              <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-500 shrink-0" />
-              <span className="hidden 2xl:inline">Equipe & Trabalhos</span>
-              <span className="hidden md:inline 2xl:hidden">Equipe</span>
+              <Users className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+              <span className="hidden xl:inline">Equipe</span>
             </button>
 
-            {/* Painel Master (visível direto em telas muito largas 2xl+) */}
-            {isMaster && (
-              <button
-                onClick={onOpenMasterPanel}
-                className="hidden 2xl:flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl text-xs font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 transition shadow-sm"
-                title="Painel Master para gerenciar cadastros de hospitais e operadores"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                <span>Master</span>
-              </button>
-            )}
-
-            {/* Baixar APK (visível direto em telas 2xl+) */}
-            <button
-              onClick={onOpenInstall}
-              className="hidden 2xl:flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl text-xs font-bold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 transition shadow-sm"
-              title="Baixar instalador APK para Android ou instalar aplicativo"
-            >
-              <Smartphone className="w-3.5 h-3.5 text-emerald-500" />
-              <span>Baixar App</span>
-            </button>
-
-            {/* Exportar Excel (visível direto em telas 2xl+) */}
-            {hasData && (
-              <button
-                onClick={onExportExcel}
-                className="hidden 2xl:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-white shadow-sm transition"
-                title="Exportar planilha atualizada com as checagens e cores dos setores"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Exportar</span>
-              </button>
-            )}
-
-            {/* Alternador de Sons */}
+            {/* Alternador de Sons (visível a partir de sm: 640px) */}
             <button
               onClick={() => setSoundEnabled(!soundEnabled)}
-              className="p-1.5 sm:p-2 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition"
+              className="hidden sm:flex p-1.5 sm:p-2 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition shrink-0"
               title={soundEnabled ? "Desativar sons de bipagem" : "Ativar sons de bipagem"}
             >
               {soundEnabled ? (
@@ -290,31 +275,146 @@ export default function Navbar({
               )}
             </button>
 
-            {/* Botão Principal: Ler Código (Desktop / Tablet) */}
+            {/* Botão Ler Código (visível em tablet/desktop md+) */}
             <button
               onClick={onOpenScanner}
-              className="hidden sm:flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-bold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-md shadow-blue-500/25 transition active:scale-95 shrink-0"
+              className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-md shadow-blue-500/25 transition active:scale-95 shrink-0"
               title="Abrir leitor de código de barras ou QR Code"
             >
-              <Camera className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
-              <span className="hidden md:inline">Ler Código</span>
-              <span className="md:hidden">Ler</span>
+              <Camera className="w-3.5 h-3.5" />
+              <span>Ler Código</span>
             </button>
 
-            {/* Menu "Mais Opções" (Dropdown unificado para telas < 2xl) */}
-            <div className="relative" ref={moreMenuRef}>
+            {/* Menu "Mais Opções" (Dropdown Unificado e Organizado) */}
+            <div className="relative shrink-0" ref={moreMenuRef}>
               <button
                 onClick={() => setShowMoreMenu(!showMoreMenu)}
-                className="2xl:hidden p-1.5 sm:p-2 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition"
-                title="Mais opções e ferramentas"
+                className="p-1.5 sm:p-2 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition"
+                title="Mais opções, módulos e ferramentas"
               >
                 <MoreVertical className="w-4 h-4" />
               </button>
 
               {showMoreMenu && (
-                <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1">
-                    Ferramentas & Ações
+                <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                  
+                  {/* Seção 1: Navegação de Telas */}
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2.5 py-1">
+                    Navegação do Sistema
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setShowMoreMenu(false);
+                      if (onChangeMainTab) onChangeMainTab('conferencia');
+                    }}
+                    className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold transition ${
+                      activeMainTab === 'conferencia'
+                        ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 font-bold'
+                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <FileCheck className="w-4 h-4 text-blue-500" />
+                      <span>Conferência de Bombas</span>
+                    </div>
+                    {activeMainTab === 'conferencia' && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowMoreMenu(false);
+                      if (onChangeMainTab) onChangeMainTab('auditoria');
+                    }}
+                    className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold transition ${
+                      activeMainTab === 'auditoria'
+                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 font-bold'
+                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                      <span>Espelho Seguro da Planilha</span>
+                    </div>
+                    {activeMainTab === 'auditoria' && <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />}
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowMoreMenu(false);
+                      if (onChangeMainTab) onChangeMainTab('planejamento');
+                    }}
+                    className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold transition ${
+                      activeMainTab === 'planejamento'
+                        ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 font-bold'
+                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-indigo-500" />
+                      <span>Planejamento & Metas</span>
+                    </div>
+                    {activeMainTab === 'planejamento' && <Check className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />}
+                  </button>
+
+                  <div className="h-px bg-slate-100 dark:bg-slate-800 my-1.5"></div>
+
+                  {/* Seção 2: Equipe & Administração */}
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2.5 py-1">
+                    Equipe & Administração
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setShowMoreMenu(false);
+                      if (onOpenTeamModal) onOpenTeamModal();
+                    }}
+                    className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-950/40 hover:text-blue-600 transition"
+                  >
+                    <Users className="w-4 h-4 text-blue-500" />
+                    <span>Equipe & Trabalhos Realizados</span>
+                  </button>
+
+                  {isMaster && (
+                    <button
+                      onClick={() => {
+                        setShowMoreMenu(false);
+                        if (onOpenMasterPanel) onOpenMasterPanel();
+                      }}
+                      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-amber-50 dark:hover:bg-amber-950/40 hover:text-amber-500 transition"
+                    >
+                      <Sparkles className="w-4 h-4 text-amber-500" />
+                      <span>Painel Master Digiclintec</span>
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => {
+                      setShowMoreMenu(false);
+                      if (onOpenHospitalModal) onOpenHospitalModal('create');
+                    }}
+                    className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:text-indigo-600 transition"
+                  >
+                    <Building2 className="w-4 h-4 text-indigo-500" />
+                    <span>Cadastrar Novo Hospital</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowMoreMenu(false);
+                      if (onOpenHospitalModal) onOpenHospitalModal('list');
+                    }}
+                    className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                  >
+                    <Building2 className="w-4 h-4 text-slate-400" />
+                    <span>Gerenciar Unidades</span>
+                  </button>
+
+                  <div className="h-px bg-slate-100 dark:bg-slate-800 my-1.5"></div>
+
+                  {/* Seção 3: Ações e Ferramentas */}
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2.5 py-1">
+                    Ferramentas
                   </div>
 
                   <button
@@ -341,31 +441,42 @@ export default function Navbar({
                     </button>
                   )}
 
-                  {isMaster && (
-                    <button
-                      onClick={() => {
-                        setShowMoreMenu(false);
-                        if (onOpenMasterPanel) onOpenMasterPanel();
-                      }}
-                      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-amber-50 dark:hover:bg-amber-950/40 hover:text-amber-500 transition"
-                    >
-                      <Sparkles className="w-4 h-4 text-amber-500" />
-                      <span>Painel Master Digiclintec</span>
-                    </button>
-                  )}
-
+                  {/* Toggle de Som direto no menu */}
                   <button
-                    onClick={() => {
-                      setShowMoreMenu(false);
-                      if (onOpenHospitalModal) onOpenHospitalModal('create');
-                    }}
-                    className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:text-indigo-600 transition"
+                    onClick={() => setSoundEnabled(!soundEnabled)}
+                    className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
                   >
-                    <Building2 className="w-4 h-4 text-indigo-500" />
-                    <span>Cadastrar Novo Hospital</span>
+                    <div className="flex items-center gap-2.5">
+                      {soundEnabled ? (
+                        <Volume2 className="w-4 h-4 text-emerald-500" />
+                      ) : (
+                        <VolumeX className="w-4 h-4 text-slate-400" />
+                      )}
+                      <span>Sons de Bipagem</span>
+                    </div>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
+                      soundEnabled 
+                        ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400' 
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                    }`}>
+                      {soundEnabled ? 'Ativado' : 'Mudo'}
+                    </span>
                   </button>
 
-                  <div className="h-px bg-slate-100 dark:bg-slate-800 my-1"></div>
+                  <div className="h-px bg-slate-100 dark:bg-slate-800 my-1.5"></div>
+
+                  {/* Seção 4: Conta & Desconexão */}
+                  {currentUser && (
+                    <div className="px-2.5 py-1.5 mb-1 bg-slate-50 dark:bg-slate-800/60 rounded-xl">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
+                        {isMaster && <Crown className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
+                        <span className="truncate">{currentUser.name || 'Digiclintec'}</span>
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-mono truncate">
+                        {currentUser.email}
+                      </div>
+                    </div>
+                  )}
 
                   <button
                     onClick={() => {
@@ -381,19 +492,9 @@ export default function Navbar({
               )}
             </div>
 
-            {/* Perfil do Usuário e Logout */}
+            {/* Perfil do Usuário e Logout (visível em tablet/desktop sm+) */}
             {currentUser && (
-              <div className="flex items-center gap-1.5 sm:gap-2 pl-1 sm:pl-2 border-l border-slate-200 dark:border-slate-800 shrink-0">
-                <div className="hidden 2xl:flex flex-col text-right">
-                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate max-w-[130px] flex items-center justify-end gap-1">
-                    {isMaster && <Crown className="w-3 h-3 text-amber-500 shrink-0" />}
-                    {currentUser.name || 'Digiclintec'}
-                  </span>
-                  <span className="text-[10px] text-slate-400 font-mono truncate max-w-[130px]">
-                    {currentUser.email}
-                  </span>
-                </div>
-
+              <div className="hidden sm:flex items-center gap-1.5 pl-1.5 border-l border-slate-200 dark:border-slate-800 shrink-0">
                 <div 
                   className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center font-bold text-xs text-slate-700 dark:text-slate-200 shrink-0"
                   title={`${currentUser.name || 'Usuário'} (${currentUser.email || ''})`}
