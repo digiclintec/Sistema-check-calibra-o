@@ -393,7 +393,7 @@ export default function ScannerModal({
   const nativeDetectorRafRef = useRef(null);
   const isStartingRef = useRef(false);
 
-  // Inicializa câmera ao abrir o modal
+  // Inicializa câmera ao abrir o modal com descoberta inteligente de hardware
   useEffect(() => {
     if (!isOpen) {
       stopScanner();
@@ -404,16 +404,64 @@ export default function ScannerModal({
     setCameraError('');
     setLastScannedFeedback(null);
     setFocusRing({ x: 0, y: 0, visible: false, status: 'idle' });
-    setZoomLevel(1);
+    setZoomLevel(1.0);
 
-    // Limpa qualquer chave antiga salva que possa ter ficado presa na câmera frontal
-    try {
-      localStorage.removeItem('calibracheck_preferred_camera');
-    } catch (e) {}
+    const initCamerasAndStart = async () => {
+      try {
+        let savedCam = null;
+        try {
+          savedCam = localStorage.getItem('calibracheck_preferred_camera_v2');
+        } catch (e) {}
 
-    // Sempre inicia na CÂMERA TRASEIRA (facingMode: environment)
-    // Isso garante que NUNCA abre a câmera frontal (selfie) por engano!
-    startScanner(null);
+        // 1. Enumera e descobre todas as lentes físicas do smartphone
+        let detected = [];
+        try {
+          detected = await Html5Qrcode.getCameras();
+        } catch (e) {
+          if (navigator.mediaDevices?.enumerateDevices) {
+            const rawDevs = await navigator.mediaDevices.enumerateDevices();
+            detected = rawDevs.filter(d => d.kind === 'videoinput');
+          }
+        }
+
+        if (!isMounted) return;
+
+        const normalized = (detected || []).map((c, i) => ({
+          id: c.id || c.deviceId || `cam-${i}`,
+          deviceId: c.id || c.deviceId || `cam-${i}`,
+          label: c.label || ''
+        }));
+
+        if (normalized.length > 0) {
+          setCameras(normalized);
+        }
+
+        // 2. Seleciona inteligentemente a Lente Principal 50MP com Autofoco de Perto (ignora a Ultra-Wide fixa)
+        let targetCam = null;
+        if (savedCam) {
+          targetCam = normalized.find(c => c.id === savedCam || c.deviceId === savedCam);
+        }
+        if (!targetCam) {
+          targetCam = selectBestRearAutofocusCamera(normalized);
+        }
+
+        const targetId = targetCam ? targetCam.id : null;
+
+        if (targetId) {
+          setSelectedCamera(targetId);
+          await startScanner(targetId);
+        } else {
+          await startScanner(null);
+        }
+      } catch (err) {
+        console.warn('Erro ao inicializar câmeras no startup:', err);
+        if (isMounted) {
+          await startScanner(null);
+        }
+      }
+    };
+
+    initCamerasAndStart();
 
     return () => {
       isMounted = false;
@@ -429,8 +477,8 @@ export default function ScannerModal({
 
     await stopScanner(true);
 
-    // Pausa preventiva de 100ms para liberação completa do hardware da câmera no mobile
-    await new Promise(r => setTimeout(r, 100));
+    // Pausa preventiva de 120ms para liberação completa do hardware da câmera no mobile
+    await new Promise(r => setTimeout(r, 120));
 
     // Garante que o elemento DOM do visualizador já está presente
     for (let i = 0; i < 8; i++) {
@@ -449,16 +497,15 @@ export default function ScannerModal({
       html5QrCodeRef.current = html5QrCode;
 
       // Restrições de vídeo com TROCA FÍSICA GARANTIDA no Android Camera2 (Samsung, Motorola, Xiaomi):
-      // Nível 0: deviceId EXATO com resolução ideal 1080p (sem min/max rígidos para evitar OverconstrainedError)
-      // Nível 1: deviceId EXATO puro (resolução nativa do sensor da câmera sem restrições)
-      // Nível 2: deviceId flexível como fallback suave
+      // Full HD 1080p nativo no sensor de 50MP para máxima nitidez de números e barras de perto
       let videoConstraints;
       if (cameraId) {
         if (retryCount === 0) {
           videoConstraints = {
             deviceId: { exact: cameraId },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 }
+            width: { ideal: 1920, min: 1280 },
+            height: { ideal: 1080, min: 720 },
+            frameRate: { ideal: 30, max: 60 }
           };
         } else if (retryCount === 1) {
           videoConstraints = {
@@ -474,8 +521,9 @@ export default function ScannerModal({
       } else {
         videoConstraints = {
           facingMode: "environment",
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
+          width: { ideal: 1920, min: 1280 },
+          height: { ideal: 1080, min: 720 },
+          frameRate: { ideal: 30, max: 60 }
         };
       }
 
@@ -515,26 +563,32 @@ export default function ScannerModal({
       setCameraError('');
       isStartingRef.current = false;
 
-      // Atualiza lista de câmeras conectadas caso ainda não carregadas
-      if (navigator.mediaDevices?.enumerateDevices) {
-        navigator.mediaDevices.enumerateDevices()
-          .then((devices) => {
-            const videoDevices = devices.filter(d => d.kind === 'videoinput');
-            if (videoDevices.length > 0) {
-              setCameras(videoDevices);
-              setSelectedCamera(prev => {
-                if (prev) return prev;
-                const stream = document.querySelector('#barcode-reader-box video')?.srcObject;
-                const activeTrack = stream?.getVideoTracks()?.[0];
-                const activeId = activeTrack?.getSettings?.()?.deviceId;
-                if (activeId) return activeId;
-                const rear = videoDevices.find(d => !isFrontCamera(d.label)) || videoDevices[0];
-                return rear.id;
-              });
-            }
-          })
-          .catch(() => {});
-      }
+      // Atualiza e normaliza lista de câmeras conectadas
+      try {
+        let devs = [];
+        try {
+          devs = await Html5Qrcode.getCameras();
+        } catch (e) {
+          if (navigator.mediaDevices?.enumerateDevices) {
+            const r = await navigator.mediaDevices.enumerateDevices();
+            devs = r.filter(d => d.kind === 'videoinput');
+          }
+        }
+        if (devs && devs.length > 0) {
+          const normalized = devs.map((c, i) => ({
+            id: c.id || c.deviceId || `cam-${i}`,
+            deviceId: c.id || c.deviceId || `cam-${i}`,
+            label: c.label || ''
+          }));
+          setCameras(normalized);
+          if (cameraId) {
+            setSelectedCamera(cameraId);
+          } else {
+            const best = selectBestRearAutofocusCamera(normalized);
+            if (best) setSelectedCamera(best.id);
+          }
+        }
+      } catch (e) {}
 
       // ESTRUTURA GOOGLE ML KIT (Android Chrome / Google Play Services Engine):
       // Leitura automática contínua em tempo real (como no tablet)
@@ -652,7 +706,7 @@ export default function ScannerModal({
     }
   };
 
-  // Calibração e ativação do Autofoco Contínuo e Exposição na trilha ativa
+  // Calibração e ativação do Autofoco Contínuo e Foco de Perto (50MP Nativo)
   const setupTrackFocusAndQuality = async () => {
     try {
       const videoEl = document.querySelector('#barcode-reader-box video');
@@ -673,9 +727,15 @@ export default function ScannerModal({
         setHasTorch(true);
       }
 
+      // GARANTE IMAGEM NATIVA 1.0x SEM QUALQUER ZOOM DIGITAL ARTIFICIAL
+      if (videoEl) {
+        videoEl.style.transform = 'none';
+      }
+      setZoomLevel(1.0);
+
       const advanced = [];
 
-      // 1. Autofoco contínuo no hardware
+      // 1. Autofoco contínuo no hardware da lente principal
       if (caps.focusMode && caps.focusMode.includes('continuous')) {
         advanced.push({ focusMode: 'continuous' });
       }
@@ -690,20 +750,20 @@ export default function ScannerModal({
         advanced.push({ whiteBalanceMode: 'continuous' });
       }
 
+      // 4. MODO MACRO / FOCO DE PERTO (5-15cm): se o driver suportar distância mínima de foco
+      if (caps.focusDistance) {
+        const macroDist = caps.focusDistance.min ?? 0.1;
+        advanced.push({ focusDistance: macroDist });
+      }
+
       if (advanced.length > 0) {
         try {
           await track.applyConstraints({ advanced });
-          console.log('[Camera] Autofoco contínuo e exposição calibrados.');
+          console.log('[Camera] Autofoco contínuo e modo macro de perto calibrados.');
         } catch (e) {
           console.warn('[Camera] Falha ao aplicar constraints avançadas no track:', e);
         }
       }
-
-      // 4. PADRÃO DO APP PROFISSIONAL (com.smmservice.barcode):
-      // Força a Lente Principal (1.5x) para nunca usar a câmera ultra-wide afastada!
-      setTimeout(async () => {
-        await applyOpticalLensZoom(1.5, 'silent');
-      }, 100);
     } catch (err) {
       console.warn('[Camera] Erro na calibração inicial do track:', err);
     }
@@ -743,7 +803,7 @@ export default function ScannerModal({
     setTorchOn(false);
   };
 
-  // Função central para forçar o foco de hardware da câmera
+  // Função central para forçar o foco de hardware da câmera (Macro / Close-up)
   const applyHardwareFocus = async (relX, relY) => {
     try {
       const videoEl = document.querySelector('#barcode-reader-box video');
@@ -762,7 +822,7 @@ export default function ScannerModal({
           } catch (e) {}
         }
 
-        // 2. Dispara ciclo de foco no motor da lente
+        // 2. Dispara ciclo de foco no motor da lente com prioridade para foco de perto (macro)
         if (caps.focusMode) {
           try {
             if (caps.focusMode.includes('single-shot')) {
@@ -770,12 +830,20 @@ export default function ScannerModal({
               setTimeout(async () => {
                 try {
                   if (caps.focusMode.includes('continuous')) {
-                    await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+                    const adv = [{ focusMode: 'continuous' }];
+                    if (caps.focusDistance) {
+                      adv[0].focusDistance = caps.focusDistance.min ?? 0.1;
+                    }
+                    await track.applyConstraints({ advanced: adv });
                   }
                 } catch (e) {}
-              }, 400);
+              }, 300);
             } else if (caps.focusMode.includes('continuous')) {
-              await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+              const adv = [{ focusMode: 'continuous' }];
+              if (caps.focusDistance) {
+                adv[0].focusDistance = caps.focusDistance.min ?? 0.1;
+              }
+              await track.applyConstraints({ advanced: adv });
             }
           } catch (e) {}
         }
@@ -933,13 +1001,13 @@ export default function ScannerModal({
   const handleCameraChange = async (camId) => {
     if (!camId || isStartingRef.current) return;
     setSelectedCamera(camId);
-    if (camId) {
-      try {
-        localStorage.setItem('calibracheck_preferred_camera', camId);
-      } catch (e) {}
-    }
-    const idx = cameras.findIndex(c => c.id === camId);
-    const friendly = idx >= 0 ? getFriendlyCameraLabel(cameras[idx], idx, cameras.length) : 'Lente Selecionada';
+    try {
+      localStorage.setItem('calibracheck_preferred_camera_v2', camId);
+    } catch (e) {}
+
+    const idx = cameras.findIndex(c => (c.id === camId || c.deviceId === camId));
+    const targetCam = idx >= 0 ? cameras[idx] : { id: camId, label: '' };
+    const friendly = getFriendlyCameraLabel(targetCam, idx >= 0 ? idx : 0, cameras.length);
     
     try {
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
@@ -951,7 +1019,7 @@ export default function ScannerModal({
 
     // Para completamente a câmera anterior e libera a trilha de hardware
     await stopScanner(true);
-    setZoomLevel(1);
+    setZoomLevel(1.0);
     const videoEl = document.querySelector('#barcode-reader-box video');
     if (videoEl) {
       videoEl.style.transform = 'none';
@@ -963,8 +1031,8 @@ export default function ScannerModal({
       }
     }
 
-    // Intervalo de segurança (350ms) para o driver do Android Camera2 liberar fisicamente o sensor
-    await new Promise(r => setTimeout(r, 350));
+    // Intervalo de segurança (300ms) para o driver do Android Camera2 liberar fisicamente o sensor
+    await new Promise(r => setTimeout(r, 300));
 
     // Inicia a nova câmera física escolhida com deviceId exato
     await startScanner(camId);
@@ -972,17 +1040,18 @@ export default function ScannerModal({
     setTimeout(() => setFocusFeedbackText(''), 2500);
   };
 
-  // Troca de câmera real: alterna entre todos os sensores físicos disponíveis (Traseira 1 -> Traseira 2 -> Frontal)
+  // Troca de câmera real: alterna entre todos os sensores físicos disponíveis (50MP Principal <-> Ultra-Wide <-> Frontal)
   const handleCycleLensOrCamera = async () => {
     if (isStartingRef.current || !cameras || cameras.length === 0) return;
 
     // Se temos mais de 1 câmera física detectada (múltiplas traseiras ou traseira + frontal):
     if (cameras.length > 1) {
-      const currentIndex = cameras.findIndex(c => c.id === selectedCamera);
+      const currentIndex = cameras.findIndex(c => (c.id === selectedCamera || c.deviceId === selectedCamera));
       const nextIndex = (currentIndex + 1) % cameras.length;
       const nextCam = cameras[nextIndex];
-      if (nextCam) {
-        await handleCameraChange(nextCam.id);
+      const targetId = nextCam ? (nextCam.id || nextCam.deviceId) : null;
+      if (targetId) {
+        await handleCameraChange(targetId);
         return;
       }
     }
@@ -1801,8 +1870,8 @@ export default function ScannerModal({
 
           {/* Barra Superior Unificada do Viewfinder: NÃO SOBREPÕE */}
           <div className="absolute top-2.5 left-2.5 right-2.5 z-20 flex items-center justify-between gap-1.5 pointer-events-auto" onClick={e => e.stopPropagation()}>
-            {/* Controles da Esquerda: Alternador 1D/2D e Troca Física de Câmera */}
-            <div className="flex items-center gap-1.5 min-w-0">
+            {/* Controles da Esquerda: Alternador 1D/2D e Seleção Direta de Lente Física (50MP vs 0.5x) */}
+            <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
               <button
                 type="button"
                 onClick={() => setReticleType(r => r === '1d' ? '2d' : '1d')}
@@ -1817,25 +1886,51 @@ export default function ScannerModal({
                 <span>{reticleType === '1d' ? '1D Laser' : '2D QR'}</span>
               </button>
 
-              <button
-                type="button"
-                onClick={handleCycleLensOrCamera}
-                className="px-2.5 py-1 rounded-full text-[11px] font-black flex items-center gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white border border-blue-400/80 shadow-lg shadow-blue-500/30 transition active:scale-95 truncate max-w-[150px]"
-                title="Toque para alternar fisicamente para outra câmera do celular"
-              >
-                <SwitchCamera className="w-3.5 h-3.5 text-white shrink-0" />
-                <span className="truncate">{currentLensDisplay}</span>
-              </button>
+              {/* Seletor Rápido de Lentes Físicas do Aparelho (50MP Principal vs Ultra-Wide) */}
+              {cameras && cameras.length > 1 ? (
+                <div className="flex items-center gap-1 bg-slate-950/90 p-0.5 rounded-full border border-slate-700/80 shadow-md">
+                  {cameras.map((cam, idx) => {
+                    const isSel = (cam.id === selectedCamera || cam.deviceId === selectedCamera);
+                    const shortName = getShortLensName(cam, idx);
+                    return (
+                      <button
+                        key={cam.id || cam.deviceId || idx}
+                        type="button"
+                        onClick={() => handleCameraChange(cam.id || cam.deviceId)}
+                        className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition flex items-center gap-1 shrink-0 ${
+                          isSel
+                            ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-300 font-extrabold'
+                            : 'text-slate-300 hover:text-white'
+                        }`}
+                        title={getFriendlyCameraLabel(cam, idx, cameras.length)}
+                      >
+                        <span>{shortName}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleCycleLensOrCamera}
+                  className="px-2.5 py-1 rounded-full text-[11px] font-black flex items-center gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white border border-blue-400/80 shadow-lg shadow-blue-500/30 transition active:scale-95 truncate max-w-[150px]"
+                  title="Toque para alternar fisicamente para outra câmera do celular"
+                >
+                  <SwitchCamera className="w-3.5 h-3.5 text-white shrink-0" />
+                  <span className="truncate">{currentLensDisplay}</span>
+                </button>
+              )}
             </div>
 
-            {/* Controles da Direita: Foco e Lanterna */}
+            {/* Controles da Direita: Foco de Perto (Macro) e Lanterna */}
             <div className="flex items-center gap-1 shrink-0">
               <button
                 onClick={handleTriggerCenterFocus}
-                className="p-1.5 rounded-full bg-slate-900/90 hover:bg-slate-800 text-amber-300 font-bold text-xs flex items-center gap-1 border border-amber-500/40 shadow-lg transition active:scale-95"
-                title="Focar câmera agora (Recalibrar foco de hardware)"
+                className="px-2.5 py-1 rounded-full bg-slate-900/90 hover:bg-slate-800 text-amber-300 font-bold text-xs flex items-center gap-1.5 border border-amber-500/40 shadow-lg transition active:scale-95"
+                title="Focar de perto agora (Calibrar motor da lente para 5-15cm)"
               >
                 <Crosshair className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-[10px] hidden xs:inline">Focar Perto</span>
               </button>
 
               {hasTorch && (
@@ -1854,35 +1949,12 @@ export default function ScannerModal({
             </div>
           </div>
 
-          {/* Barra Flutuante de Zoom Dedicada (Linha 2, Centralizada e sem conflito) */}
-          <div className="absolute top-11 left-1/2 -translate-x-1/2 z-20 pointer-events-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center bg-slate-950/85 backdrop-blur-md p-0.5 rounded-full border border-slate-700/80 shadow-xl">
-              {opticalPresets.map((preset) => {
-                const isActive = Math.abs(preset.value - zoomLevel) < 0.15;
-                return (
-                  <button
-                    key={preset.label}
-                    onClick={() => applyOpticalLensZoom(preset.value, preset.fullName)}
-                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold transition flex items-center gap-0.5 ${
-                      isActive
-                        ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-400'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                    title={`Ativar ${preset.fullName}`}
-                  >
-                    <span>{preset.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Barra Inferior do Viewfinder: Dica + Indicador Google AI */}
+          {/* Barra Inferior do Viewfinder: Foco de Perto + Indicador Google AI */}
           {scanning && !cameraError && (
             <div className="absolute bottom-2.5 left-2.5 right-2.5 z-20 flex items-center justify-between pointer-events-none gap-1.5">
-              <div className="bg-slate-950/85 backdrop-blur-md text-slate-300 border border-slate-800 px-3 py-1 rounded-full text-[10px] font-medium shadow-lg flex items-center gap-1.5 truncate">
+              <div className="bg-slate-950/85 backdrop-blur-md text-emerald-300 border border-emerald-500/40 px-3 py-1 rounded-full text-[10px] font-semibold shadow-lg flex items-center gap-1.5 truncate">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
-                <span className="truncate">Afaste a 20-30cm para foco perfeito</span>
+                <span className="truncate">🎯 Foco de Perto (5-15cm) • 50MP Principal</span>
               </div>
               {typeof window !== 'undefined' && 'BarcodeDetector' in window && (
                 <div className="bg-blue-950/85 backdrop-blur-md text-blue-200 border border-blue-500/60 px-2.5 py-1 rounded-full text-[9px] font-bold shadow-lg flex items-center gap-1 shrink-0" title="Motor Google ML Kit acelerado por hardware">
