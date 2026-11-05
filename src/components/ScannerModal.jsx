@@ -81,38 +81,20 @@ export default function ScannerModal({
   const [reticleType, setReticleType] = useState('1d'); // '1d' (Linha Laser) | '2d' (Caixa QR)
   
   // Helper para identificar lente ultra-wide (0.5x / grande angular afastada)
-  const isUltraWideLens = (label, index, rearList) => {
+  const isUltraWideLens = (label) => {
     const l = (label || '').toLowerCase();
-    if (l.includes('ultra') || l.includes('super') || l.includes('0.5') || l.includes('0,5') || l.includes('ultrawide') || l.includes('wide-angle')) {
-      return true;
-    }
-    // No Android Samsung Camera2 HAL:
-    // Se temos mais de uma câmera traseira e uma delas é "camera2 0", ela é a ultra-wide fixa de 13mm!
-    if (l.includes('camera2 0') && rearList && rearList.some(r => r.label.toLowerCase().includes('camera2 2'))) {
-      return true;
-    }
-    return false;
+    return l.includes('ultra') || l.includes('super') || l.includes('0.5') || l.includes('0,5') || l.includes('ultrawide') || l.includes('wide-angle');
   };
 
-  // Helper para identificar lente Principal 50MP com Autofoco de Perto (Dual Pixel AF)
-  const isMainAutofocusLens = (label, index, rearList) => {
+  // Helper para identificar lente Principal
+  const isMainAutofocusLens = (label) => {
     const l = (label || '').toLowerCase();
-    if (l.includes('camera2 2') || l.includes('main') || l.includes('principal') || l.includes('primary')) {
-      return true;
-    }
-    // Em aparelhos Samsung Galaxy com 2 ou mais traseiras, se a primeira é camera2 0 (ultra-wide), a segunda é a principal 50MP
-    if (rearList && rearList.length >= 2) {
-      const firstIsUltra = isUltraWideLens(rearList[0]?.label, 0, rearList);
-      if (firstIsUltra && rearList[1]?.label === label) {
-        return true;
-      }
-    }
-    return false;
+    return l.includes('main') || l.includes('principal') || l.includes('primary');
   };
 
   const isTelephotoLens = (label) => {
     const l = (label || '').toLowerCase();
-    return l.includes('tele') || l.includes('zoom') || l.includes('3x') || l.includes('5x') || l.includes('camera2 3');
+    return l.includes('tele') || l.includes('zoom') || l.includes('3x') || l.includes('5x');
   };
 
   const isFrontCamera = (label) => {
@@ -120,7 +102,7 @@ export default function ScannerModal({
     return l.includes('front') || l.includes('user') || l.includes('frontal') || l.includes('selfie') || l.includes('facing front') || l.includes('camera2 1');
   };
 
-  // Algoritmo inteligente de seleção da melhor lente com autofoco de perto (50MP)
+  // Algoritmo padronizado de seleção da Câmera Principal Traseira (Samsung S20, A55 5G, Motorola, Xiaomi, etc.)
   const selectBestRearAutofocusCamera = (allCameras) => {
     if (!allCameras || allCameras.length === 0) return null;
 
@@ -139,24 +121,17 @@ export default function ScannerModal({
       return rearCameras[0];
     }
 
-    // 1. Prioriza sensor Samsung Camera2 ID 2 ou marcado como principal/main
-    const samsungMain = rearCameras.find(c => {
-      const l = c.label.toLowerCase();
-      return l.includes('camera2 2') || l.includes('main') || l.includes('principal') || l.includes('primary');
-    });
-    if (samsungMain) {
-      return samsungMain;
+    // 1. Prioriza sensor explicitamente marcado como 'main', 'principal' ou 'primary'
+    const labeledMain = rearCameras.find(c => isMainAutofocusLens(c.label));
+    if (labeledMain) {
+      return labeledMain;
     }
 
-    // 2. Descarta lentes Ultra-Wide (camera2 0, 0.5x, super, etc.)
-    const nonUltra = rearCameras.find(c => !isUltraWideLens(c.label, 0, rearCameras));
-    if (nonUltra) {
-      return nonUltra;
-    }
-
-    // 3. Fallback: segunda câmera traseira
-    if (rearCameras.length >= 2) {
-      return rearCameras[1];
+    // 2. Descarta lentes conhecidas como ultra-wide (0.5x) ou telephoto
+    const nonUltra = rearCameras.filter(c => !isUltraWideLens(c.label) && !isTelephotoLens(c.label));
+    if (nonUltra.length > 0) {
+      // Padrão Android HAL: a primeira câmera traseira (Camera 0) é a câmera principal do aparelho
+      return nonUltra[0];
     }
 
     return rearCameras[0];
@@ -237,15 +212,32 @@ export default function ScannerModal({
     ];
   }, [zoomCaps]);
 
+  const rearCamerasList = useMemo(() => {
+    return (cameras || []).filter(c => !isFrontCamera(c.label));
+  }, [cameras]);
+
   // Rótulo da lente ativa exibido no botão flutuante principal
   const currentLensDisplay = useMemo(() => {
-    if (cameras && cameras.length > 1) {
-      const idx = cameras.findIndex(c => (c.id === selectedCamera || c.deviceId === selectedCamera));
-      const cam = idx >= 0 ? cameras[idx] : cameras[0];
-      return getShortLensName(cam, idx >= 0 ? idx : 0);
+    if (rearCamerasList.length > 1) {
+      const idx = rearCamerasList.findIndex(c => (c.id === selectedCamera || c.deviceId === selectedCamera));
+      const pos = idx >= 0 ? idx + 1 : 1;
+      return `🔄 Lente ${pos} de ${rearCamerasList.length}`;
     }
     return '🎯 50MP Principal';
-  }, [cameras, selectedCamera]);
+  }, [rearCamerasList, selectedCamera]);
+
+  // Alternar rapidamente entre as lentes traseiras físicas do aparelho
+  const handleToggleRearCamera = async () => {
+    if (rearCamerasList.length <= 1 || isStartingRef.current) return;
+    const currentIndex = rearCamerasList.findIndex(c => c.id === selectedCamera || c.deviceId === selectedCamera);
+    const nextIndex = (currentIndex + 1) % rearCamerasList.length;
+    const nextCam = rearCamerasList[nextIndex];
+
+    if (nextCam) {
+      setFocusFeedbackText(`🔄 Ativando Lente ${nextIndex + 1}...`);
+      await handleCameraChange(nextCam.id);
+    }
+  };
 
   // Modalidades ativas selecionadas para bipar (ex: ['calibracao'], ['preventiva'], ou ['calibracao', 'preventiva'])
   const [selectedModalities, setSelectedModalities] = useState(() => {
@@ -735,7 +727,20 @@ export default function ScannerModal({
 
       const advanced = [];
 
-      // 1. Autofoco contínuo no hardware da lente principal
+      // 1. Verificação inteligente de autofoco: se a lente aberta for fixa/ultra-wide sem autofoco
+      // e houver outra câmera traseira disponível, alterna automaticamente para a lente com autofoco!
+      const hasAF = caps.focusMode && (caps.focusMode.includes('continuous') || caps.focusMode.includes('single-shot'));
+      const rearCams = (cameras || []).filter(c => !isFrontCamera(c.label));
+      if (!hasAF && caps.focusMode && caps.focusMode.length > 0 && rearCams.length > 1) {
+        const altCam = rearCams.find(c => c.id !== selectedCamera && c.deviceId !== selectedCamera);
+        if (altCam) {
+          console.log('[Camera] Lente sem motor de autofoco detectada. Alternando para a lente principal:', altCam.label);
+          handleCameraChange(altCam.id);
+          return;
+        }
+      }
+
+      // 2. Autofoco contínuo no hardware da lente principal
       if (caps.focusMode && caps.focusMode.includes('continuous')) {
         advanced.push({ focusMode: 'continuous' });
       }
@@ -1744,7 +1749,7 @@ export default function ScannerModal({
 
           {/* Barra Superior Unificada do Viewfinder: NÃO SOBREPÕE */}
           <div className="absolute top-2.5 left-2.5 right-2.5 z-20 flex items-center justify-between gap-1.5 pointer-events-auto" onClick={e => e.stopPropagation()}>
-            {/* Controles da Esquerda: Alternador 1D/2D e Indicador Exclusivo da Lente 50MP */}
+            {/* Controles da Esquerda: Alternador 1D/2D e Seletor/Indicador da Câmera Principal */}
             <div className="flex items-center gap-1.5 min-w-0">
               <button
                 type="button"
@@ -1760,11 +1765,23 @@ export default function ScannerModal({
                 <span>{reticleType === '1d' ? '1D Laser' : '2D QR'}</span>
               </button>
 
-              {/* Indicador Fixo e Exclusivo: Câmera 50MP Principal Ativa */}
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-bold bg-slate-950/85 text-blue-300 border border-blue-500/40 shadow-md backdrop-blur-xs">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
-                <span>🎯 50MP Principal</span>
-              </div>
+              {/* Botão Dinâmico de Alternar Lente Traseira (se houver mais de 1 câmera) ou Indicador Fixo */}
+              {rearCamerasList.length > 1 ? (
+                <button
+                  type="button"
+                  onClick={handleToggleRearCamera}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-bold bg-slate-900/90 hover:bg-slate-800 text-blue-300 border border-blue-500/50 shadow-md backdrop-blur-xs transition active:scale-95 shrink-0"
+                  title="Toque para alternar entre as lentes traseiras do celular"
+                >
+                  <SwitchCamera className="w-3.5 h-3.5 text-blue-400" />
+                  <span>{currentLensDisplay}</span>
+                </button>
+              ) : (
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-bold bg-slate-950/85 text-blue-300 border border-blue-500/40 shadow-md backdrop-blur-xs">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
+                  <span>🎯 50MP Principal</span>
+                </div>
+              )}
             </div>
 
             {/* Controles da Direita: Foco de Perto (Macro) e Lanterna */}
@@ -1844,70 +1861,7 @@ export default function ScannerModal({
           )}
         </div>
 
-            {/* ============================================================
-                DIVISOR ARRASTÁVEL E REDIMENSIONADOR (CÂMERA vs LISTA DE BOMBAS)
-                Ocultado no modo lado a lado do tablet (md+)
-            ============================================================ */}
-            <div
-              onMouseDown={handleDividerMouseDown}
-              onTouchStart={handleDividerTouchStart}
-              className="w-full py-1.5 px-3 bg-slate-950 border-y border-slate-800 cursor-row-resize flex items-center justify-between select-none touch-none shrink-0 transition-colors md:hidden hover:bg-slate-900"
-              title="Arraste para cima ou para baixo para ajustar o tamanho da lista"
-            >
-              {/* Alça tátil de puxar */}
-              <div className="flex items-center gap-2">
-                <div className="flex flex-col items-center justify-center gap-0.5 cursor-row-resize">
-                  <div className="w-8 h-1 bg-slate-500 hover:bg-slate-300 rounded-full transition" />
-                  <div className="w-5 h-0.5 bg-slate-600 rounded-full" />
-                </div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                  <GripHorizontal className="w-3.5 h-3.5 text-blue-400" />
-                  <span>Ajustar visor</span>
-                </span>
-              </div>
-
-              {/* Atalhos Rápidos de Tamanho (1 Toque) */}
-              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                <button
-                  type="button"
-                  onClick={() => setCameraHeightPercent(22)}
-                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
-                    cameraHeightPercent <= 25 
-                      ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-400' 
-                      : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-                  }`}
-                  title="Expandir lista para quase tela cheia"
-                >
-                  📋 Fila 75%
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCameraHeightPercent(30)}
-                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
-                    cameraHeightPercent > 25 && cameraHeightPercent < 42 
-                      ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-400' 
-                      : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-                  }`}
-                  title="Equilibrado (30% câmera / 70% lista)"
-                >
-                  ⚖️ Padrão
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCameraHeightPercent(48)}
-                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
-                    cameraHeightPercent >= 42 
-                      ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-400' 
-                      : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-                  }`}
-                  title="Câmera maior (48% câmera / 52% lista)"
-                >
-                  📷 Câmera 50%
-                </button>
-              </div>
-            </div>
-
-          </div> {/* Fim do PAINEL DA ESQUERDA (CÂMERA) */}
+      </div> {/* Fim do PAINEL DA ESQUERDA (CÂMERA) */}
 
           {/* ============================================================
               PAINEL DA DIREITA: FILA DE BOMBAS BIPADAS (TOTALMENTE VISÍVEL E COM SCROLL)
