@@ -74,7 +74,6 @@ export default function ScannerModal({
   const [zoomLevel, setZoomLevel] = useState(1);
   const [viewMode, setViewMode] = useState('split'); // 'split' | 'full_camera'
   const [reticleType, setReticleType] = useState('1d'); // '1d' (Linha Laser) | '2d' (Caixa QR)
-  const [fitMode, setFitMode] = useState('contain'); // 'contain' (100% Nítido sem corte) | 'cover' (Preencher tela)
   
   // Helper para identificar lente ultra-wide (0.5x)
   const isUltraWideLens = (label) => {
@@ -149,13 +148,12 @@ export default function ScannerModal({
   }, [activeModality]);
 
   // Altura customizável e arrastável: Câmera vs Lista de Bombas
-  // cameraHeightPercent: Porcentagem da altura central dedicada à Câmera (default 36%)
-  // O restante (64%) fica para a lista de conferência, garantindo que nunca fique comprimida!
-  const [cameraHeightPercent, setCameraHeightPercent] = useState(36);
+  // cameraHeightPercent: Porcentagem da altura central dedicada à Câmera (default 48% para visão ampla no celular)
+  const [cameraHeightPercent, setCameraHeightPercent] = useState(48);
   const [isDraggingDivider, setIsDraggingDivider] = useState(false);
   const containerRef = useRef(null);
   const dragStartYRef = useRef(0);
-  const dragStartPercentRef = useRef(36);
+  const dragStartPercentRef = useRef(48);
 
   // Manipulador de arraste via mouse no divisor
   const handleDividerMouseDown = (e) => {
@@ -522,11 +520,12 @@ export default function ScannerModal({
         }
       }
 
-      // Ativa foco contínuo e calibração de alta nitidez na trilha de hardware ativa
+      // Ativa foco contínuo e zoom 1.5x automático para foco perfeito em códigos de barras de bombas
       setTimeout(() => {
         setupTrackFocusAndQuality();
         applyHardwareFocus(0.5, 0.5);
-      }, 350);
+        applySpecificZoom(1.5);
+      }, 400);
 
       // Verifica capacidades de lanterna e zoom óptico/digital
       try {
@@ -1490,20 +1489,16 @@ export default function ScannerModal({
           onClick={handleViewfinderClick}
           style={{
             height: viewMode === 'full_camera' ? '70%' : `${cameraHeightPercent}%`,
-            minHeight: '120px'
+            minHeight: '180px'
           }}
           className="relative bg-black flex flex-col items-center justify-center transition-[height] duration-150 overflow-hidden cursor-crosshair select-none shrink-0"
           title="Toque em qualquer ponto da imagem para focar"
         >
           
-          {/* Caixa do Html5Qrcode com preenchimento limpo e sem corte forçado */}
+          {/* Caixa do Html5Qrcode com preenchimento total e sem barras pretas */}
           <div 
             id="barcode-reader-box" 
-            className={`w-full h-full flex items-center justify-center pointer-events-none transition-all ${
-              fitMode === 'contain'
-                ? '[&_video]:max-w-full [&_video]:max-h-full [&_video]:object-contain [&_video]:rounded-xl'
-                : '[&_video]:w-full [&_video]:h-full [&_video]:object-cover'
-            }`}
+            className="w-full h-full flex items-center justify-center pointer-events-none [&_video]:w-full [&_video]:h-full [&_video]:object-cover"
           ></div>
 
           {/* Mira Laser Ampla de Enquadramento */}
@@ -1572,7 +1567,7 @@ export default function ScannerModal({
             </div>
           )}
 
-          {/* Barra Superior de Controles na Câmera: Alternador 1D/2D e Informação da Lente */}
+          {/* Barra Superior de Controles na Câmera: Alternador 1D/2D e Troca Rápida de Lente */}
           <div className="absolute top-2.5 left-2.5 z-20 flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
             {/* Alternador 1D/2D */}
             <button
@@ -1589,135 +1584,25 @@ export default function ScannerModal({
               <span>{reticleType === '1d' ? '1D Laser' : '2D QR'}</span>
             </button>
 
-            {/* Botão de Troca Rápida de Lente (Abre lista completa de hardware) */}
-            {cameras.length > 0 && (
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setShowLensPicker(prev => !prev)}
-                  className="px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center gap-1.5 bg-slate-950/85 hover:bg-slate-900 text-white border border-slate-700/80 shadow-lg transition active:scale-95"
-                  title="Ver todas as lentes de hardware detectadas neste smartphone"
-                >
-                  <SwitchCamera className="w-3 h-3 text-blue-400" />
-                  <span className="max-w-[100px] truncate">{currentLensShortLabel}</span>
-                  <ChevronDown className="w-2.5 h-2.5 text-slate-400" />
-                </button>
-
-                {/* Popover com Lista Completa de Lentes Detectadas */}
-                {showLensPicker && (
-                  <div className="absolute left-0 mt-1.5 w-72 bg-slate-900/95 backdrop-blur-md rounded-2xl border border-slate-700/90 p-2 shadow-2xl z-40 animate-in fade-in zoom-in-95 duration-150">
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider px-2 py-1 flex items-center justify-between border-b border-slate-800 pb-1.5 mb-1.5">
-                      <span className="flex items-center gap-1">
-                        <Camera className="w-3 h-3 text-blue-400" />
-                        Lentes Físicas do Aparelho
-                      </span>
-                      <span className="text-blue-400 font-mono text-[9px] bg-blue-950/80 px-1.5 py-0.5 rounded-md border border-blue-800/50">
-                        {cameras.length} lentes
-                      </span>
-                    </div>
-                    <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
-                      {cameras.map((c, idx) => {
-                        const isSelected = c.id === selectedCamera;
-                        const friendly = getFriendlyCameraLabel(c, idx, cameras.length);
-                        const isUltra = isUltraWideLens(c.label);
-                        return (
-                          <button
-                            key={c.id}
-                            type="button"
-                            onClick={() => {
-                              handleCameraChange(c.id);
-                              setShowLensPicker(false);
-                            }}
-                            className={`w-full text-left px-2.5 py-2 rounded-xl text-xs transition flex items-center justify-between gap-2 ${
-                              isSelected 
-                                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold shadow-md shadow-blue-500/25 ring-1 ring-white/30' 
-                                : 'text-slate-300 hover:bg-slate-800 hover:text-white border border-transparent hover:border-slate-700'
-                            }`}
-                          >
-                            <div className="truncate flex-1">
-                              <div className="font-bold truncate">{friendly}</div>
-                              {isUltra ? (
-                                <span className="text-[9px] text-amber-300/90 block font-normal">⚠️ Super-wide (pode embaçar no escuro)</span>
-                              ) : (
-                                <span className="text-[9px] text-slate-400 block font-normal">Sensor óptico de alta nitidez</span>
-                              )}
-                            </div>
-                            {isSelected && <CheckCircle className="w-4 h-4 text-white shrink-0" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* HUD Pro-Camera Inferior: Seletor Rápido e Físico de Lentes (Estilo Apple / Samsung) */}
-          {cameras.length > 1 && (
-            <div 
-              className="absolute bottom-2.5 left-1/2 -translate-x-1/2 z-20 flex items-center bg-slate-950/85 backdrop-blur-xl px-2.5 py-1 rounded-full border border-white/20 shadow-2xl gap-1 max-w-[94%]"
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5">
-                {cameras.map((c, idx) => {
-                  const isSelected = c.id === selectedCamera;
-                  const shortName = getShortLensName(c, idx);
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => handleCameraChange(c.id)}
-                      className={`px-2.5 py-1 rounded-full text-[10px] font-black transition flex items-center gap-1 active:scale-95 whitespace-nowrap shrink-0 ${
-                        isSelected
-                          ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/40 ring-1 ring-white/40 scale-105'
-                          : 'bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white'
-                      }`}
-                      title={`Trocar fisicamente para ${getFriendlyCameraLabel(c, idx, cameras.length)}`}
-                    >
-                      <span>{shortName}</span>
-                      {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Botão de Ciclo Rápido */}
+            {/* Botão de Troca Rápida de Lente Física */}
+            {cameras.length > 1 && (
               <button
                 type="button"
                 onClick={handleCycleCamera}
-                className="p-1 rounded-full bg-white/10 hover:bg-white/20 text-blue-400 hover:text-white transition active:scale-90 shrink-0 ml-0.5"
-                title="Ciclar para a próxima lente física"
+                className="px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center gap-1.5 bg-slate-900/90 hover:bg-slate-800 text-white border border-slate-700/80 shadow-lg transition active:scale-95"
+                title="Toque para alternar para a próxima lente física da câmera"
               >
-                <SwitchCamera className="w-3.5 h-3.5" />
+                <SwitchCamera className="w-3.5 h-3.5 text-blue-400" />
+                <span className="max-w-[120px] truncate">{currentLensShortLabel}</span>
               </button>
-            </div>
-          )}
+            )}
+          </div>
 
-          {/* Botões Flutuantes Rápidos à Direita (Modo 100% Nítido, Zoom Digital, Focar e Lanterna) */}
+          {/* Botões Flutuantes Rápidos à Direita: Zoom, Focar e Lanterna */}
           <div className="absolute top-2.5 right-2.5 z-20 flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
-            {/* Alternador 100% Nítido (Sem corte) vs Preencher Tela */}
-            <button
-              type="button"
-              onClick={() => {
-                const nextFit = fitMode === 'contain' ? 'cover' : 'contain';
-                setFitMode(nextFit);
-                setFocusFeedbackText(nextFit === 'contain' ? '✓ Modo 100% Nítido (Sem corte)' : '✓ Modo Preencher Tela');
-                setTimeout(() => setFocusFeedbackText(''), 2000);
-              }}
-              className={`p-1.5 rounded-full text-[10px] font-bold border shadow-lg transition active:scale-95 ${
-                fitMode === 'contain'
-                  ? 'bg-blue-600 text-white border-blue-400'
-                  : 'bg-slate-900/85 text-slate-300 hover:text-white border-slate-700/80'
-              }`}
-              title={fitMode === 'contain' ? "Modo 100% Nítido (Sensor Inteiro). Toque para preencher a tela." : "Modo Preencher Tela. Toque para ver o sensor inteiro sem corte."}
-            >
-              {fitMode === 'contain' ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-            </button>
-
-            {/* Seletor Rápido de Zoom Digital */}
+            {/* Seletor Rápido de Zoom */}
             <div className="flex items-center bg-slate-900/90 p-0.5 rounded-full border border-slate-700/80 shadow-lg">
-              {[1, 1.5, 2, 2.5].map((z) => (
+              {[1, 1.5, 2].map((z) => (
                 <button
                   key={z}
                   onClick={() => applySpecificZoom(z)}
@@ -1726,7 +1611,7 @@ export default function ScannerModal({
                       ? 'bg-blue-600 text-white shadow-sm'
                       : 'text-slate-400 hover:text-white'
                   }`}
-                  title={`Zoom ${z}x ${z === 1.5 ? '(Recomendado para Bombas de Infusão)' : ''}`}
+                  title={`Zoom ${z}x ${z === 1.5 ? '(Ideal para Bombas de Infusão)' : ''}`}
                 >
                   {z}x
                 </button>
@@ -1746,12 +1631,12 @@ export default function ScannerModal({
             {hasTorch && (
               <button
                 onClick={toggleTorch}
-                className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center shadow-lg transition border ${
+                className={`p-1.5 rounded-full flex items-center justify-center shadow-lg transition border ${
                   torchOn 
-                    ? 'bg-amber-400 text-slate-950 font-bold border-amber-300' 
+                    ? 'bg-amber-400 text-slate-950 font-bold border-amber-300 ring-2 ring-amber-400/50 shadow-amber-400/30' 
                     : 'bg-slate-900/85 text-white hover:bg-slate-800 border-slate-700/80'
                 }`}
-                title="Ligar Lanterna"
+                title={torchOn ? "Desligar lanterna" : "Ligar lanterna"}
               >
                 <Zap className="w-3.5 h-3.5" />
               </button>
