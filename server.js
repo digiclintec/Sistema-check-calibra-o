@@ -308,6 +308,10 @@ app.post('/api/login', (req, res) => {
   const user = users.find(u => u.email.toLowerCase() === cleanEmail && u.password === password);
 
   if (user) {
+    const userHospitalIds = Array.isArray(user.hospitalIds) && user.hospitalIds.length > 0
+      ? user.hospitalIds
+      : [user.hospitalId || 'all'];
+
     return res.json({
       success: true,
       user: {
@@ -315,7 +319,8 @@ app.post('/api/login', (req, res) => {
         email: user.email,
         name: user.name,
         role: user.role || 'operador',
-        hospitalId: user.hospitalId || 'all',
+        hospitalId: userHospitalIds[0] || 'all',
+        hospitalIds: userHospitalIds,
         token: 'token_' + user.id + '_' + Date.now()
       }
     });
@@ -336,6 +341,9 @@ app.get('/api/users', (req, res) => {
     email: u.email,
     role: u.role || 'operador',
     hospitalId: u.hospitalId || 'all',
+    hospitalIds: Array.isArray(u.hospitalIds) && u.hospitalIds.length > 0 
+      ? u.hospitalIds 
+      : [u.hospitalId || 'all'],
     createdAt: u.createdAt || new Date().toISOString()
   }));
 
@@ -344,7 +352,7 @@ app.get('/api/users', (req, res) => {
 
 // Create user
 app.post('/api/users', (req, res) => {
-  const { name, email, password, role, hospitalId } = req.body || {};
+  const { name, email, password, role, hospitalId, hospitalIds } = req.body || {};
 
   if (!name || !email || !password) {
     return res.status(400).json({ success: false, message: 'Preencha nome, e-mail e senha.' });
@@ -357,13 +365,23 @@ app.post('/api/users', (req, res) => {
     return res.status(400).json({ success: false, message: 'Já existe um usuário com este e-mail.' });
   }
 
+  let targetHospitalIds = [];
+  if (Array.isArray(hospitalIds) && hospitalIds.length > 0) {
+    targetHospitalIds = hospitalIds;
+  } else if (hospitalId) {
+    targetHospitalIds = [hospitalId];
+  } else {
+    targetHospitalIds = ['all'];
+  }
+
   const newUser = {
     id: 'usr_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
     name: String(name).trim(),
     email: cleanEmail,
     password: String(password).trim(),
     role: role || 'operador',
-    hospitalId: hospitalId || 'all',
+    hospitalId: targetHospitalIds[0] || 'all',
+    hospitalIds: targetHospitalIds,
     createdAt: new Date().toISOString()
   };
 
@@ -374,6 +392,36 @@ app.post('/api/users', (req, res) => {
     success: true,
     message: 'Usuário cadastrado com sucesso!',
     user: newUser
+  });
+});
+
+// Update user details and hospital permissions
+app.post('/api/users/update', (req, res) => {
+  const { id, name, role, hospitalIds, hospitalId } = req.body || {};
+  const users = readUsers();
+  const idx = users.findIndex(u => u.id === id);
+
+  if (idx === -1) {
+    return res.status(404).json({ success: false, message: 'Usuário não encontrado.' });
+  }
+
+  if (name) users[idx].name = String(name).trim();
+  if (role) users[idx].role = role;
+  
+  if (Array.isArray(hospitalIds)) {
+    users[idx].hospitalIds = hospitalIds.length > 0 ? hospitalIds : ['all'];
+    users[idx].hospitalId = users[idx].hospitalIds[0] || 'all';
+  } else if (hospitalId) {
+    users[idx].hospitalIds = [hospitalId];
+    users[idx].hospitalId = hospitalId;
+  }
+
+  saveUsers(users);
+
+  res.json({
+    success: true,
+    message: 'Usuário atualizado com sucesso!',
+    user: users[idx]
   });
 });
 
@@ -415,20 +463,51 @@ app.post('/api/users/password', (req, res) => {
 
 // ---------------- HOSPITALS & PLANS ROUTES ---------------- //
 
-// List all hospitals & their active plan
+// List all hospitals & their detailed progress
 app.get('/api/hospitals', (req, res) => {
   const db = readDb();
-  const list = (db.hospitals || []).map(h => ({
-    id: h.id,
-    name: h.name,
-    cidade: h.cidade || '',
-    cnpj: h.cnpj || '',
-    plano: h.plano || 'pro',
-    equipmentCount: (h.equipments || []).length,
-    checkedCount: (h.equipments || []).filter(e => e.checado).length,
-    activeSheetName: h.activeSheetName || '',
-    createdAt: h.createdAt
-  }));
+  const users = readUsers();
+
+  const list = (db.hospitals || []).map(h => {
+    const listEq = h.equipments || [];
+    const total = listEq.length;
+    const calOk = listEq.filter(e => e.check_calibracao).length;
+    const prevOk = listEq.filter(e => e.check_preventiva).length;
+    const segOk = listEq.filter(e => e.check_seguranca).length;
+    const complete100 = listEq.filter(e => e.check_calibracao && e.check_preventiva && e.check_seguranca).length;
+    const checkedCount = listEq.filter(e => e.checado).length;
+
+    // Usuários com acesso a este hospital
+    const assignedUsers = users.filter(u => {
+      const uHospIds = Array.isArray(u.hospitalIds) && u.hospitalIds.length > 0 
+        ? u.hospitalIds 
+        : [u.hospitalId || 'all'];
+      return uHospIds.includes('all') || uHospIds.includes(h.id);
+    }).map(u => ({ id: u.id, name: u.name, role: u.role, email: u.email }));
+
+    return {
+      id: h.id,
+      name: h.name,
+      cidade: h.cidade || '',
+      cnpj: h.cnpj || '',
+      plano: h.plano || 'pro',
+      equipmentCount: total,
+      checkedCount,
+      calOk,
+      calPercent: total > 0 ? Math.round((calOk / total) * 100) : 0,
+      prevOk,
+      prevPercent: total > 0 ? Math.round((prevOk / total) * 100) : 0,
+      segOk,
+      segPercent: total > 0 ? Math.round((segOk / total) * 100) : 0,
+      complete100,
+      completePercent: total > 0 ? Math.round((complete100 / total) * 100) : 0,
+      activeSheetName: h.activeSheetName || '',
+      assignedUsers,
+      lastUpdated: h.lastUpdated || null,
+      lastUpdatedBy: h.lastUpdatedBy || '',
+      createdAt: h.createdAt
+    };
+  });
 
   res.json({
     success: true,

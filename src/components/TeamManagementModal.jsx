@@ -34,7 +34,8 @@ export default function TeamManagementModal({
   currentUser,
   equipments = [],
   hospitalName = 'Hospital',
-  activeHospitalId
+  activeHospitalId,
+  hospitals = []
 }) {
   const [activeTab, setActiveTab] = useState('audit'); // 'audit' | 'users' | 'create_user'
   const [users, setUsers] = useState([]);
@@ -52,6 +53,7 @@ export default function TeamManagementModal({
   const [userPassword, setUserPassword] = useState('');
   const [userRole, setUserRole] = useState('operador');
   const [showPassword, setShowPassword] = useState(false);
+  const [selectedHospitalIds, setSelectedHospitalIds] = useState(() => [activeHospitalId || 'all']);
 
   // Redefinição de senha
   const [editingUserId, setEditingUserId] = useState(null);
@@ -101,7 +103,7 @@ export default function TeamManagementModal({
           email: userEmail.trim(),
           password: userPassword.trim(),
           role: userRole,
-          hospitalId: activeHospitalId || 'all'
+          hospitalIds: selectedHospitalIds
         })
       });
 
@@ -112,6 +114,7 @@ export default function TeamManagementModal({
         setUserEmail('');
         setUserPassword('');
         setUserRole('operador');
+        setSelectedHospitalIds([activeHospitalId || 'all']);
         setActiveTab('users');
         loadUsers();
       } else {
@@ -122,6 +125,22 @@ export default function TeamManagementModal({
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleToggleHospSelection = (hospId) => {
+    if (hospId === 'all') {
+      setSelectedHospitalIds(['all']);
+      return;
+    }
+
+    let next = selectedHospitalIds.filter(id => id !== 'all');
+    if (next.includes(hospId)) {
+      next = next.filter(id => id !== hospId);
+      if (next.length === 0) next = ['all'];
+    } else {
+      next.push(hospId);
+    }
+    setSelectedHospitalIds(next);
   };
 
   const handleDeleteUser = async (userId, userEmailName) => {
@@ -705,6 +724,27 @@ export default function TeamManagementModal({
                             </div>
 
                             <p className="text-xs text-slate-400 mt-0.5 truncate">{u.email}</p>
+
+                            {/* Assigned Hospitals */}
+                            <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                              {(u.role === 'master' || (u.hospitalIds && u.hospitalIds.includes('all')) || u.hospitalId === 'all') ? (
+                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                                  🌐 Todos os Hospitais
+                                </span>
+                              ) : (
+                                (u.hospitalIds || [u.hospitalId]).filter(Boolean).map(hId => {
+                                  const hospObj = hospitals.find(h => h.id === hId);
+                                  return (
+                                    <span 
+                                      key={hId}
+                                      className="text-[10px] font-medium px-2 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20"
+                                    >
+                                      🏥 {hospObj?.name || hId}
+                                    </span>
+                                  );
+                                })
+                              )}
+                            </div>
                           </div>
                         </div>
 
@@ -818,6 +858,44 @@ export default function TeamManagementModal({
                   <option value="admin">Administrador (Subir planilhas e gerenciar dados)</option>
                   {isMaster && <option value="master">Master (Controle total do sistema)</option>}
                 </select>
+              </div>
+
+              {/* Multi-hospital permissions */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Vincular aos Hospitais:
+                </label>
+                <div className="space-y-1.5 p-2 rounded-xl bg-slate-950 border border-slate-800 max-h-40 overflow-y-auto">
+                  <label className="flex items-center gap-2 p-1.5 rounded-lg bg-slate-900 border border-slate-800 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedHospitalIds.includes('all')}
+                      onChange={() => handleToggleHospSelection('all')}
+                      className="rounded text-blue-600 focus:ring-0"
+                    />
+                    <span className="text-xs font-bold text-white">🌐 Todos os Hospitais</span>
+                  </label>
+
+                  {hospitals.map(h => (
+                    <label 
+                      key={h.id} 
+                      className={`flex items-center gap-2 p-1.5 rounded-lg border cursor-pointer text-xs ${
+                        selectedHospitalIds.includes(h.id) || selectedHospitalIds.includes('all')
+                          ? 'bg-blue-950/20 border-blue-500/40 text-blue-200'
+                          : 'bg-slate-900/60 border-slate-800 text-slate-300'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        disabled={selectedHospitalIds.includes('all')}
+                        checked={selectedHospitalIds.includes('all') || selectedHospitalIds.includes(h.id)}
+                        onChange={() => handleToggleHospSelection(h.id)}
+                        className="rounded text-blue-600 focus:ring-0"
+                      />
+                      <span className="truncate">{h.name}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
 
               <button

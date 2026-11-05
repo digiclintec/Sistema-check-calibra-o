@@ -149,14 +149,41 @@ export default function App() {
   const lastUpdatedServerRef = useRef(0);
   const broadcastChannelRef = useRef(null);
 
+  // Available hospitals allowed for the current logged-in user
+  const availableHospitals = useMemo(() => {
+    if (!currentUser) return hospitals;
+    const isMasterUser = currentUser.role === 'master' || currentUser.email?.toLowerCase() === 'digiclintec@gmail.com';
+    if (isMasterUser) return hospitals;
+
+    const userHospIds = Array.isArray(currentUser.hospitalIds) && currentUser.hospitalIds.length > 0
+      ? currentUser.hospitalIds
+      : [currentUser.hospitalId || 'all'];
+
+    if (userHospIds.includes('all')) return hospitals;
+
+    const filtered = hospitals.filter(h => userHospIds.includes(h.id));
+    return filtered.length > 0 ? filtered : hospitals;
+  }, [hospitals, currentUser]);
+
   // Active hospital helper
   const activeHospital = useMemo(() => {
-    return hospitals.find(h => h.id === activeHospitalId) || hospitals[0] || {
+    return availableHospitals.find(h => h.id === activeHospitalId) || availableHospitals[0] || hospitals[0] || {
       id: activeHospitalId,
       name: 'Hospital Central - Digiclintec',
       plano: 'enterprise'
     };
-  }, [hospitals, activeHospitalId]);
+  }, [availableHospitals, hospitals, activeHospitalId]);
+
+  // Ensure active hospital is valid for current user
+  useEffect(() => {
+    if (availableHospitals.length > 0 && !availableHospitals.some(h => h.id === activeHospitalId)) {
+      const fallbackId = availableHospitals[0].id;
+      setActiveHospitalId(fallbackId);
+      try {
+        localStorage.setItem(HOSP_KEY, fallbackId);
+      } catch (e) {}
+    }
+  }, [availableHospitals, activeHospitalId]);
 
   // Load hospitals from server
   const loadHospitals = useCallback(async () => {
@@ -1170,7 +1197,7 @@ export default function App() {
         onLogout={handleLogout}
         onOpenMasterPanel={() => setIsMasterPanelOpen(true)}
         onOpenInstall={() => setIsInstallModalOpen(true)}
-        hospitals={hospitals}
+        hospitals={availableHospitals}
         activeHospitalId={activeHospitalId}
         onSwitchHospital={handleSwitchHospital}
         onOpenTeamModal={() => setIsTeamModalOpen(true)}
@@ -1388,6 +1415,7 @@ export default function App() {
         equipments={equipments}
         hospitalName={activeHospital?.name || 'Hospital'}
         activeHospitalId={activeHospitalId}
+        hospitals={availableHospitals}
       />
 
       {/* PWA Android / iOS Install Modal */}
