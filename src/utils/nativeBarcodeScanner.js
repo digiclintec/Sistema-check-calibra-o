@@ -86,3 +86,4 @@ export const takeNativePhoto = async () => {
     return { success: false, isNative: true, error: err.message };
   }
 };
+
