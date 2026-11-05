@@ -74,26 +74,92 @@ export default function ScannerModal({
   const [torchOn, setTorchOn] = useState(false);
   const [hasTorch, setHasTorch] = useState(false);
   const [hasZoom, setHasZoom] = useState(false);
-  const [zoomLevel, setZoomLevel] = useState(1.5);
+  const [zoomLevel, setZoomLevel] = useState(1.0); // Padrão 1.0x (Nativo sem distorção digital)
   const [zoomCaps, setZoomCaps] = useState(null); // Capacidades de zoom óptico { min, max, step }
-  const [activeLensLabel, setActiveLensLabel] = useState('1.5x Principal');
+  const [activeLensLabel, setActiveLensLabel] = useState('🎯 50MP Principal');
   const [viewMode, setViewMode] = useState('split'); // 'split' | 'full_camera'
   const [reticleType, setReticleType] = useState('1d'); // '1d' (Linha Laser) | '2d' (Caixa QR)
   
-  // Helper para identificar lente ultra-wide (0.5x)
-  const isUltraWideLens = (label) => {
+  // Helper para identificar lente ultra-wide (0.5x / grande angular afastada)
+  const isUltraWideLens = (label, index, rearList) => {
     const l = (label || '').toLowerCase();
-    return l.includes('ultra') || l.includes('super') || l.includes('0.5') || l.includes('0,5') || l.includes('ultrawide');
+    if (l.includes('ultra') || l.includes('super') || l.includes('0.5') || l.includes('0,5') || l.includes('ultrawide') || l.includes('wide-angle')) {
+      return true;
+    }
+    // No Android Samsung Camera2 HAL:
+    // Se temos mais de uma câmera traseira e uma delas é "camera2 0", ela é a ultra-wide fixa de 13mm!
+    if (l.includes('camera2 0') && rearList && rearList.some(r => r.label.toLowerCase().includes('camera2 2'))) {
+      return true;
+    }
+    return false;
+  };
+
+  // Helper para identificar lente Principal 50MP com Autofoco de Perto (Dual Pixel AF)
+  const isMainAutofocusLens = (label, index, rearList) => {
+    const l = (label || '').toLowerCase();
+    if (l.includes('camera2 2') || l.includes('main') || l.includes('principal') || l.includes('primary')) {
+      return true;
+    }
+    // Em aparelhos Samsung Galaxy com 2 ou mais traseiras, se a primeira é camera2 0 (ultra-wide), a segunda é a principal 50MP
+    if (rearList && rearList.length >= 2) {
+      const firstIsUltra = isUltraWideLens(rearList[0]?.label, 0, rearList);
+      if (firstIsUltra && rearList[1]?.label === label) {
+        return true;
+      }
+    }
+    return false;
   };
 
   const isTelephotoLens = (label) => {
     const l = (label || '').toLowerCase();
-    return l.includes('tele') || l.includes('zoom') || l.includes('2x') || l.includes('3x') || l.includes('5x');
+    return l.includes('tele') || l.includes('zoom') || l.includes('3x') || l.includes('5x') || l.includes('camera2 3');
   };
 
   const isFrontCamera = (label) => {
     const l = (label || '').toLowerCase();
-    return l.includes('front') || l.includes('user') || l.includes('frontal') || l.includes('selfie') || l.includes('facing front');
+    return l.includes('front') || l.includes('user') || l.includes('frontal') || l.includes('selfie') || l.includes('facing front') || l.includes('camera2 1');
+  };
+
+  // Algoritmo inteligente de seleção da melhor lente com autofoco de perto (50MP)
+  const selectBestRearAutofocusCamera = (allCameras) => {
+    if (!allCameras || allCameras.length === 0) return null;
+
+    const normalized = allCameras.map((c, i) => ({
+      id: c.deviceId || c.id || `cam-${i}`,
+      deviceId: c.deviceId || c.id || `cam-${i}`,
+      label: c.label || ''
+    }));
+
+    const rearCameras = normalized.filter(c => !isFrontCamera(c.label));
+
+    if (rearCameras.length === 0) {
+      return normalized[0];
+    }
+    if (rearCameras.length === 1) {
+      return rearCameras[0];
+    }
+
+    // 1. Prioriza sensor Samsung Camera2 ID 2 ou marcado como principal/main
+    const samsungMain = rearCameras.find(c => {
+      const l = c.label.toLowerCase();
+      return l.includes('camera2 2') || l.includes('main') || l.includes('principal') || l.includes('primary');
+    });
+    if (samsungMain) {
+      return samsungMain;
+    }
+
+    // 2. Descarta lentes Ultra-Wide (camera2 0, 0.5x, super, etc.)
+    const nonUltra = rearCameras.find(c => !isUltraWideLens(c.label, 0, rearCameras));
+    if (nonUltra) {
+      return nonUltra;
+    }
+
+    // 3. Fallback: segunda câmera traseira
+    if (rearCameras.length >= 2) {
+      return rearCameras[1];
+    }
+
+    return rearCameras[0];
   };
 
   // Rótulos inteligentes e amigáveis para cada lente de hardware do aparelho
@@ -104,8 +170,14 @@ export default function ScannerModal({
     if (isFrontCamera(raw)) {
       return `🤳 Lente Frontal (${index + 1})`;
     }
-    if (isUltraWideLens(raw)) {
-      return `📐 Ultra-Wide 0.5x (${index + 1}) [Visão Ampla]`;
+
+    const rearList = (cameras || []).filter(c => !isFrontCamera(c.label));
+
+    if (isMainAutofocusLens(raw, index, rearList)) {
+      return `🎯 50MP Principal (Foco Próximo)`;
+    }
+    if (isUltraWideLens(raw, index, rearList)) {
+      return `📐 Ultra-Wide 0.5x [Visão Ampla / Sem Foco de Perto]`;
     }
     if (isTelephotoLens(raw)) {
       return `🔭 Telefoto Óptica (${index + 1})`;
@@ -114,14 +186,11 @@ export default function ScannerModal({
       return `🔍 Macro (${index + 1})`;
     }
 
-    const backIndex = (cameras || [])
-      .filter(c => !isFrontCamera(c.label))
-      .findIndex(c => c.id === camera.id);
-
-    if (backIndex === 0) {
-      return `📷 Lente Principal 1x (Traseira 1)`;
-    } else if (backIndex > 0) {
-      return `📷 Lente Traseira ${backIndex + 1}`;
+    const backIndex = rearList.findIndex(c => (c.id === camera.id || c.deviceId === camera.deviceId));
+    if (backIndex === 0 && rearList.length > 1) {
+      return `📐 Ultra-Wide 0.5x (${index + 1})`;
+    } else if (backIndex === 1) {
+      return `🎯 50MP Principal (${index + 1})`;
     }
     return `📷 Lente ${index + 1} (${camera.label || 'Traseira'})`;
   };
@@ -130,52 +199,52 @@ export default function ScannerModal({
     if (!camera) return `Lente ${index + 1}`;
     const raw = (camera.label || '').toLowerCase();
     if (isFrontCamera(raw)) return '🤳 Frontal';
-    if (isUltraWideLens(raw)) return '📐 0.5x Wide';
-    if (isTelephotoLens(raw)) return '🔭 Telefoto';
-    if (raw.includes('macro')) return '🔍 Macro';
 
-    const backIndex = (cameras || [])
-      .filter(c => !isFrontCamera(c.label))
-      .findIndex(c => c.id === camera.id);
+    const rearList = (cameras || []).filter(c => !isFrontCamera(c.label));
 
-    if (backIndex === 0) return '📷 Lente 1 (1x)';
-    if (backIndex > 0) return `📷 Lente ${backIndex + 1}`;
+    if (isMainAutofocusLens(raw, index, rearList)) {
+      return '🎯 50MP Principal';
+    }
+    if (isUltraWideLens(raw, index, rearList)) {
+      return '📐 0.5x Wide';
+    }
+    if (isTelephotoLens(raw)) {
+      return '🔭 Telefoto';
+    }
+    if (raw.includes('macro')) {
+      return '🔍 Macro';
+    }
+
+    const backIndex = rearList.findIndex(c => (c.id === camera.id || c.deviceId === camera.deviceId));
+    if (backIndex === 0 && rearList.length > 1) {
+      return '📐 0.5x Wide';
+    }
+    if (backIndex === 1) {
+      return '🎯 50MP Principal';
+    }
     return `📷 Lente ${index + 1}`;
   };
 
-  // Presets de lentes ópticas / zoom de hardware do smartphone
+  // Presets de lentes ópticas do smartphone (padrão 1.0x nativo sem distorção digital)
   const opticalPresets = useMemo(() => {
     const minZ = zoomCaps?.min ?? 1;
     const maxZ = zoomCaps?.max ?? 8;
 
-    if (minZ < 0.9) {
-      // Sensor com Ultra-Wide (0.5x ou 0.6x)
-      return [
-        { label: `${minZ.toFixed(1)}x`, fullName: `${minZ.toFixed(1)}x Ultra-Wide`, value: minZ, icon: '📐' },
-        { label: '1.0x', fullName: '1.0x Principal (Nítida)', value: 1.0, icon: '📷' },
-        { label: '1.5x', fullName: '1.5x Foco Próximo', value: 1.5, icon: '🎯' },
-        { label: '2.0x', fullName: '2.0x Telefoto Nítida', value: Math.min(2.0, maxZ), icon: '🔭' },
-        { label: '3.0x', fullName: '3.0x Super Zoom', value: Math.min(3.0, maxZ), icon: '🔭' },
-      ];
-    } else {
-      // Sensor padrão (1.0x)
-      return [
-        { label: '1.0x', fullName: '1.0x Principal (Nítida)', value: 1.0, icon: '📷' },
-        { label: '1.5x', fullName: '1.5x Foco Próximo', value: Math.min(1.5, maxZ), icon: '🎯' },
-        { label: '2.0x', fullName: '2.0x Telefoto Nítida', value: Math.min(2.0, maxZ), icon: '🔭' },
-        { label: '3.0x', fullName: '3.0x Super Zoom', value: Math.min(3.0, maxZ), icon: '🔭' },
-      ];
-    }
+    return [
+      { label: '1.0x', fullName: '1.0x Nítida (50MP Nativo)', value: 1.0, icon: '🎯' },
+      { label: '1.5x', fullName: '1.5x Foco Próximo', value: Math.min(1.5, maxZ), icon: '🔍' },
+      { label: '2.0x', fullName: '2.0x Telefoto', value: Math.min(2.0, maxZ), icon: '🔭' },
+    ];
   }, [zoomCaps]);
 
   // Rótulo da lente ativa exibido no botão flutuante principal
   const currentLensDisplay = useMemo(() => {
     if (cameras && cameras.length > 1) {
-      const idx = cameras.findIndex(c => c.id === selectedCamera);
+      const idx = cameras.findIndex(c => (c.id === selectedCamera || c.deviceId === selectedCamera));
       const cam = idx >= 0 ? cameras[idx] : cameras[0];
       return getShortLensName(cam, idx >= 0 ? idx : 0);
     }
-    return '📷 Câmera Traseira';
+    return '🎯 50MP Principal';
   }, [cameras, selectedCamera]);
 
   // Modalidades ativas selecionadas para bipar (ex: ['calibracao'], ['preventiva'], ou ['calibracao', 'preventiva'])
