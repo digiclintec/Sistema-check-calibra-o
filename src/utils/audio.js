@@ -1,22 +1,25 @@
-// Web Audio API Synthesizer for instant audible feedback on barcode scans
+// Web Audio API Synthesizer - Hospital & Enterprise Grade Sound Design
+// Produz sons elegantes, modernos e profissionais para coletores de dados e conferência clínica
 
 let audioCtx = null;
 
 function getAudioContext() {
   if (!audioCtx) {
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    const AudioContextClass = typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext);
     if (AudioContextClass) {
       audioCtx = new AudioContextClass();
     }
   }
   if (audioCtx && audioCtx.state === 'suspended') {
-    audioCtx.resume();
+    audioCtx.resume().catch(() => {});
   }
   return audioCtx;
 }
 
 /**
- * Play a clear, high-pitched success beep (Checked item)
+ * Som de Sucesso na Bipagem (Equipamento Encontrado e Registrado)
+ * Tom: Chime profissional estilo coletor hospitalar Zebra / Apple Pay
+ * Elegante, cristalino e de alta definição, sem parecer joguinho
  */
 export function playSuccessSound() {
   try {
@@ -24,58 +27,127 @@ export function playSuccessSound() {
     if (!ctx) return;
 
     const now = ctx.currentTime;
-    
-    // First note
+
+    // Nota 1: 1046.5 Hz (C6) - curta e suave de entrada
     const osc1 = ctx.createOscillator();
     const gain1 = ctx.createGain();
     osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(880, now); // A5
-    osc1.frequency.exponentialRampToValueAtTime(1320, now + 0.12); // E6
-    
-    gain1.gain.setValueAtTime(0.18, now);
-    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
-    
+    osc1.frequency.setValueAtTime(1046.5, now);
+    gain1.gain.setValueAtTime(0.001, now);
+    gain1.gain.linearRampToValueAtTime(0.18, now + 0.006);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
     osc1.connect(gain1);
     gain1.connect(ctx.destination);
-    
     osc1.start(now);
-    osc1.stop(now + 0.15);
+    osc1.stop(now + 0.09);
+
+    // Nota 2: 1567.98 Hz (G6) - ressonância cristalina harmoniosa
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(1567.98, now + 0.045);
+    gain2.gain.setValueAtTime(0.001, now + 0.045);
+    gain2.gain.linearRampToValueAtTime(0.22, now + 0.052);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(now + 0.045);
+    osc2.stop(now + 0.22);
+
+    // Harmônico sutil e suave: 2093 Hz (C7)
+    const osc3 = ctx.createOscillator();
+    const gain3 = ctx.createGain();
+    osc3.type = 'sine';
+    osc3.frequency.setValueAtTime(2093, now + 0.045);
+    gain3.gain.setValueAtTime(0.001, now + 0.045);
+    gain3.gain.linearRampToValueAtTime(0.06, now + 0.052);
+    gain3.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+    osc3.connect(gain3);
+    gain3.connect(ctx.destination);
+    osc3.start(now + 0.045);
+    osc3.stop(now + 0.18);
+
   } catch (e) {
     console.warn('Audio feedback failed:', e);
   }
 }
 
 /**
- * Play a warning/notice sound (e.g. item was already checked)
+ * Som de Setagem Manual de Calibração / Check na Tabela
+ * Tom: Toque acústico refinado e tátil, estilo confirmação premium
  */
-export function playWarningSound() {
+export function playManualCheckSound() {
   try {
     const ctx = getAudioContext();
     if (!ctx) return;
 
     const now = ctx.currentTime;
-    
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(523.25, now); // C5
-    osc.frequency.setValueAtTime(659.25, now + 0.08); // E5
-    
-    gain.gain.setValueAtTime(0.15, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
-    
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    
-    osc.start(now);
-    osc.stop(now + 0.2);
+
+    // Transiente tátil inicial (clique macio de alta fidelidade)
+    const oscClick = ctx.createOscillator();
+    const gainClick = ctx.createGain();
+    oscClick.type = 'triangle';
+    oscClick.frequency.setValueAtTime(1200, now);
+    oscClick.frequency.exponentialRampToValueAtTime(400, now + 0.02);
+    gainClick.gain.setValueAtTime(0.12, now);
+    gainClick.gain.exponentialRampToValueAtTime(0.001, now + 0.025);
+    oscClick.connect(gainClick);
+    gainClick.connect(ctx.destination);
+    oscClick.start(now);
+    oscClick.stop(now + 0.025);
+
+    // Tom melódico suave de confirmação (G5 - 783.99 Hz subindo sutilmente para B5)
+    const oscTone = ctx.createOscillator();
+    const gainTone = ctx.createGain();
+    oscTone.type = 'sine';
+    oscTone.frequency.setValueAtTime(783.99, now + 0.008);
+    oscTone.frequency.exponentialRampToValueAtTime(987.77, now + 0.065);
+    gainTone.gain.setValueAtTime(0.001, now + 0.008);
+    gainTone.gain.linearRampToValueAtTime(0.16, now + 0.015);
+    gainTone.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+    oscTone.connect(gainTone);
+    gainTone.connect(ctx.destination);
+    oscTone.start(now + 0.008);
+    oscTone.stop(now + 0.14);
+
   } catch (e) {
     console.warn('Audio feedback failed:', e);
   }
 }
 
 /**
- * Play an error tone (Barcode not found in list)
+ * Som ao Desmarcar / Cancelar Check Manual
+ * Tom: Toque discreto descendente e suave
+ */
+export function playUncheckSound() {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(659.25, now); // E5
+    osc.frequency.exponentialRampToValueAtTime(440, now + 0.09); // A4
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.12, now + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.10);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.10);
+
+  } catch (e) {
+    console.warn('Audio feedback failed:', e);
+  }
+}
+
+/**
+ * Som de Código Não Encontrado (Erro de Leitura / Fora da Planilha)
+ * Tom: Aviso profissional e discreto de recusa (dois bipes suaves e amortecidos)
+ * Totalmente reformulado: NUNCA mais som de serra descendente / som de peido!
  */
 export function playErrorSound() {
   try {
@@ -83,23 +155,76 @@ export function playErrorSound() {
     if (!ctx) return;
 
     const now = ctx.currentTime;
-    
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(220, now); // A3
-    osc.frequency.exponentialRampToValueAtTime(110, now + 0.25);
-    
-    gain.gain.setValueAtTime(0.2, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
-    
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    
-    osc.start(now);
-    osc.stop(now + 0.25);
+
+    // Primeiro pulso: F#4 (369.99 Hz) - tom suave de alerta empresarial
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(369.99, now);
+    gain1.gain.setValueAtTime(0.001, now);
+    gain1.gain.linearRampToValueAtTime(0.18, now + 0.006);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.08);
+
+    // Segundo pulso: D4 (293.66 Hz) - tom grave limpo e conclusivo
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(293.66, now + 0.10);
+    gain2.gain.setValueAtTime(0.001, now + 0.10);
+    gain2.gain.linearRampToValueAtTime(0.20, now + 0.106);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(now + 0.10);
+    osc2.stop(now + 0.22);
+
   } catch (e) {
     console.warn('Audio feedback failed:', e);
   }
 }
 
+/**
+ * Som de Aviso (Item já checado anteriormente / Atenção)
+ * Tom: Duplo toque sutil e polido estilo sistema hospitalar
+ */
+export function playWarningSound() {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+
+    // Toque 1: 587.33 Hz (D5)
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(587.33, now);
+    gain1.gain.setValueAtTime(0.001, now);
+    gain1.gain.linearRampToValueAtTime(0.14, now + 0.005);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.06);
+
+    // Toque 2: 587.33 Hz (D5)
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(587.33, now + 0.08);
+    gain2.gain.setValueAtTime(0.001, now + 0.08);
+    gain2.gain.linearRampToValueAtTime(0.14, now + 0.085);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(now + 0.08);
+    osc2.stop(now + 0.16);
+
+  } catch (e) {
+    console.warn('Audio feedback failed:', e);
+  }
+}

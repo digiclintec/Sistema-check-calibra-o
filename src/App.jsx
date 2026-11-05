@@ -44,7 +44,7 @@ import SectorColorModal from './components/SectorColorModal';
 
 import { parseSpreadsheetFile, exportToExcel } from './utils/sheetParser';
 import { SAMPLE_EQUIPMENT } from './utils/sampleData';
-import { playSuccessSound, playWarningSound, playErrorSound } from './utils/audio';
+import { playSuccessSound, playWarningSound, playErrorSound, playManualCheckSound, playUncheckSound } from './utils/audio';
 import { findBestEquipmentMatches } from './utils/fuzzyMatch';
 import { MODALITIES, normalizeEquipmentModalities, isEquipmentChecked, isEquipmentFullyChecked } from './utils/modalities';
 
@@ -786,8 +786,8 @@ export default function App() {
     setEquipments(updatedList);
 
     if (soundEnabled) {
-      if (nextState) playSuccessSound();
-      else playWarningSound();
+      if (nextState) playManualCheckSound();
+      else playUncheckSound();
     }
 
     try {
