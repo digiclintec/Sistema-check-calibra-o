@@ -74,6 +74,8 @@ export default function ScannerModal({
   const [hasTorch, setHasTorch] = useState(false);
   const [hasZoom, setHasZoom] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
+  const [zoomCaps, setZoomCaps] = useState(null); // Capacidades de zoom óptico { min, max, step }
+  const [activeLensLabel, setActiveLensLabel] = useState('1.0x Principal');
   const [viewMode, setViewMode] = useState('split'); // 'split' | 'full_camera'
   const [reticleType, setReticleType] = useState('1d'); // '1d' (Linha Laser) | '2d' (Caixa QR)
   
@@ -129,12 +131,46 @@ export default function ScannerModal({
     return `📷 Lente ${index + 1}`;
   };
 
-  const currentLensShortLabel = useMemo(() => {
-    if (!cameras || cameras.length === 0) return 'Lente Traseira';
-    const idx = cameras.findIndex(c => c.id === selectedCamera);
-    if (idx < 0) return 'Lente 1';
-    return getShortLensName(cameras[idx], idx);
-  }, [cameras, selectedCamera]);
+  // Presets de lentes ópticas reais suportadas pelo sensor do smartphone
+  const opticalPresets = useMemo(() => {
+    const minZ = zoomCaps?.min ?? 1;
+    const maxZ = zoomCaps?.max ?? 8;
+
+    if (minZ < 0.9) {
+      // Sensor Ultra-Wide detectado (0.5x ou 0.6x)
+      const list = [
+        { label: `${minZ.toFixed(1)}x Wide`, fullName: `${minZ.toFixed(1)}x Ultra-Wide`, value: minZ, icon: '📐' },
+        { label: '1.0x Principal', fullName: '1.0x Principal (Nítida)', value: 1.0, icon: '📷' },
+        { label: '2.0x Tele', fullName: '2.0x Telefoto Óptica', value: Math.min(2.0, maxZ), icon: '🔭' },
+      ];
+      if (maxZ >= 3.0) {
+        list.push({ label: '3.0x', fullName: '3.0x Telefoto Extra', value: 3.0, icon: '🔭' });
+      }
+      return list;
+    } else {
+      // Sensor padrão (1.0x)
+      const list = [
+        { label: '1.0x Principal', fullName: '1.0x Principal (Nítida)', value: 1.0, icon: '📷' },
+        { label: '1.5x Bombas', fullName: '1.5x Foco Bomba', value: Math.min(1.5, maxZ), icon: '🎯' },
+        { label: '2.0x Tele', fullName: '2.0x Telefoto Óptica', value: Math.min(2.0, maxZ), icon: '🔭' },
+      ];
+      if (maxZ >= 3.0) {
+        list.push({ label: '3.0x', fullName: '3.0x Telefoto', value: Math.min(3.0, maxZ), icon: '🔭' });
+      }
+      return list;
+    }
+  }, [zoomCaps]);
+
+  // Rótulo da lente ativa exibido no botão flutuante principal
+  const currentLensDisplay = useMemo(() => {
+    const backCams = (cameras || []).filter(c => !isFrontCamera(c.label));
+    if (backCams.length > 1) {
+      const idx = backCams.findIndex(c => c.id === selectedCamera);
+      const cam = idx >= 0 ? backCams[idx] : backCams[0];
+      return getShortLensName(cam, idx >= 0 ? idx : 0);
+    }
+    return activeLensLabel;
+  }, [cameras, selectedCamera, activeLensLabel]);
 
   // Modalidades ativas selecionadas para bipar (ex: ['calibracao'], ['preventiva'], ou ['calibracao', 'preventiva'])
   const [selectedModalities, setSelectedModalities] = useState(() => {
@@ -379,25 +415,15 @@ export default function ScannerModal({
       });
       html5QrCodeRef.current = html5QrCode;
 
-      // Restrições de vídeo: Garantem a troca física real da lente no Android e iOS
-      let videoConstraints;
-      if (cameraId) {
-        if (retryCount === 0) {
-          // Tier 0: Lente física EXATA pura (100% suportada pelo Android Camera2)
-          videoConstraints = {
-            deviceId: { exact: cameraId }
-          };
-        } else {
-          // Tier 1: Lente física relaxada (caso o driver do Android rejeite a chave 'exact')
-          videoConstraints = {
-            deviceId: cameraId
-          };
-        }
-      } else {
-        videoConstraints = {
-          facingMode: { ideal: "environment" }
-        };
-      }
+      // Restrições de vídeo: Troca real da lente física sem bloqueio no Android Camera2
+      const videoConstraints = {
+        ...(cameraId 
+          ? { deviceId: cameraId } 
+          : { facingMode: { ideal: "environment" } }
+        ),
+        width: { min: 640, ideal: 1920, max: 3840 },
+        height: { min: 480, ideal: 1080, max: 2160 },
+      };
 
       const config = {
         fps: 30, // 30 FPS para leitura instantânea e sem lag
@@ -414,8 +440,10 @@ export default function ScannerModal({
         disableFlip: true,
       };
 
-      // html5QrCode.start aceita cameraId como string simples OU objeto de constraints
-      const cameraConfig = cameraId ? cameraId : { facingMode: "environment" };
+      // Passa como objeto { deviceId } para evitar que html5-qrcode force 'exact' internamente
+      const cameraConfig = cameraId 
+        ? { deviceId: cameraId } 
+        : { facingMode: "environment" };
 
       await html5QrCode.start(
         cameraConfig,
@@ -498,11 +526,10 @@ export default function ScannerModal({
         }
       }
 
-      // Ativa foco contínuo e exposição de hardware (mantendo 1x nativo sem zoom digital forçado)
+      // Ativa foco contínuo e calibração de lente óptica
       setTimeout(() => {
         setupTrackFocusAndQuality();
         applyHardwareFocus(0.5, 0.5);
-        applySpecificZoom(1);
       }, 350);
 
       // Verifica capacidades de lanterna e zoom óptico/digital
@@ -526,10 +553,10 @@ export default function ScannerModal({
       // Fallback em cascata inteligente mantendo estritamente a lente física selecionada
       if (retryCount < 2 && cameraId) {
         const delay = (retryCount + 1) * 200;
-        console.log(`Tentando fallback tier ${retryCount + 2} para lente física ${cameraId}...`);
+        console.log(`Tentando fallback tier ${retryCount + 2} para câmera ${cameraId}...`);
         await new Promise(r => setTimeout(r, delay));
         return startScanner(cameraId, retryCount + 1);
-      } else if (!cameraId && retryCount < 2) {
+      } else if (retryCount < 2) {
         const delay = 250;
         await new Promise(r => setTimeout(r, delay));
         return startScanner(null, retryCount + 1);
@@ -555,6 +582,15 @@ export default function ScannerModal({
       const caps = track.getCapabilities ? track.getCapabilities() : {};
       const settings = track.getSettings ? track.getSettings() : {};
       console.log('[Camera] Resolução ativa:', settings.width, 'x', settings.height, 'Capabilities:', caps);
+
+      // Armazena capacidades de zoom do hardware
+      if (caps.zoom) {
+        setZoomCaps(caps.zoom);
+        setHasZoom(true);
+      }
+      if (caps.torch) {
+        setHasTorch(true);
+      }
 
       const advanced = [];
 
@@ -582,9 +618,12 @@ export default function ScannerModal({
         }
       }
 
-      // 4. Reaplica zoom se estiver ativo
-      if (zoomLevel > 1) {
-        applySpecificZoom(zoomLevel);
+      // 4. Se o aparelho abrir na lente ultra-wide (min < 0.9), FORÇA imediatamente a lente principal 1.0x nítida!
+      if (caps.zoom && caps.zoom.min < 0.9) {
+        console.log('[Camera] Detectado sensor ultra-wide nativo. Forçando lente principal 1.0x nítida...');
+        await applyOpticalLensZoom(1.0, '1.0x Principal (Nítida)');
+      } else if (caps.zoom) {
+        await applyOpticalLensZoom(1.0, '1.0x Principal (Nítida)');
       }
     } catch (err) {
       console.warn('[Camera] Erro na calibração inicial do track:', err);
@@ -747,49 +786,63 @@ export default function ScannerModal({
     }
   };
 
-  const applySpecificZoom = async (nextZoom) => {
-    setZoomLevel(nextZoom);
+  // Aplica zoom óptico real de hardware (forçando troca física de sensor no Android Camera2 HAL)
+  const applyOpticalLensZoom = async (targetZoom, labelOverride = null) => {
     try {
       const videoEl = document.querySelector('#barcode-reader-box video');
       const stream = videoEl?.srcObject;
       const track = stream?.getVideoTracks()?.[0];
       const caps = track?.getCapabilities ? track.getCapabilities() : {};
-      
-      let hardwareZoomApplied = false;
+
+      const minZ = caps.zoom?.min ?? zoomCaps?.min ?? 1;
+      const maxZ = caps.zoom?.max ?? zoomCaps?.max ?? 8;
+      const clampedZoom = Math.min(Math.max(targetZoom, minZ), maxZ);
+
+      let applied = false;
+
+      // 1. Aplica na trilha de hardware ativa (ativação real do sensor físico no Android Camera2)
       if (track && caps.zoom) {
         try {
-          const minZ = caps.zoom.min || 1;
-          const maxZ = caps.zoom.max || 8;
-          const clampedZoom = Math.min(Math.max(nextZoom, minZ), maxZ);
           await track.applyConstraints({ advanced: [{ zoom: clampedZoom }] });
-          hardwareZoomApplied = true;
-        } catch (e) {
-          console.warn('Erro ao aplicar zoom no hardware track:', e);
+          applied = true;
+        } catch (e1) {
+          console.warn('[Camera] track.applyConstraints zoom falhou:', e1);
         }
       }
 
-      // Fallback para zoom digital CSS cristalino no vídeo Full HD (garante zoom em qualquer smartphone)
+      // 2. Se falhar, tenta via API nativa do Html5Qrcode
+      if (!applied && html5QrCodeRef.current?.applyVideoConstraints) {
+        try {
+          await html5QrCodeRef.current.applyVideoConstraints({ advanced: [{ zoom: clampedZoom }] });
+          applied = true;
+        } catch (e2) {
+          console.warn('[Camera] html5QrCode.applyVideoConstraints zoom falhou:', e2);
+        }
+      }
+
+      setZoomLevel(clampedZoom);
+
+      // Remove estiramento digital CSS - imagem 100% nativa do sensor óptico
       if (videoEl) {
-        if (!hardwareZoomApplied && nextZoom > 1) {
-          videoEl.style.transform = `scale(${nextZoom})`;
-          videoEl.style.transformOrigin = 'center center';
-          videoEl.style.transition = 'transform 0.2s ease';
-        } else {
-          videoEl.style.transform = 'none';
-        }
+        videoEl.style.transform = 'none';
       }
 
-      setFocusFeedbackText(`Zoom ${nextZoom}x`);
-      setTimeout(() => setFocusFeedbackText(''), 1500);
-    } catch (e) {
-      console.warn('Erro ao aplicar zoom:', e);
-    }
-  };
+      // Descobre o rótulo amigável da lente
+      const matched = opticalPresets.find(p => Math.abs(p.value - clampedZoom) < 0.15);
+      const name = labelOverride || matched?.fullName || `${clampedZoom.toFixed(1)}x`;
+      setActiveLensLabel(name);
 
-  const cycleZoom = async (e) => {
-    e?.stopPropagation();
-    const nextZoom = zoomLevel === 1 ? 1.5 : zoomLevel === 1.5 ? 2 : 1;
-    await applySpecificZoom(nextZoom);
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate(35);
+      }
+
+      setFocusFeedbackText(`✓ ${name}`);
+      setTimeout(() => setFocusFeedbackText(''), 2000);
+      return true;
+    } catch (err) {
+      console.warn('[Camera] Erro ao aplicar zoom óptico:', err);
+      return false;
+    }
   };
 
   const handleCameraChange = async (camId) => {
@@ -834,17 +887,28 @@ export default function ScannerModal({
     setTimeout(() => setFocusFeedbackText(''), 2500);
   };
 
-  const handleCycleCamera = () => {
-    if (!cameras || cameras.length <= 1) return;
-    // Filtra preferencialmente as câmeras traseiras (foco em bombas)
-    const backCams = cameras.filter(c => !isFrontCamera(c.label));
-    const targetList = backCams.length > 1 ? backCams : cameras;
+  // Troca de lente inteligente: alterna sensor físico (se multi-deviceId) OU alterna lente óptica (se câmera lógica Android)
+  const handleCycleLensOrCamera = async () => {
+    const backCameras = (cameras || []).filter(c => !isFrontCamera(c.label));
 
-    const currentIndex = targetList.findIndex(c => c.id === selectedCamera);
-    const nextIndex = (currentIndex + 1) % targetList.length;
-    const nextCam = targetList[nextIndex];
-    if (nextCam) {
-      handleCameraChange(nextCam.id);
+    // Opção A: O aparelho expõe múltiplos sensores físicos traseiros com IDs separados (ex: Xiaomi, Motorola)
+    if (backCameras.length > 1) {
+      const currentIndex = backCameras.findIndex(c => c.id === selectedCamera);
+      const nextIndex = (currentIndex + 1) % backCameras.length;
+      const nextCam = backCameras[nextIndex];
+      if (nextCam) {
+        await handleCameraChange(nextCam.id);
+        return;
+      }
+    }
+
+    // Opção B: O aparelho agrupa as lentes em uma câmera lógica (ex: Samsung Galaxy, Google Pixel)
+    // Cicla entre os presets ópticos físicos (1.0x Principal -> 2.0x Telefoto -> 0.5x Ultra-Wide -> 1.0x)
+    const currentIndex = opticalPresets.findIndex(p => Math.abs(p.value - zoomLevel) < 0.15);
+    const nextIndex = (currentIndex + 1) % opticalPresets.length;
+    const nextPreset = opticalPresets[nextIndex];
+    if (nextPreset) {
+      await applyOpticalLensZoom(nextPreset.value, nextPreset.fullName);
     }
   };
 
@@ -1604,37 +1668,38 @@ export default function ScannerModal({
             </button>
 
             {/* Botão de Troca Rápida de Lente Física com estilo Pro */}
-            {cameras.length > 1 && (
-              <button
-                type="button"
-                onClick={handleCycleCamera}
-                className="px-3 py-1 rounded-full text-[11px] font-extrabold flex items-center gap-1.5 bg-blue-600/90 hover:bg-blue-500 text-white border border-blue-400/80 shadow-lg shadow-blue-500/25 transition active:scale-95"
-                title="Toque para alternar para a próxima lente física da câmera"
-              >
-                <SwitchCamera className="w-3.5 h-3.5 text-white" />
-                <span className="max-w-[130px] truncate">{currentLensShortLabel}</span>
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={handleCycleLensOrCamera}
+              className="px-3 py-1.5 rounded-full text-[11px] font-black flex items-center gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white border border-blue-400/80 shadow-lg shadow-blue-500/30 transition active:scale-95"
+              title="Toque para alternar fisicamente entre a Lente Principal (1x), Telefoto (2x) e Ultra-Wide (0.5x)"
+            >
+              <SwitchCamera className="w-3.5 h-3.5 text-white shrink-0" />
+              <span className="max-w-[130px] truncate">{currentLensDisplay}</span>
+            </button>
           </div>
 
-          {/* Botões Flutuantes Rápidos à Direita: Zoom, Focar e Lanterna */}
+          {/* Botões Flutuantes Rápidos à Direita: Seletor Óptico Direto, Focar e Lanterna */}
           <div className="absolute top-2.5 right-2.5 z-20 flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
-            {/* Seletor Rápido de Zoom */}
+            {/* Seletor Rápido de Lentes Ópticas (Presets de Hardware) */}
             <div className="flex items-center bg-slate-900/90 p-0.5 rounded-full border border-slate-700/80 shadow-lg">
-              {[1, 1.5, 2].map((z) => (
-                <button
-                  key={z}
-                  onClick={() => applySpecificZoom(z)}
-                  className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold transition ${
-                    zoomLevel === z
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                  title={`Zoom ${z}x ${z === 1.5 ? '(Ideal para Bombas de Infusão)' : ''}`}
-                >
-                  {z}x
-                </button>
-              ))}
+              {opticalPresets.map((preset) => {
+                const isActive = Math.abs(preset.value - zoomLevel) < 0.15;
+                return (
+                  <button
+                    key={preset.label}
+                    onClick={() => applyOpticalLensZoom(preset.value, preset.fullName)}
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition flex items-center gap-0.5 ${
+                      isActive
+                        ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-400'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                    title={`Ativar ${preset.fullName} (Sensor de Hardware)`}
+                  >
+                    <span>{preset.label}</span>
+                  </button>
+                );
+              })}
             </div>
 
             {/* Botão Dedicado de Focar (Dispara Autofoco de Hardware) */}

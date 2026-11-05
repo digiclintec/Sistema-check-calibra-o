@@ -105,7 +105,7 @@ export default function Navbar({
 
             {/* Seletor de Hospital Elegante com largura protegida */}
             <div className="flex items-center gap-1 min-w-0 shrink">
-              <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200/70 dark:hover:bg-slate-700/60 px-2 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700/80 transition shadow-xs w-32 xs:w-40 sm:w-52 md:w-60 max-w-[240px] shrink min-w-0">
+              <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200/70 dark:hover:bg-slate-700/60 px-2 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700/80 transition shadow-xs w-32 xs:w-36 sm:w-48 md:w-56 max-w-[220px] shrink min-w-0">
                 <Building2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
                 <select
                   value={activeHospitalId || ''}
@@ -137,22 +137,21 @@ export default function Navbar({
                 </select>
               </div>
 
-              {/* Botão Rápido + Hospital (Tablet / Desktop sm+) */}
+              {/* Botão Rápido + Hospital (Tablet / Desktop md+) */}
               <button
                 onClick={() => onOpenHospitalModal && onOpenHospitalModal('create')}
-                className="hidden sm:flex items-center gap-1 px-2 py-1.5 rounded-xl text-xs font-bold bg-blue-600/10 hover:bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 transition shrink-0 shadow-xs"
+                className="hidden md:flex items-center gap-1 px-2 py-1.5 rounded-xl text-xs font-bold bg-blue-600/10 hover:bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 transition shrink-0 shadow-xs"
                 title="Cadastrar Novo Hospital ou Clínica"
               >
                 <PlusCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                <span className="hidden md:inline">+ Hospital</span>
+                <span className="hidden lg:inline">+ Hospital</span>
               </button>
             </div>
-
           </div>
 
-          {/* CENTRO: Abas de Navegação (Visível em Telas sm+ >= 640px) */}
+          {/* CENTRO: Abas de Navegação (Visível EXCLUSIVAMENTE em Desktop lg+ >= 1024px para evitar qualquer sobreposição) */}
           {onChangeMainTab && (
-            <nav className="hidden sm:flex items-center gap-1 bg-slate-100/90 dark:bg-slate-800/80 p-1 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-inner shrink-0">
+            <nav className="hidden lg:flex items-center gap-1 bg-slate-100/90 dark:bg-slate-800/80 p-1 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-inner shrink-0 mx-2">
               <button
                 onClick={() => onChangeMainTab('conferencia')}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
@@ -163,8 +162,7 @@ export default function Navbar({
                 title="Conferência de Equipamentos e Bipagem"
               >
                 <FileCheck className="w-3.5 h-3.5 shrink-0" />
-                <span className="hidden md:inline">Conferência</span>
-                <span className="md:hidden">Conf.</span>
+                <span>Conferência</span>
               </button>
 
               <button
@@ -177,8 +175,7 @@ export default function Navbar({
                 title="Espelho Seguro da planilha e Espelho de Ponto da Equipe"
               >
                 <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-                <span className="hidden md:inline">Espelho Seguro</span>
-                <span className="md:hidden">Espelho</span>
+                <span>Espelho Seguro</span>
               </button>
 
               <button
@@ -191,8 +188,7 @@ export default function Navbar({
                 title="Planejamento de Cronogramas e Metas Mensais"
               >
                 <Calendar className="w-3.5 h-3.5 shrink-0" />
-                <span className="hidden md:inline">Planejamento</span>
-                <span className="md:hidden">Planos</span>
+                <span>Planejamento</span>
                 {monthlyPlans.length > 0 && (
                   <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
                     activeMainTab === 'planejamento' 
@@ -420,12 +416,12 @@ export default function Navbar({
       </div>
 
       {/* ============================================================
-          LINHA SECUNDÁRIA (Row 2): Abas Nativas no Mobile (< sm)
+          LINHA SECUNDÁRIA (Row 2): Abas Nativas no Mobile & Tablet (< lg)
           Garante navegação com 100% de largura, sem cortes ou sobreposições
       ============================================================ */}
       {onChangeMainTab && (
-        <div className="sm:hidden w-full bg-slate-50/95 dark:bg-[#090f1d]/95 border-t border-slate-200 dark:border-slate-800 px-2.5 py-1.5">
-          <nav className="grid grid-cols-3 gap-1 bg-white/90 dark:bg-slate-800/90 p-0.5 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-xs">
+        <div className="lg:hidden w-full bg-slate-50/95 dark:bg-[#090f1d]/95 border-t border-slate-200 dark:border-slate-800 px-2.5 sm:px-4 py-1.5">
+          <nav className="max-w-xl mx-auto grid grid-cols-3 gap-1 bg-white/90 dark:bg-slate-800/90 p-0.5 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-xs">
             <button
               onClick={() => onChangeMainTab('conferencia')}
               className={`py-1.5 px-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 truncate ${
@@ -448,7 +444,7 @@ export default function Navbar({
               title="Espelho Seguro da Planilha"
             >
               <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">Espelho</span>
+              <span className="truncate">Espelho Seguro</span>
             </button>
 
             <button
@@ -461,7 +457,7 @@ export default function Navbar({
               title="Planejamento de Metas"
             >
               <Calendar className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">Planos</span>
+              <span className="truncate">Planejamento</span>
               {monthlyPlans.length > 0 && (
                 <span className={`text-[9px] px-1 py-0.2 rounded-full font-black shrink-0 ${
                   activeMainTab === 'planejamento' 
