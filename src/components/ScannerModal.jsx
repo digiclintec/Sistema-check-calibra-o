@@ -59,6 +59,7 @@ export default function ScannerModal({
   const [cameras, setCameras] = useState([]);
   const [selectedCamera, setSelectedCamera] = useState('');
   const [scanning, setScanning] = useState(false);
+  const [isCameraStarting, setIsCameraStarting] = useState(false);
   const [cameraError, setCameraError] = useState('');
   const [torchOn, setTorchOn] = useState(false);
   const [hasTorch, setHasTorch] = useState(false);
@@ -106,6 +107,7 @@ export default function ScannerModal({
   // Detector nativo de código de barras (Google Play Services / Android ML Kit)
   const nativeDetectorActiveRef = useRef(false);
   const nativeDetectorRafRef = useRef(null);
+  const isStartingRef = useRef(false);
 
   // Inicializa câmera ao abrir o modal
   useEffect(() => {
@@ -119,12 +121,12 @@ export default function ScannerModal({
     setLastScannedFeedback(null);
     setFocusRing({ x: 0, y: 0, visible: false, status: 'idle' });
 
-    // Pequeno intervalo de 120ms para o container DOM estar 100% montado e evitar conflito de hardware
+    // Pequeno intervalo de 150ms para o container DOM estar 100% montado e evitar conflito de hardware
     const timer = setTimeout(() => {
       if (isMounted) {
         startScanner(selectedCamera || null);
       }
-    }, 120);
+    }, 150);
 
     return () => {
       isMounted = false;
@@ -133,11 +135,16 @@ export default function ScannerModal({
     };
   }, [isOpen]);
 
-  const startScanner = async (cameraId, isRetry = false) => {
+  const startScanner = async (cameraId, retryCount = 0) => {
+    if (isStartingRef.current && retryCount === 0) return;
+    isStartingRef.current = true;
+    setIsCameraStarting(true);
+    setCameraError('');
+
     await stopScanner();
 
-    // Pausa preventiva de 100ms para liberação completa do hardware da câmera no mobile
-    await new Promise(r => setTimeout(r, 100));
+    // Pausa preventiva de 120ms para liberação completa do hardware da câmera no mobile
+    await new Promise(r => setTimeout(r, 120));
 
     try {
       const html5QrCode = new Html5Qrcode('barcode-reader-box', {
@@ -149,32 +156,44 @@ export default function ScannerModal({
       });
       html5QrCodeRef.current = html5QrCode;
 
-      // Configuração flexível Full HD sem restrições 'min' que causam OverconstrainedError em modo retrato
-      const videoConstraints = {
-        facingMode: { ideal: "environment" },
-        ...(cameraId ? { deviceId: { exact: cameraId } } : {}),
-        width: { ideal: 1920 },
-        height: { ideal: 1080 }
-      };
+      // Tier 1 (retry 0): HD ideal com aspect ratio flexível (evita OverconstrainedError em modo retrato)
+      // Tier 2 (retry 1): facingMode simples sem dimensões rígidas
+      // Tier 3 (retry 2): fallback permissivo
+      let cameraConfig;
+      let videoConstraints;
+
+      if (cameraId) {
+        cameraConfig = { deviceId: { exact: cameraId } };
+        videoConstraints = { deviceId: { exact: cameraId } };
+      } else if (retryCount === 0) {
+        cameraConfig = { facingMode: "environment" };
+        videoConstraints = {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1280 },
+          aspectRatio: { ideal: 1.7777777778 }
+        };
+      } else if (retryCount === 1) {
+        cameraConfig = { facingMode: "environment" };
+        videoConstraints = { facingMode: "environment" };
+      } else {
+        cameraConfig = { facingMode: "environment" };
+        videoConstraints = {};
+      }
 
       const config = {
-        fps: 30, // 30 quadros por segundo
-        videoConstraints: videoConstraints,
+        fps: 25,
+        videoConstraints: Object.keys(videoConstraints).length > 0 ? videoConstraints : undefined,
         qrbox: (viewfinderWidth, viewfinderHeight) => {
           // Ampla área horizontal cobrindo 98% da largura útil sem cortar códigos 1D longos
           const width = Math.floor(viewfinderWidth * 0.98);
           const height = Math.floor(Math.min(viewfinderHeight * 0.75, 340));
           return {
-            width: Math.max(width, 280),
-            height: Math.max(height, 140)
+            width: Math.max(width, 260),
+            height: Math.max(height, 130)
           };
         },
         disableFlip: true,
       };
-
-      const cameraConfig = cameraId 
-        ? cameraId 
-        : { facingMode: "environment" };
 
       await html5QrCode.start(
         cameraConfig,
@@ -188,7 +207,9 @@ export default function ScannerModal({
       );
 
       setScanning(true);
+      setIsCameraStarting(false);
       setCameraError('');
+      isStartingRef.current = false;
 
       // Com o scanner já aberto e permissão concedida, lista os dispositivos de forma segura sem conflito
       if (navigator.mediaDevices?.enumerateDevices) {
@@ -270,18 +291,20 @@ export default function ScannerModal({
       }
 
     } catch (err) {
-      console.warn('Tentativa ao iniciar câmera:', err);
+      console.warn(`Tentativa ${retryCount + 1} ao iniciar câmera:`, err);
 
-      // Auto-retry silencioso: se falhou na primeira tentativa (ex: câmera liberando recurso), tenta novamente em 350ms
-      if (!isRetry) {
-        console.log('Tentando reconexão suave da câmera em 350ms...');
-        await new Promise(r => setTimeout(r, 350));
-        return startScanner(null, true);
+      // Fallback em cascata suave antes de exibir mensagem de erro
+      if (retryCount < 2) {
+        console.log(`Tentando fallback de câmera tier ${retryCount + 2} em 250ms...`);
+        await new Promise(r => setTimeout(r, 250));
+        return startScanner(null, retryCount + 1);
       }
 
+      isStartingRef.current = false;
+      setIsCameraStarting(false);
       setScanning(false);
       setCameraError(
-        'Não foi possível abrir a câmera traseira diretamente. Verifique as permissões de câmera do navegador ou use o botão "Enviar Foto do Código".'
+        'Não foi possível abrir a câmera traseira diretamente. Verifique as permissões de câmera do navegador ou use o botão "Tirar Foto".'
       );
     }
   };
@@ -293,6 +316,17 @@ export default function ScannerModal({
       nativeDetectorRafRef.current = null;
     }
 
+    // Para explicitamente todas as tracks do elemento de vídeo para liberar hardware
+    try {
+      const videoEl = document.querySelector('#barcode-reader-box video');
+      if (videoEl && videoEl.srcObject) {
+        videoEl.srcObject.getTracks().forEach(track => {
+          try { track.stop(); } catch (e) {}
+        });
+        videoEl.srcObject = null;
+      }
+    } catch (e) {}
+
     if (html5QrCodeRef.current) {
       try {
         if (html5QrCodeRef.current.isScanning) {
@@ -303,6 +337,7 @@ export default function ScannerModal({
       html5QrCodeRef.current = null;
     }
     setScanning(false);
+    setIsCameraStarting(false);
     setTorchOn(false);
   };
 
@@ -1029,6 +1064,15 @@ export default function ScannerModal({
               💡 Imagem embaçada? Toque na tela ou use o botão <strong>1.5x/2x</strong> afastando o celular a 20cm
             </span>
           </div>
+
+          {/* Indicador de Inicialização Suave da Câmera */}
+          {isCameraStarting && !scanning && !cameraError && (
+            <div className="absolute inset-0 z-15 flex flex-col items-center justify-center p-6 text-center bg-slate-950/90 space-y-3 animate-in fade-in duration-150">
+              <div className="w-10 h-10 border-3 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+              <p className="text-white font-bold text-sm">Iniciando câmera traseira...</p>
+              <p className="text-slate-400 text-xs">Calibrando lente e foco automático</p>
+            </div>
+          )}
 
           {/* Mensagem de Erro de Câmera */}
           {cameraError && (

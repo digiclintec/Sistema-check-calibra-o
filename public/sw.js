@@ -1,5 +1,5 @@
 // Service Worker for CalibraCheck PWA
-const CACHE_NAME = 'calibracheck-v6';
+const CACHE_NAME = 'calibracheck-v7';
 
 const STATIC_ASSETS = [
   '/',

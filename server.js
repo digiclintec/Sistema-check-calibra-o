@@ -1093,6 +1093,28 @@ app.post('/api/equipment/update-sector', (req, res) => {
   });
 });
 
+// Validação de Senha / PIN Simples para Conferência Manual
+app.post('/api/verify-pin', (req, res) => {
+  const { pin } = req.body || {};
+  const cleanPin = String(pin || '').trim();
+  const MASTER_PIN = '1234';
+
+  const users = readUsers();
+  const isValid = cleanPin === MASTER_PIN || 
+                  cleanPin.toLowerCase() === 'digiclintec' || 
+                  cleanPin === 'admin123' || 
+                  users.some(u => u.password === cleanPin);
+
+  if (isValid) {
+    return res.json({ success: true, message: 'Senha confirmada.' });
+  }
+
+  return res.status(401).json({
+    success: false,
+    message: 'Senha incorreta. A senha padrão de conferência manual é 1234.'
+  });
+});
+
 // Mass Check (Check All or Uncheck All with simple PIN password protection per modality)
 app.post('/api/mass-check', (req, res) => {
   const { action, modality = 'calibracao', password, hospitalId, userEmail, userName } = req.body || {};

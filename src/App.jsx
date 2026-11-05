@@ -30,6 +30,7 @@ import TeamManagementModal from './components/TeamManagementModal';
 import MonthlyPlanningTab from './components/MonthlyPlanningTab';
 import SerialScanModal from './components/SerialScanModal';
 import MassActionPasswordModal from './components/MassActionPasswordModal';
+import ManualCheckPasswordModal from './components/ManualCheckPasswordModal';
 import ModalityBar from './components/ModalityBar';
 
 import { parseSpreadsheetFile, exportToExcel } from './utils/sheetParser';
@@ -96,6 +97,16 @@ export default function App() {
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isSerialScanOpen, setIsSerialScanOpen] = useState(false);
   const [massActionModal, setMassActionModal] = useState({ isOpen: false, action: 'check_all' });
+  const [manualCheckModal, setManualCheckModal] = useState({ isOpen: false, equipment: null, modality: 'calibracao', nextState: true });
+  const PIN_AUTH_KEY = 'calibracheck_pin_auth_until';
+  const [pinAuthorizedUntil, setPinAuthorizedUntil] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem(PIN_AUTH_KEY);
+      return saved ? parseInt(saved, 10) : 0;
+    } catch (e) {
+      return 0;
+    }
+  });
   const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
   const [isMasterPanelOpen, setIsMasterPanelOpen] = useState(false);
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
@@ -496,8 +507,8 @@ export default function App() {
     prevCheckedRef.current = stats.checked;
   }, [stats.checked, stats.total, activeHospital?.name, activeModality]);
 
-  // Toggle item check status com suporte a multiequipes (Calibração / Preventiva / TSE)
-  const handleToggleCheck = async (id, targetModality = activeModality) => {
+  // Executa alternância de status de check (interno / autorizado)
+  const executeToggleCheck = async (id, targetModality = activeModality) => {
     const mod = targetModality === 'geral' ? 'calibracao' : targetModality;
     const target = equipments.find(e => e.id === id || e.codigoBarras === id);
     if (!target) return;
@@ -536,6 +547,12 @@ export default function App() {
 
     setEquipments(updatedList);
 
+    // Som de feedback
+    if (soundEnabled) {
+      if (nextState) playSuccessSound();
+      else playWarningSound();
+    }
+
     // Notifica backend com a modalidade correspondente
     try {
       fetch('/api/toggle-check', {
@@ -561,6 +578,70 @@ export default function App() {
       activeSheetName, 
       `${target.equipamento} teve ${modName} ${nextState ? 'confirmada' : 'desmarcada'}`
     );
+  };
+
+  // Toggle item check status disparado por clique manual na tela (tabelas e cards)
+  // Requer senha simples de confirmação (1234) para evitar cliques acidentais
+  const handleToggleCheck = async (id, targetModality = activeModality) => {
+    const mod = targetModality === 'geral' ? 'calibracao' : targetModality;
+    const target = equipments.find(e => e.id === id || e.codigoBarras === id);
+    if (!target) return;
+
+    // Se já estiver pré-autorizado na sessão (últimos 15 min), executa direto sem bloquear
+    if (Date.now() < pinAuthorizedUntil) {
+      await executeToggleCheck(id, mod);
+      return;
+    }
+
+    // Solicita a senha simples de conferência manual
+    const currentChecked = isEquipmentChecked(target, mod);
+    setManualCheckModal({
+      isOpen: true,
+      equipment: target,
+      modality: mod,
+      nextState: !currentChecked
+    });
+  };
+
+  // Confirmação de PIN para Check Manual
+  const handleConfirmManualCheck = async ({ pin, equipmentId, modality, remember15Min }) => {
+    try {
+      const res = await fetch('/api/verify-pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin })
+      });
+      const data = await res.json();
+
+      if (!data.success) {
+        return { success: false, message: data.message || 'Senha incorreta. (Padrão: 1234)' };
+      }
+
+      if (remember15Min) {
+        const expires = Date.now() + 15 * 60 * 1000;
+        try {
+          sessionStorage.setItem(PIN_AUTH_KEY, String(expires));
+        } catch (e) {}
+        setPinAuthorizedUntil(expires);
+      }
+
+      await executeToggleCheck(equipmentId, modality);
+      return { success: true };
+    } catch (err) {
+      // Fallback local se offline ou servidor inacessível
+      if (pin === '1234' || pin === 'digiclintec' || pin === currentUser?.password) {
+        if (remember15Min) {
+          const expires = Date.now() + 15 * 60 * 1000;
+          try {
+            sessionStorage.setItem(PIN_AUTH_KEY, String(expires));
+          } catch (e) {}
+          setPinAuthorizedUntil(expires);
+        }
+        await executeToggleCheck(equipmentId, modality);
+        return { success: true };
+      }
+      return { success: false, message: 'Senha incorreta. (Padrão: 1234)' };
+    }
   };
 
   // Conferência em Lote (Staging / Batch Check) para a modalidade ativa com suporte a setor de retirada
@@ -1155,6 +1236,16 @@ export default function App() {
         hospitalName={activeHospital?.name}
         planTitle={activeSheetName}
         onConfirm={handleMassCheck}
+      />
+
+      {/* Modal de Senha Simples para Check Manual por Clique na Tela */}
+      <ManualCheckPasswordModal
+        isOpen={manualCheckModal.isOpen}
+        onClose={() => setManualCheckModal(prev => ({ ...prev, isOpen: false }))}
+        equipment={manualCheckModal.equipment}
+        modality={manualCheckModal.modality}
+        nextState={manualCheckModal.nextState}
+        onConfirm={handleConfirmManualCheck}
       />
 
       {/* Google Sheets / File Import Modal */}

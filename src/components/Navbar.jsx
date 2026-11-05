@@ -46,25 +46,13 @@ export default function Navbar({
   const isMaster = currentUser?.role === 'master' || currentUser?.email?.toLowerCase() === 'digiclintec@gmail.com';
   const activeHospital = hospitals.find(h => h.id === activeHospitalId) || hospitals[0];
 
-  const planBadgeClasses = {
-    basico: 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border-blue-200 dark:border-blue-900',
-    pro: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900',
-    enterprise: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-200 dark:border-amber-900'
-  };
-
-  const planName = {
-    basico: 'Básico',
-    pro: 'Pro',
-    enterprise: 'Enterprise'
-  }[activeHospital?.plano || 'pro'] || 'Pro';
-
   return (
     <header className="sticky top-0 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 w-full overflow-hidden">
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-14 sm:h-20 gap-1.5 sm:gap-2">
+      <div className="max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-14 sm:h-20 gap-1 sm:gap-2">
           
           {/* Brand Logo & Name */}
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-blue-500 flex items-center justify-center text-white shadow-md shadow-blue-500/25 shrink-0">
               <CheckCircle className="w-4 h-4 sm:w-6 sm:h-6 stroke-[2.5]" />
             </div>
@@ -86,7 +74,7 @@ export default function Navbar({
 
           {/* Hospital Switcher Dropdown (Multi-Hospital SaaS) */}
           {hospitals && hospitals.length > 0 && (
-            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 sm:p-1.5 rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700/60 max-w-[110px] xs:max-w-[140px] sm:max-w-xs shrink min-w-0">
+            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 sm:p-1.5 rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700/60 max-w-[120px] xs:max-w-[150px] sm:max-w-xs shrink min-w-0">
               <Building2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0 ml-0.5 hidden xs:block" />
               <select
                 value={activeHospitalId || ''}
@@ -103,9 +91,9 @@ export default function Navbar({
             </div>
           )}
 
-          {/* Work Modality Selector (Equipes: Calibração / Preventiva / TSE) */}
+          {/* Work Modality Selector (Equipes: Calibração / Preventiva / TSE - No mobile, o ModalityBar abaixo já cumpre esta função) */}
           {onChangeModality && (
-            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 sm:p-1.5 rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700/60 shrink min-w-0">
+            <div className="hidden md:flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 sm:p-1.5 rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700/60 shrink min-w-0">
               <select
                 value={activeModality || 'calibracao'}
                 onChange={(e) => onChangeModality(e.target.value)}

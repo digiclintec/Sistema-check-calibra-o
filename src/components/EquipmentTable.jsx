@@ -176,20 +176,20 @@ export default function EquipmentTable({
       <div className="p-3 sm:p-5 border-b border-slate-200 dark:border-slate-800 space-y-2.5 sm:space-y-3 bg-slate-50/50 dark:bg-slate-900/50 w-full overflow-hidden">
         
         {/* Row 1: Direct Gun/Barcode Scan Bar */}
-        <form onSubmit={handleQuickSubmit} className="relative flex items-center w-full">
+        <form onSubmit={handleQuickSubmit} className="relative flex items-center w-full min-w-0">
           <div className="absolute left-3 text-blue-600 dark:text-blue-400 flex items-center gap-1.5 pointer-events-none">
             <Barcode className="w-4 h-4 sm:w-5 sm:h-5 animate-pulse" />
           </div>
           <input
             type="text"
-            placeholder="Aponte o leitor de código de barras ou digite..."
+            placeholder="Bipe com leitor ou digite o código..."
             value={quickCodeInput}
             onChange={(e) => setQuickCodeInput(e.target.value)}
-            className="w-full bg-white dark:bg-slate-950 border-2 border-blue-500/40 dark:border-blue-500/50 rounded-xl sm:rounded-2xl pl-9 sm:pl-11 pr-18 sm:pr-20 py-2 sm:py-3 text-xs sm:text-sm font-mono text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-500/15 shadow-sm"
+            className="w-full min-w-0 bg-white dark:bg-slate-950 border-2 border-blue-500/40 dark:border-blue-500/50 rounded-xl sm:rounded-2xl pl-9 sm:pl-11 pr-18 sm:pr-20 py-2 sm:py-3 text-xs sm:text-sm font-mono text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-500/15 shadow-sm"
           />
           <button
             type="submit"
-            className="absolute right-1.5 sm:right-2 px-2.5 sm:px-3 py-1 sm:py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg sm:rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-sm"
+            className="absolute right-1.5 sm:right-2 px-2.5 sm:px-3 py-1 sm:py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg sm:rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-sm shrink-0"
           >
             <CheckCircle2 className="w-3.5 h-3.5" />
             <span>Check</span>
@@ -197,14 +197,14 @@ export default function EquipmentTable({
         </form>
 
         {/* Row 2: Search Query */}
-        <div className="relative w-full">
+        <div className="relative w-full min-w-0">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             placeholder="Buscar por nome, tag, série, modelo..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl pl-9 pr-8 py-2 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            className="w-full min-w-0 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl pl-9 pr-8 py-2 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
           />
           {searchQuery && (
             <button
