@@ -152,3 +152,4 @@ export function getCheckMeta(eq, modality = 'calibracao') {
     user: eq.usuario_calibracao || eq.conferidoPor
   };
 }
+
