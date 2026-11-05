@@ -74,7 +74,14 @@ export default function ScannerModal({
   const [zoomLevel, setZoomLevel] = useState(1);
   const [viewMode, setViewMode] = useState('split'); // 'split' | 'full_camera'
   const [reticleType, setReticleType] = useState('1d'); // '1d' (Linha Laser) | '2d' (Caixa QR)
+  const [fitMode, setFitMode] = useState('contain'); // 'contain' (100% Nítido sem corte) | 'cover' (Preencher tela)
   
+  // Helper para identificar lente ultra-wide (0.5x)
+  const isUltraWideLens = (label) => {
+    const l = (label || '').toLowerCase();
+    return l.includes('ultra') || l.includes('super') || l.includes('0.5') || l.includes('0,5') || l.includes('ultrawide');
+  };
+
   // Rótulos inteligentes e amigáveis para cada lente de hardware do aparelho
   const getFriendlyCameraLabel = (camera, index, total) => {
     if (!camera) return `Lente ${index + 1}`;
@@ -83,7 +90,7 @@ export default function ScannerModal({
     if (raw.includes('front') || raw.includes('user') || raw.includes('frontal') || raw.includes('selfie') || raw.includes('facing front')) {
       return `🤳 Lente Frontal (${index + 1})`;
     }
-    if (raw.includes('ultra') || raw.includes('super') || raw.includes('0.5') || raw.includes('0,5') || raw.includes('wide-angle')) {
+    if (isUltraWideLens(raw)) {
       return `📐 Ultra-Wide 0.5x (${index + 1}) [Embaça de perto]`;
     }
     if (raw.includes('tele') || raw.includes('zoom') || raw.includes('2x') || raw.includes('3x') || raw.includes('5x')) {
@@ -95,14 +102,14 @@ export default function ScannerModal({
     if (index === 0) {
       return `📷 Lente 1 (Principal 1x - Nítida)`;
     }
-    return `📷 Lente ${index + 1} (Traseira)`;
+    return `📷 Lente ${index + 1} (Traseira 1x)`;
   };
 
   const getShortLensName = (camera, index) => {
     if (!camera) return `Lente ${index + 1}`;
     const raw = (camera.label || '').toLowerCase();
     if (raw.includes('front') || raw.includes('user') || raw.includes('frontal')) return 'Frontal';
-    if (raw.includes('ultra') || raw.includes('0.5') || raw.includes('super')) return '0.5x Wide';
+    if (isUltraWideLens(raw)) return '0.5x Wide';
     if (index === 0) return 'Lente 1 (1x)';
     return `Lente ${index + 1}`;
   };
@@ -301,10 +308,11 @@ export default function ScannerModal({
                    label.includes('0, facing back');
           });
 
-          // Filtra preferencialmente a principal (sem 'wide', 'ultra', '0.5', 'macro', 'depth')
+          // Filtra preferencialmente a principal (sem ultra-wide 0.5x, macro ou depth)
+          // OBS: A câmera 1x padrão chama-se 'wide-angle', NÃO deve ser excluída!
           const cleanBackCam = backCameras.find(d => {
             const label = (d.label || '').toLowerCase();
-            return !label.includes('wide') && !label.includes('ultra') && !label.includes('0.5') && !label.includes('macro') && !label.includes('depth');
+            return !isUltraWideLens(label) && !label.includes('macro') && !label.includes('depth');
           }) || backCameras[0] || devices[0];
 
           if (cleanBackCam) {
@@ -358,41 +366,43 @@ export default function ScannerModal({
       // Restrições de vídeo Full HD (1080p ideal) sem forçar aspect ratio fixo
       let videoConstraints;
       if (cameraId) {
-        // ATENÇÃO: NUNCA passe facingMode quando cameraId estiver definido!
-        // No Android Chrome, a presença de facingMode faz o navegador ignorar o deviceId e cair na super wide!
         if (retryCount === 0) {
+          // Tier 0: 1080p Full HD limpo e nítido
           videoConstraints = {
             deviceId: { exact: cameraId },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-            advanced: [{ focusMode: "continuous" }]
+            width: { min: 1280, ideal: 1920, max: 3840 },
+            height: { min: 720, ideal: 1080, max: 2160 }
           };
         } else if (retryCount === 1) {
+          // Tier 1: 720p HD com deviceId flexível
           videoConstraints = {
-            deviceId: { exact: cameraId },
+            deviceId: { ideal: cameraId },
             width: { ideal: 1280 },
-            height: { ideal: 720 },
-            advanced: [{ focusMode: "continuous" }]
+            height: { ideal: 720 }
+          };
+        } else if (retryCount === 2) {
+          // Tier 2: deviceId puro sem restrição de dimensão
+          videoConstraints = {
+            deviceId: cameraId
           };
         } else {
+          // Tier 3: fallback para ambiente
           videoConstraints = {
-            deviceId: { exact: cameraId }
+            facingMode: { ideal: "environment" }
           };
         }
       } else {
         if (retryCount === 0) {
           videoConstraints = {
             facingMode: { ideal: "environment" },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-            advanced: [{ focusMode: "continuous" }]
+            width: { min: 1280, ideal: 1920 },
+            height: { min: 720, ideal: 1080 }
           };
         } else if (retryCount === 1) {
           videoConstraints = {
             facingMode: { ideal: "environment" },
             width: { ideal: 1280 },
-            height: { ideal: 720 },
-            advanced: [{ focusMode: "continuous" }]
+            height: { ideal: 720 }
           };
         } else {
           videoConstraints = {
@@ -500,10 +510,11 @@ export default function ScannerModal({
         }
       }
 
-      // Ativa foco contínuo e calibração no centro da lente (1.0x nativo sem pixelização digital)
+      // Ativa foco contínuo e calibração de alta nitidez na trilha de hardware ativa
       setTimeout(() => {
+        setupTrackFocusAndQuality();
         applyHardwareFocus(0.5, 0.5);
-      }, 400);
+      }, 350);
 
       // Verifica capacidades de lanterna e zoom óptico/digital
       try {
@@ -523,20 +534,72 @@ export default function ScannerModal({
     } catch (err) {
       console.warn(`Tentativa ${retryCount + 1} ao iniciar câmera:`, err);
 
-      // Fallback em cascata suave antes de exibir mensagem de erro
-      if (retryCount < 2) {
+      // Fallback em cascata inteligente mantendo a lente selecionada antes de desistir
+      if (retryCount < 2 && cameraId) {
         const delay = (retryCount + 1) * 200;
-        console.log(`Tentando fallback de câmera tier ${retryCount + 2} em ${delay}ms...`);
+        console.log(`Tentando fallback tier ${retryCount + 2} para lente ${cameraId}...`);
         await new Promise(r => setTimeout(r, delay));
-        return startScanner(null, retryCount + 1);
+        return startScanner(cameraId, retryCount + 1);
+      } else if (retryCount < 3) {
+        const delay = 300;
+        console.log(`Tentando fallback geral tier ${retryCount + 2}...`);
+        await new Promise(r => setTimeout(r, delay));
+        return startScanner(null, 3);
       }
 
       isStartingRef.current = false;
       setIsCameraStarting(false);
       setScanning(false);
       setCameraError(
-        'Não foi possível abrir a câmera traseira diretamente. Verifique as permissões de câmera do navegador ou use o botão "Tirar Foto".'
+        'Não foi possível abrir a câmera selecionada. Tente alternar para outra lente ou usar o botão "Tirar Foto".'
       );
+    }
+  };
+
+  // Calibração e ativação do Autofoco Contínuo e Exposição na trilha ativa
+  const setupTrackFocusAndQuality = async () => {
+    try {
+      const videoEl = document.querySelector('#barcode-reader-box video');
+      const stream = videoEl?.srcObject;
+      const track = stream?.getVideoTracks()?.[0];
+      if (!track) return;
+
+      const caps = track.getCapabilities ? track.getCapabilities() : {};
+      const settings = track.getSettings ? track.getSettings() : {};
+      console.log('[Camera] Resolução ativa:', settings.width, 'x', settings.height, 'Capabilities:', caps);
+
+      const advanced = [];
+
+      // 1. Autofoco contínuo no hardware
+      if (caps.focusMode && caps.focusMode.includes('continuous')) {
+        advanced.push({ focusMode: 'continuous' });
+      }
+
+      // 2. Exposição contínua
+      if (caps.exposureMode && caps.exposureMode.includes('continuous')) {
+        advanced.push({ exposureMode: 'continuous' });
+      }
+
+      // 3. Balanço de branco contínuo
+      if (caps.whiteBalanceMode && caps.whiteBalanceMode.includes('continuous')) {
+        advanced.push({ whiteBalanceMode: 'continuous' });
+      }
+
+      if (advanced.length > 0) {
+        try {
+          await track.applyConstraints({ advanced });
+          console.log('[Camera] Autofoco contínuo e exposição calibrados.');
+        } catch (e) {
+          console.warn('[Camera] Falha ao aplicar constraints avançadas no track:', e);
+        }
+      }
+
+      // 4. Reaplica zoom se estiver ativo
+      if (zoomLevel > 1) {
+        applySpecificZoom(zoomLevel);
+      }
+    } catch (err) {
+      console.warn('[Camera] Erro na calibração inicial do track:', err);
     }
   };
 
@@ -584,20 +647,7 @@ export default function ScannerModal({
       if (track) {
         const caps = track.getCapabilities ? track.getCapabilities() : {};
         
-        // 1. Recalibra o motor de foco automático da lente
-        if (caps.focusMode) {
-          try {
-            // Se aceitar single-shot, alterna para disparar o motor
-            if (caps.focusMode.includes('single-shot')) {
-              await track.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] });
-            }
-            if (caps.focusMode.includes('continuous')) {
-              await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
-            }
-          } catch (e) {}
-        }
-
-        // 2. Se o celular aceitar ponto de interesse (ponto tocado na tela)
+        // 1. Ponto de interesse do foco (onde o técnico tocou na tela)
         if (relX !== undefined && relY !== undefined && caps.pointsOfInterest) {
           try {
             await track.applyConstraints({
@@ -605,15 +655,24 @@ export default function ScannerModal({
             });
           } catch (e) {}
         }
-      }
 
-      // 3. Fallback via Html5Qrcode API
-      if (html5QrCodeRef.current) {
-        try {
-          await html5QrCodeRef.current.applyVideoConstraints({
-            advanced: [{ focusMode: 'continuous' }]
-          });
-        } catch (e) {}
+        // 2. Dispara ciclo de foco no motor da lente
+        if (caps.focusMode) {
+          try {
+            if (caps.focusMode.includes('single-shot')) {
+              await track.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] });
+              setTimeout(async () => {
+                try {
+                  if (caps.focusMode.includes('continuous')) {
+                    await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+                  }
+                } catch (e) {}
+              }, 400);
+            } else if (caps.focusMode.includes('continuous')) {
+              await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+            }
+          } catch (e) {}
+        }
       }
     } catch (err) {
       console.warn('Erro ao aplicar foco de hardware:', err);
@@ -701,18 +760,39 @@ export default function ScannerModal({
   };
 
   const applySpecificZoom = async (nextZoom) => {
+    setZoomLevel(nextZoom);
     try {
-      if (html5QrCodeRef.current) {
-        await html5QrCodeRef.current.applyVideoConstraints({
-          advanced: [{ zoom: nextZoom }]
-        });
-      }
       const videoEl = document.querySelector('#barcode-reader-box video');
-      const track = videoEl?.srcObject?.getVideoTracks()?.[0];
-      if (track) {
-        await track.applyConstraints({ advanced: [{ zoom: nextZoom }] });
+      const stream = videoEl?.srcObject;
+      const track = stream?.getVideoTracks()?.[0];
+      const caps = track?.getCapabilities ? track.getCapabilities() : {};
+      
+      let hardwareZoomApplied = false;
+      if (track && caps.zoom) {
+        try {
+          const minZ = caps.zoom.min || 1;
+          const maxZ = caps.zoom.max || 8;
+          const clampedZoom = Math.min(Math.max(nextZoom, minZ), maxZ);
+          await track.applyConstraints({ advanced: [{ zoom: clampedZoom }] });
+          hardwareZoomApplied = true;
+        } catch (e) {
+          console.warn('Erro ao aplicar zoom no hardware track:', e);
+        }
       }
-      setZoomLevel(nextZoom);
+
+      // Fallback para zoom digital CSS cristalino no vídeo Full HD (garante zoom em qualquer smartphone)
+      if (videoEl) {
+        if (!hardwareZoomApplied && nextZoom > 1) {
+          videoEl.style.transform = `scale(${nextZoom})`;
+          videoEl.style.transformOrigin = 'center center';
+          videoEl.style.transition = 'transform 0.2s ease';
+        } else {
+          videoEl.style.transform = 'none';
+        }
+      }
+
+      setFocusFeedbackText(`Zoom ${nextZoom}x`);
+      setTimeout(() => setFocusFeedbackText(''), 1500);
     } catch (e) {
       console.warn('Erro ao aplicar zoom:', e);
     }
@@ -1351,10 +1431,14 @@ export default function ScannerModal({
           title="Toque em qualquer ponto da imagem para focar"
         >
           
-          {/* Caixa do Html5Qrcode com preenchimento total */}
+          {/* Caixa do Html5Qrcode com preenchimento limpo e sem corte forçado */}
           <div 
             id="barcode-reader-box" 
-            className="w-full h-full flex items-center justify-center pointer-events-none [&_video]:w-full [&_video]:h-full [&_video]:object-cover"
+            className={`w-full h-full flex items-center justify-center pointer-events-none transition-all ${
+              fitMode === 'contain'
+                ? '[&_video]:max-w-full [&_video]:max-h-full [&_video]:object-contain [&_video]:rounded-xl'
+                : '[&_video]:w-full [&_video]:h-full [&_video]:object-cover'
+            }`}
           ></div>
 
           {/* Mira Laser Ampla de Enquadramento */}
@@ -1471,7 +1555,7 @@ export default function ScannerModal({
                       {cameras.map((c, idx) => {
                         const isSelected = c.id === selectedCamera;
                         const friendly = getFriendlyCameraLabel(c, idx, cameras.length);
-                        const isUltra = (c.label || '').toLowerCase().includes('ultra') || (c.label || '').toLowerCase().includes('0.5') || (c.label || '').toLowerCase().includes('wide-angle');
+                        const isUltra = isUltraWideLens(c.label);
                         return (
                           <button
                             key={c.id}
@@ -1503,11 +1587,30 @@ export default function ScannerModal({
             )}
           </div>
 
-          {/* Botões Flutuantes Rápidos à Direita (Focar, Seletor de Zoom 1x/1.5x/2x e Lanterna) */}
+          {/* Botões Flutuantes Rápidos à Direita (Modo 100% Nítido, Zoom 1x/1.5x/2x/2.5x, Focar e Lanterna) */}
           <div className="absolute top-2.5 right-2.5 z-20 flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
-            {/* Seletor Rápido de Zoom */}
+            {/* Alternador 100% Nítido (Sem corte) vs Preencher Tela */}
+            <button
+              type="button"
+              onClick={() => {
+                const nextFit = fitMode === 'contain' ? 'cover' : 'contain';
+                setFitMode(nextFit);
+                setFocusFeedbackText(nextFit === 'contain' ? '✓ Modo 100% Nítido (Sem corte)' : '✓ Modo Preencher Tela');
+                setTimeout(() => setFocusFeedbackText(''), 2000);
+              }}
+              className={`p-1.5 rounded-full text-[10px] font-bold border shadow-lg transition active:scale-95 ${
+                fitMode === 'contain'
+                  ? 'bg-blue-600 text-white border-blue-400'
+                  : 'bg-slate-900/85 text-slate-300 hover:text-white border-slate-700/80'
+              }`}
+              title={fitMode === 'contain' ? "Modo 100% Nítido (Sensor Inteiro). Toque para preencher a tela." : "Modo Preencher Tela. Toque para ver o sensor inteiro sem corte."}
+            >
+              {fitMode === 'contain' ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+            </button>
+
+            {/* Seletor Rápido de Zoom (1.5x é o ideal para Bombas de Infusão) */}
             <div className="flex items-center bg-slate-900/90 p-0.5 rounded-full border border-slate-700/80 shadow-lg">
-              {[1, 1.5, 2].map((z) => (
+              {[1, 1.5, 2, 2.5].map((z) => (
                 <button
                   key={z}
                   onClick={() => applySpecificZoom(z)}
@@ -1516,18 +1619,18 @@ export default function ScannerModal({
                       ? 'bg-blue-600 text-white shadow-sm'
                       : 'text-slate-400 hover:text-white'
                   }`}
-                  title={`Zoom ${z}x`}
+                  title={`Zoom ${z}x ${z === 1.5 ? '(Recomendado para Bombas de Infusão)' : ''}`}
                 >
                   {z}x
                 </button>
               ))}
             </div>
 
-            {/* Botão Dedicado de Focar */}
+            {/* Botão Dedicado de Focar (Dispara Autofoco de Hardware) */}
             <button
               onClick={handleTriggerCenterFocus}
               className="p-1.5 rounded-full bg-slate-900/85 hover:bg-slate-800 text-amber-300 font-bold text-xs flex items-center gap-1 border border-amber-500/40 shadow-lg transition active:scale-95"
-              title="Focar câmera agora"
+              title="Focar câmera agora (Recalibrar foco de hardware)"
             >
               <Crosshair className="w-3.5 h-3.5 text-amber-400" />
             </button>
@@ -1547,6 +1650,16 @@ export default function ScannerModal({
               </button>
             )}
           </div>
+
+          {/* Dica de Foco Prático para o Técnico */}
+          {scanning && !cameraError && (
+            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 pointer-events-none whitespace-nowrap">
+              <div className="bg-slate-950/80 backdrop-blur-md text-slate-300 border border-slate-800 px-2.5 py-0.5 rounded-full text-[10px] font-medium shadow-lg flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
+                <span>Afaste a 15-25cm da bomba para o foco agir • Toque na tela para focar</span>
+              </div>
+            </div>
+          )}
 
           {/* Indicador de Inicialização Suave da Câmera */}
           {isCameraStarting && !scanning && !cameraError && (
