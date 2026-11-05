@@ -27,7 +27,9 @@ import {
   GripHorizontal,
   SlidersHorizontal,
   ChevronDown,
-  SwitchCamera
+  SwitchCamera,
+  Columns2,
+  Rows2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { playSuccessSound, playWarningSound, playErrorSound } from '../utils/audio';
@@ -150,6 +152,8 @@ export default function ScannerModal({
   // Altura customizável e arrastável: Câmera vs Lista de Bombas
   // cameraHeightPercent: Porcentagem da altura central dedicada à Câmera (default 48% para visão ampla no celular)
   const [cameraHeightPercent, setCameraHeightPercent] = useState(48);
+  // Layout no Tablet (Tela dividida Lado a Lado ou Empilhada)
+  const [isTabletSplit, setIsTabletSplit] = useState(true);
   const [isDraggingDivider, setIsDraggingDivider] = useState(false);
   const containerRef = useRef(null);
   const dragStartYRef = useRef(0);
@@ -1209,7 +1213,7 @@ export default function ScannerModal({
 
       <div 
         ref={containerRef}
-        className="bg-slate-900 border border-slate-800 w-full h-full sm:h-[94vh] sm:max-w-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col select-none"
+        className="bg-slate-900 border border-slate-800 w-full h-full sm:h-[94vh] sm:max-w-3xl md:max-w-5xl lg:max-w-6xl md:h-[92vh] sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col select-none"
       >
         
         {/* Top Header */}
@@ -1229,12 +1233,31 @@ export default function ScannerModal({
                 </span>
               </div>
               <p className="text-[10px] sm:text-[11px] text-slate-400">
-                Toque na tela para focar • Arraste o divisor para aumentar a lista
+                Toque na tela para focar • Fila de bombas bipadas otimizada para tablet
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5">
+            {/* Tablet Layout Mode Switcher (Lado a Lado vs Empilhado) */}
+            <button
+              onClick={() => setIsTabletSplit(!isTabletSplit)}
+              className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700/80 transition shadow-xs"
+              title={isTabletSplit ? "Mudar para visualização empilhada" : "Mudar para visualização lado a lado (Tablet)"}
+            >
+              {isTabletSplit ? (
+                <>
+                  <Columns2 className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Lado a Lado</span>
+                </>
+              ) : (
+                <>
+                  <Rows2 className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Empilhado</span>
+                </>
+              )}
+            </button>
+
             {/* View Mode Toggle */}
             <button
               onClick={() => {
@@ -1414,86 +1437,99 @@ export default function ScannerModal({
           </div>
         </div>
 
-        {/* Mode Selector Tab (Fila em Lote vs Check Imediato) + Comparar */}
-        <div className="px-3 py-1.5 bg-slate-950/60 border-b border-slate-800 flex items-center justify-between text-xs shrink-0 flex-wrap gap-1.5">
-          <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded-xl border border-slate-800">
-            <button
-              onClick={() => setMode('batch')}
-              className={`px-2.5 py-1 rounded-lg font-bold flex items-center gap-1.5 transition text-[11px] ${
-                mode === 'batch' 
-                  ? 'bg-blue-600 text-white shadow-sm' 
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <ListChecks className="w-3.5 h-3.5" />
-              <span>Fila em Lote ({stagedItems.length})</span>
-            </button>
-            <button
-              onClick={() => setMode('instant')}
-              className={`px-2.5 py-1 rounded-lg font-bold flex items-center gap-1.5 transition text-[11px] ${
-                mode === 'instant' 
-                  ? 'bg-indigo-600 text-white shadow-sm' 
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Zap className="w-3.5 h-3.5" />
-              <span>Check 1 a 1</span>
-            </button>
-          </div>
+        {/* ============================================================
+            CORPO DO LEITOR: LAYOUT OTIMIZADO PARA TABLET & MOBILE
+            Mobile (< 768px): Câmera em cima + Divisor arrastável + Fila embaixo
+            Tablet / Desktop (>= 768px): Suporte ao Modo Lado a Lado ou Empilhado
+        ============================================================ */}
+        <div className={`flex-1 flex min-h-0 overflow-hidden ${isTabletSplit ? 'flex-col md:flex-row' : 'flex-col'}`}>
+          
+          {/* PAINEL DA ESQUERDA: CÂMERA, MIRA E CONTROLES */}
+          <div className={`flex flex-col bg-black min-h-0 overflow-hidden shrink-0 ${
+            isTabletSplit ? 'w-full md:w-5/12 lg:w-5/12 md:border-r border-slate-800' : 'w-full'
+          }`}>
+            {/* Mode Selector Tab (Fila em Lote vs Check Imediato) + Comparar */}
+            <div className="px-3 py-1.5 bg-slate-950/60 border-b border-slate-800 flex items-center justify-between text-xs shrink-0 flex-wrap gap-1.5">
+              <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded-xl border border-slate-800">
+                <button
+                  onClick={() => setMode('batch')}
+                  className={`px-2.5 py-1 rounded-lg font-bold flex items-center gap-1.5 transition text-[11px] ${
+                    mode === 'batch' 
+                      ? 'bg-blue-600 text-white shadow-sm' 
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <ListChecks className="w-3.5 h-3.5" />
+                  <span>Fila em Lote ({stagedItems.length})</span>
+                </button>
+                <button
+                  onClick={() => setMode('instant')}
+                  className={`px-2.5 py-1 rounded-lg font-bold flex items-center gap-1.5 transition text-[11px] ${
+                    mode === 'instant' 
+                      ? 'bg-indigo-600 text-white shadow-sm' 
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  <span>Check 1 a 1</span>
+                </button>
+              </div>
 
-          <div className="flex items-center gap-1">
-            <div className="flex items-center gap-0.5 bg-slate-900 p-0.5 rounded-xl border border-slate-800 text-[10px]">
-              <button
-                onClick={() => setSearchTarget('all')}
-                className={`px-2 py-0.5 rounded font-bold transition ${
-                  searchTarget === 'all' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
-                }`}
-                title="Lê todo o código composto (IDEC ou Série)"
-              >
-                🔍 Auto
-              </button>
-              <button
-                onClick={() => setSearchTarget('idec')}
-                className={`px-2 py-0.5 rounded font-bold transition ${
-                  searchTarget === 'idec' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-white'
-                }`}
-                title="Compara somente IDEC / Tag"
-              >
-                🏷️ IDEC
-              </button>
-              <button
-                onClick={() => setSearchTarget('serie')}
-                className={`px-2 py-0.5 rounded font-bold transition ${
-                  searchTarget === 'serie' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-white'
-                }`}
-                title="Compara somente Nº de Série"
-              >
-                🔢 Série
-              </button>
+              <div className="flex items-center gap-1">
+                <div className="flex items-center gap-0.5 bg-slate-900 p-0.5 rounded-xl border border-slate-800 text-[10px]">
+                  <button
+                    onClick={() => setSearchTarget('all')}
+                    className={`px-2 py-0.5 rounded font-bold transition ${
+                      searchTarget === 'all' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                    }`}
+                    title="Lê todo o código composto (IDEC ou Série)"
+                  >
+                    🔍 Auto
+                  </button>
+                  <button
+                    onClick={() => setSearchTarget('idec')}
+                    className={`px-2 py-0.5 rounded font-bold transition ${
+                      searchTarget === 'idec' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-white'
+                    }`}
+                    title="Compara somente IDEC / Tag"
+                  >
+                    🏷️ IDEC
+                  </button>
+                  <button
+                    onClick={() => setSearchTarget('serie')}
+                    className={`px-2 py-0.5 rounded font-bold transition ${
+                      searchTarget === 'serie' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-white'
+                    }`}
+                    title="Compara somente Nº de Série"
+                  >
+                    🔢 Série
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-2 py-1 rounded-xl bg-slate-900 hover:bg-slate-800 text-blue-400 border border-slate-800 text-[11px] flex items-center gap-1 font-semibold transition shrink-0"
+                  title="Ler código a partir de foto"
+                >
+                  <ImageIcon className="w-3.5 h-3.5" />
+                  <span>Foto</span>
+                </button>
+              </div>
             </div>
 
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="px-2 py-1 rounded-xl bg-slate-900 hover:bg-slate-800 text-blue-400 border border-slate-800 text-[11px] flex items-center gap-1 font-semibold transition shrink-0"
-              title="Ler código a partir de foto"
+            {/* Camera Viewport Area com CLIQUE PARA FOCAR (Tap to Focus) */}
+            <div 
+              ref={viewfinderRef}
+              onClick={handleViewfinderClick}
+              style={{
+                height: isTabletSplit ? undefined : (viewMode === 'full_camera' ? '70%' : `${cameraHeightPercent}%`),
+                minHeight: '180px'
+              }}
+              className={`relative bg-black flex flex-col items-center justify-center transition-[height] duration-150 overflow-hidden cursor-crosshair select-none ${
+                isTabletSplit ? 'md:flex-1' : ''
+              } shrink-0`}
+              title="Toque em qualquer ponto da imagem para focar"
             >
-              <ImageIcon className="w-3.5 h-3.5" />
-              <span>Foto</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Camera Viewport Area com CLIQUE PARA FOCAR (Tap to Focus) */}
-        <div 
-          ref={viewfinderRef}
-          onClick={handleViewfinderClick}
-          style={{
-            height: viewMode === 'full_camera' ? '70%' : `${cameraHeightPercent}%`,
-            minHeight: '180px'
-          }}
-          className="relative bg-black flex flex-col items-center justify-center transition-[height] duration-150 overflow-hidden cursor-crosshair select-none shrink-0"
-          title="Toque em qualquer ponto da imagem para focar"
-        >
           
           {/* Caixa do Html5Qrcode com preenchimento total e sem barras pretas */}
           <div 
@@ -1687,74 +1723,87 @@ export default function ScannerModal({
           )}
         </div>
 
-        {/* ============================================================
-            DIVISOR ARRASTÁVEL E REDIMENSIONADOR (CÂMERA vs LISTA DE BOMBAS)
-        ============================================================ */}
-        <div
-          onMouseDown={handleDividerMouseDown}
-          onTouchStart={handleDividerTouchStart}
-          className={`w-full py-2 px-3 bg-slate-950 border-y border-slate-800 cursor-row-resize flex items-center justify-between select-none touch-none shrink-0 transition-colors ${
-            isDraggingDivider 
-              ? 'bg-blue-950/80 border-blue-500 ring-2 ring-blue-500/30' 
-              : 'hover:bg-slate-900'
-          }`}
-          title="Arraste para cima ou para baixo para aumentar/diminuir o tamanho da lista de bombas"
-        >
-          {/* Alça tátil de puxar */}
-          <div className="flex items-center gap-2">
-            <div className="flex flex-col items-center justify-center gap-0.5 cursor-row-resize">
-              <div className="w-10 h-1 bg-slate-500 hover:bg-slate-300 rounded-full transition" />
-              <div className="w-6 h-0.5 bg-slate-600 rounded-full" />
+            {/* ============================================================
+                DIVISOR ARRASTÁVEL E REDIMENSIONADOR (CÂMERA vs LISTA DE BOMBAS)
+                Ocultado no modo lado a lado do tablet (md+)
+            ============================================================ */}
+            <div
+              onMouseDown={handleDividerMouseDown}
+              onTouchStart={handleDividerTouchStart}
+              className={`w-full py-2 px-3 bg-slate-950 border-y border-slate-800 cursor-row-resize flex items-center justify-between select-none touch-none shrink-0 transition-colors ${
+                isTabletSplit ? 'md:hidden' : ''
+              } ${
+                isDraggingDivider 
+                  ? 'bg-blue-950/80 border-blue-500 ring-2 ring-blue-500/30' 
+                  : 'hover:bg-slate-900'
+              }`}
+              title="Arraste para cima ou para baixo para aumentar/diminuir o tamanho da lista de bombas"
+            >
+              {/* Alça tátil de puxar */}
+              <div className="flex items-center gap-2">
+                <div className="flex flex-col items-center justify-center gap-0.5 cursor-row-resize">
+                  <div className="w-10 h-1 bg-slate-500 hover:bg-slate-300 rounded-full transition" />
+                  <div className="w-6 h-0.5 bg-slate-600 rounded-full" />
+                </div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                  <GripHorizontal className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Arraste para redimensionar lista</span>
+                </span>
+              </div>
+
+              {/* Atalhos Rápidos de Tamanho (1 Toque) */}
+              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  onClick={() => setCameraHeightPercent(22)}
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
+                    cameraHeightPercent <= 26 
+                      ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-400' 
+                      : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                  }`}
+                  title="Expandir lista para quase tela cheia (75% da altura)"
+                >
+                  📋 Lista 75%
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCameraHeightPercent(38)}
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
+                    cameraHeightPercent > 26 && cameraHeightPercent < 55 
+                      ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-400' 
+                      : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                  }`}
+                  title="Dividir meio a meio (50% câmera / 50% lista)"
+                >
+                  ⚖️ 50/50
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCameraHeightPercent(60)}
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
+                    cameraHeightPercent >= 55 
+                      ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-400' 
+                      : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                  }`}
+                  title="Câmera grande (60% câmera / 40% lista)"
+                >
+                  📷 Câmera 60%
+                </button>
+              </div>
             </div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-              <GripHorizontal className="w-3.5 h-3.5 text-blue-400" />
-              <span>Arraste para redimensionar lista</span>
-            </span>
-          </div>
 
-          {/* Atalhos Rápidos de Tamanho (1 Toque) */}
-          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              onClick={() => setCameraHeightPercent(22)}
-              className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
-                cameraHeightPercent <= 26 
-                  ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-400' 
-                  : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-              }`}
-              title="Expandir lista para quase tela cheia (75% da altura)"
-            >
-              📋 Lista 75%
-            </button>
-            <button
-              type="button"
-              onClick={() => setCameraHeightPercent(38)}
-              className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
-                cameraHeightPercent > 26 && cameraHeightPercent < 55 
-                  ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-400' 
-                  : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-              }`}
-              title="Dividir meio a meio (50% câmera / 50% lista)"
-            >
-              ⚖️ 50/50
-            </button>
-            <button
-              type="button"
-              onClick={() => setCameraHeightPercent(60)}
-              className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
-                cameraHeightPercent >= 55 
-                  ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-400' 
-                  : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-              }`}
-              title="Câmera grande (60% câmera / 40% lista)"
-            >
-              📷 Câmera 60%
-            </button>
-          </div>
-        </div>
+          </div> {/* Fim do PAINEL DA ESQUERDA (CÂMERA) */}
 
-        {/* Banner do Último Item Bipado com Indicador de Similaridade e Alerta de Já Conferido */}
-        {lastScannedFeedback && (
+          {/* ============================================================
+              PAINEL DA DIREITA: ABA DE SELEÇÃO E FILA DE BOMBAS BIPADAS
+              No tablet (md+): coluna dedicada com 100% da altura e scroll fluído
+          ============================================================ */}
+          <div className={`flex-1 flex flex-col bg-slate-950/60 min-h-0 overflow-hidden ${
+            isTabletSplit ? 'w-full md:w-7/12 lg:w-7/12' : 'w-full'
+          }`}>
+
+            {/* Banner do Último Item Bipado com Indicador de Similaridade e Alerta de Já Conferido */}
+            {lastScannedFeedback && (
           <div className={`px-3.5 py-2 border-b shrink-0 text-xs transition-all ${
             lastScannedFeedback.status === 'not_found'
               ? 'bg-red-500/15 border-red-500/30 text-red-200'
@@ -2064,6 +2113,10 @@ export default function ScannerModal({
           </div>
 
         </div>
+
+          </div> {/* Fim do PAINEL DA DIREITA */}
+
+        </div> {/* Fim do CORPO DO LEITOR (flex-col md:flex-row) */}
 
       </div>
     </div>
