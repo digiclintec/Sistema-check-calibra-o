@@ -74,9 +74,9 @@ export default function ScannerModal({
   const [torchOn, setTorchOn] = useState(false);
   const [hasTorch, setHasTorch] = useState(false);
   const [hasZoom, setHasZoom] = useState(false);
-  const [zoomLevel, setZoomLevel] = useState(1);
+  const [zoomLevel, setZoomLevel] = useState(1.5);
   const [zoomCaps, setZoomCaps] = useState(null); // Capacidades de zoom óptico { min, max, step }
-  const [activeLensLabel, setActiveLensLabel] = useState('1.0x Principal');
+  const [activeLensLabel, setActiveLensLabel] = useState('1.5x Principal');
   const [viewMode, setViewMode] = useState('split'); // 'split' | 'full_camera'
   const [reticleType, setReticleType] = useState('1d'); // '1d' (Linha Laser) | '2d' (Caixa QR)
   
@@ -194,8 +194,8 @@ export default function ScannerModal({
   }, [activeModality]);
 
   // Altura customizável e arrastável: Câmera vs Lista de Bombas
-  // cameraHeightPercent: Porcentagem da altura central dedicada à Câmera (default 48% para visão ampla no celular)
-  const [cameraHeightPercent, setCameraHeightPercent] = useState(48);
+  // cameraHeightPercent: Padrão profissional 58% (visualização ampla do visor igual ao app Barcode Scanner)
+  const [cameraHeightPercent, setCameraHeightPercent] = useState(58);
   // Layout no Tablet (Tela dividida Lado a Lado ou Empilhada)
   const [isTabletSplit, setIsTabletSplit] = useState(true);
   const [isDraggingDivider, setIsDraggingDivider] = useState(false);
@@ -630,13 +630,11 @@ export default function ScannerModal({
         }
       }
 
-      // 4. Se o aparelho abrir na lente ultra-wide (min < 0.9), FORÇA imediatamente a lente principal 1.0x nítida!
-      if (caps.zoom && caps.zoom.min < 0.9) {
-        console.log('[Camera] Detectado sensor ultra-wide nativo. Forçando lente principal 1.0x nítida...');
-        await applyOpticalLensZoom(1.0, '1.0x Principal (Nítida)');
-      } else if (caps.zoom) {
-        await applyOpticalLensZoom(1.0, '1.0x Principal (Nítida)');
-      }
+      // 4. PADRÃO DO APP PROFISSIONAL (com.smmservice.barcode):
+      // Força a Lente Principal (1.5x) para nunca usar a câmera ultra-wide afastada!
+      setTimeout(async () => {
+        await applyOpticalLensZoom(1.5, 'silent');
+      }, 100);
     } catch (err) {
       console.warn('[Camera] Erro na calibração inicial do track:', err);
     }
@@ -845,17 +843,17 @@ export default function ScannerModal({
         }
       }
 
-      // Descobre o rótulo amigável da lente
       const matched = opticalPresets.find(p => Math.abs(p.value - clampedZoom) < 0.15);
-      const name = labelOverride || matched?.fullName || `${clampedZoom.toFixed(1)}x`;
+      const name = (labelOverride && labelOverride !== 'silent') ? labelOverride : (matched?.fullName || `${clampedZoom.toFixed(1)}x`);
       setActiveLensLabel(name);
 
-      if (typeof navigator !== 'undefined' && navigator.vibrate) {
-        navigator.vibrate(35);
+      if (labelOverride !== 'silent') {
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          navigator.vibrate(35);
+        }
+        setFocusFeedbackText(`✓ ${name} ${applied ? '(Óptico)' : '(HD Sensor)'}`);
+        setTimeout(() => setFocusFeedbackText(''), 1800);
       }
-
-      setFocusFeedbackText(`✓ ${name} ${applied ? '(Óptico)' : '(HD Sensor)'}`);
-      setTimeout(() => setFocusFeedbackText(''), 2200);
       return true;
     } catch (err) {
       console.warn('[Camera] Erro ao aplicar zoom:', err);
