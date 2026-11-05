@@ -16,7 +16,8 @@ import {
   Sparkles,
   Calendar,
   Layers,
-  FileCheck
+  FileCheck,
+  ShieldCheck
 } from 'lucide-react';
 
 export default function Navbar({ 
@@ -122,6 +123,20 @@ export default function Navbar({
                 <FileCheck className="w-3.5 h-3.5" />
                 <span>Conferência</span>
               </button>
+
+              <button
+                onClick={() => onChangeMainTab('auditoria')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                  activeMainTab === 'auditoria'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+                title="Espelho seguro da planilha sem risco de alterações acidentais"
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Espelho Seguro</span>
+              </button>
+
               <button
                 onClick={() => onChangeMainTab('planejamento')}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
@@ -131,7 +146,7 @@ export default function Navbar({
                 }`}
               >
                 <Calendar className="w-3.5 h-3.5" />
-                <span>Planejamento do Mês</span>
+                <span>Planejamento</span>
                 {monthlyPlans.length > 0 && (
                   <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
                     activeMainTab === 'planejamento' ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
@@ -146,20 +161,35 @@ export default function Navbar({
           {/* Actions & Buttons */}
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             
-            {/* Mobile Planejamento Trigger Button */}
+            {/* Mobile Navigation Buttons */}
             {onChangeMainTab && (
-              <button
-                onClick={() => onChangeMainTab(activeMainTab === 'planejamento' ? 'conferencia' : 'planejamento')}
-                className={`md:hidden flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-bold border transition ${
-                  activeMainTab === 'planejamento'
-                    ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                }`}
-                title="Alternar para aba de Planejamento do Mês"
-              >
-                <Calendar className="w-3.5 h-3.5" />
-                <span className="hidden xs:inline">Planilhas</span>
-              </button>
+              <div className="flex md:hidden items-center gap-1">
+                <button
+                  onClick={() => onChangeMainTab(activeMainTab === 'auditoria' ? 'conferencia' : 'auditoria')}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-xl text-[11px] font-bold border transition ${
+                    activeMainTab === 'auditoria'
+                      ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                  }`}
+                  title="Alternar para o Espelho Seguro da Planilha"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span className="hidden xs:inline">Espelho</span>
+                </button>
+
+                <button
+                  onClick={() => onChangeMainTab(activeMainTab === 'planejamento' ? 'conferencia' : 'planejamento')}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-xl text-[11px] font-bold border transition ${
+                    activeMainTab === 'planejamento'
+                      ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                  }`}
+                  title="Alternar para aba de Planejamento do Mês"
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span className="hidden xs:inline">Planos</span>
+                </button>
+              </div>
             )}
 
             {/* Team Management & Work Audit Button (Substitui painel de preços) */}
