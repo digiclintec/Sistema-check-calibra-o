@@ -519,7 +519,7 @@ app.get('/api/hospitals', (req, res) => {
 
 // Create new Hospital (Client)
 app.post('/api/hospitals', (req, res) => {
-  const { name, cidade, cnpj, plano } = req.body || {};
+  const { name, cidade, cnpj, plano, assignedUserIds } = req.body || {};
 
   if (!name) {
     return res.status(400).json({ success: false, message: 'Nome do hospital ou clínica é obrigatório.' });
@@ -544,11 +544,69 @@ app.post('/api/hospitals', (req, res) => {
   db.lastUpdated = Date.now();
   saveDb(db);
 
+  // Se foram enviados usuários para vincular a este novo hospital
+  if (Array.isArray(assignedUserIds) && assignedUserIds.length > 0) {
+    const users = readUsers();
+    let modified = false;
+    users.forEach(u => {
+      if (assignedUserIds.includes(u.id)) {
+        let uHospIds = Array.isArray(u.hospitalIds) && u.hospitalIds.length > 0 ? [...u.hospitalIds] : [u.hospitalId || 'all'];
+        if (!uHospIds.includes('all') && !uHospIds.includes(newHospital.id)) {
+          uHospIds.push(newHospital.id);
+          u.hospitalIds = uHospIds;
+          u.hospitalId = uHospIds[0];
+          modified = true;
+        }
+      }
+    });
+    if (modified) saveUsers(users);
+  }
+
   res.json({
     success: true,
     message: `Hospital "${newHospital.name}" cadastrado com sucesso!`,
     hospital: newHospital,
     hospitals: db.hospitals
+  });
+});
+
+// Assign multiple users to a hospital
+app.post('/api/hospitals/assign-users', (req, res) => {
+  const { hospitalId, userIds } = req.body || {};
+
+  if (!hospitalId || !Array.isArray(userIds)) {
+    return res.status(400).json({ success: false, message: 'ID do hospital e lista de usuários são obrigatórios.' });
+  }
+
+  const users = readUsers();
+  users.forEach(u => {
+    // Master sempre tem acesso total
+    if (u.role === 'master' || u.email.toLowerCase() === 'digiclintec@gmail.com') return;
+
+    let uHospIds = Array.isArray(u.hospitalIds) && u.hospitalIds.length > 0 ? [...u.hospitalIds] : [u.hospitalId || 'all'];
+
+    if (userIds.includes(u.id)) {
+      // Adicionar acesso se ainda não tiver e não for global
+      if (!uHospIds.includes('all') && !uHospIds.includes(hospitalId)) {
+        uHospIds.push(hospitalId);
+      }
+    } else {
+      // Remover acesso a este hospital específico
+      if (!uHospIds.includes('all')) {
+        uHospIds = uHospIds.filter(id => id !== hospitalId);
+        if (uHospIds.length === 0) uHospIds = ['hosp_central'];
+      }
+    }
+
+    u.hospitalIds = uHospIds;
+    u.hospitalId = uHospIds[0] || 'hosp_central';
+  });
+
+  saveUsers(users);
+
+  res.json({
+    success: true,
+    message: 'Equipe atualizada para o hospital com sucesso!'
   });
 });
 

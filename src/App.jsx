@@ -24,6 +24,7 @@ import EquipmentTable from './components/EquipmentTable';
 import ScannerModal from './components/ScannerModal';
 import GoogleSheetsModal from './components/GoogleSheetsModal';
 import MasterPanelModal from './components/MasterPanelModal';
+import HospitalModal from './components/HospitalModal';
 import InstallPromptModal from './components/InstallPromptModal';
 import MobileBottomBar from './components/MobileBottomBar';
 import TeamManagementModal from './components/TeamManagementModal';
@@ -112,6 +113,7 @@ export default function App() {
   });
   const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
   const [isMasterPanelOpen, setIsMasterPanelOpen] = useState(false);
+  const [hospitalModal, setHospitalModal] = useState({ isOpen: false, initialTab: 'create' });
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
   const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
   const [serviceConfig, setServiceConfig] = useState(() => {
@@ -1201,6 +1203,7 @@ export default function App() {
         activeHospitalId={activeHospitalId}
         onSwitchHospital={handleSwitchHospital}
         onOpenTeamModal={() => setIsTeamModalOpen(true)}
+        onOpenHospitalModal={(tab) => setHospitalModal({ isOpen: true, initialTab: tab || 'create' })}
         activeMainTab={activeMainTab}
         onChangeMainTab={setActiveMainTab}
         monthlyPlans={monthlyPlans}
@@ -1394,6 +1397,18 @@ export default function App() {
         planTitle={activeSheetName}
         totalEquipments={equipments.length}
         isInitialSetup={serviceConfigModal.isInitialSetup}
+      />
+
+      {/* Dedicated Hospital Registration, Switching & Access Modal */}
+      <HospitalModal
+        isOpen={hospitalModal.isOpen}
+        onClose={() => setHospitalModal(prev => ({ ...prev, isOpen: false }))}
+        hospitals={hospitals}
+        activeHospitalId={activeHospitalId}
+        onSwitchHospital={handleSwitchHospital}
+        onRefreshHospitals={loadHospitals}
+        currentUser={currentUser}
+        initialTab={hospitalModal.initialTab}
       />
 
       {/* Master User & Hospital Management Panel */}

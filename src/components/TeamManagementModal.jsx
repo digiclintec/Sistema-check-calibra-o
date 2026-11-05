@@ -23,7 +23,9 @@ import {
   Layers,
   Wrench,
   Zap,
-  Target
+  Target,
+  Building2,
+  Save
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { MODALITIES } from '../utils/modalities';
@@ -58,6 +60,10 @@ export default function TeamManagementModal({
   // Redefinição de senha
   const [editingUserId, setEditingUserId] = useState(null);
   const [newPassword, setNewPassword] = useState('');
+
+  // Edição de hospitais vinculados ao usuário
+  const [editingPermsUserId, setEditingPermsUserId] = useState(null);
+  const [editingPermsHospitalIds, setEditingPermsHospitalIds] = useState([]);
 
   const isMaster = currentUser?.role === 'master';
   const isAdmin = currentUser?.role === 'admin' || isMaster;
@@ -141,6 +147,44 @@ export default function TeamManagementModal({
       next.push(hospId);
     }
     setSelectedHospitalIds(next);
+  };
+
+  const handleToggleEditingPerms = (hospId) => {
+    if (hospId === 'all') {
+      setEditingPermsHospitalIds(['all']);
+      return;
+    }
+    let next = editingPermsHospitalIds.filter(id => id !== 'all');
+    if (next.includes(hospId)) {
+      next = next.filter(id => id !== hospId);
+      if (next.length === 0) next = ['all'];
+    } else {
+      next.push(hospId);
+    }
+    setEditingPermsHospitalIds(next);
+  };
+
+  const handleSaveUserPermissions = async (userId) => {
+    try {
+      const res = await fetch('/api/users/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: userId,
+          hospitalIds: editingPermsHospitalIds
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessage({ type: 'success', text: 'Hospitais do usuário atualizados com sucesso!' });
+        setEditingPermsUserId(null);
+        loadUsers();
+      } else {
+        setMessage({ type: 'error', text: data.message || 'Erro ao atualizar permissões.' });
+      }
+    } catch (e) {
+      setMessage({ type: 'error', text: 'Erro de conexão com o servidor.' });
+    }
   };
 
   const handleDeleteUser = async (userId, userEmailName) => {
@@ -750,6 +794,31 @@ export default function TeamManagementModal({
 
                         {/* Actions */}
                         <div className="flex items-center gap-2 self-end sm:self-center">
+                          {isAdmin && !isUMaster && (
+                            <button
+                              onClick={() => {
+                                if (editingPermsUserId === u.id) {
+                                  setEditingPermsUserId(null);
+                                } else {
+                                  setEditingPermsUserId(u.id);
+                                  const currentIds = Array.isArray(u.hospitalIds) && u.hospitalIds.length > 0
+                                    ? u.hospitalIds
+                                    : [u.hospitalId || 'all'];
+                                  setEditingPermsHospitalIds(currentIds);
+                                }
+                              }}
+                              className={`px-2.5 py-1 text-xs rounded-lg transition flex items-center gap-1 font-semibold border ${
+                                editingPermsUserId === u.id
+                                  ? 'bg-blue-600 text-white border-blue-500'
+                                  : 'text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border-slate-700'
+                              }`}
+                              title="Alterar hospitais autorizados para este técnico"
+                            >
+                              <Building2 className="w-3.5 h-3.5 text-blue-400" />
+                              <span>Hospitais</span>
+                            </button>
+                          )}
+
                           {isAdmin && (
                             <button
                               onClick={() => setEditingUserId(editingUserId === u.id ? null : u.id)}
@@ -771,6 +840,65 @@ export default function TeamManagementModal({
                             </button>
                           )}
                         </div>
+
+                        {/* Inline hospital permissions form */}
+                        {editingPermsUserId === u.id && (
+                          <div className="w-full pt-3 mt-2 border-t border-slate-800 space-y-2.5">
+                            <div className="flex items-center justify-between text-xs font-bold text-blue-300">
+                              <span>Marque os hospitais autorizados para {u.name}:</span>
+                              <button
+                                type="button"
+                                onClick={() => setEditingPermsUserId(null)}
+                                className="text-slate-400 hover:text-white"
+                              >
+                                Cancelar
+                              </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 p-2 bg-slate-900 rounded-xl border border-slate-800">
+                              <label className="flex items-center gap-2 p-1.5 rounded-lg bg-slate-950 border border-slate-800 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={editingPermsHospitalIds.includes('all')}
+                                  onChange={() => handleToggleEditingPerms('all')}
+                                  className="rounded text-blue-600 focus:ring-0"
+                                />
+                                <span className="text-xs font-bold text-white">🌐 Todos os Hospitais</span>
+                              </label>
+
+                              {hospitals.map(h => (
+                                <label
+                                  key={h.id}
+                                  className={`flex items-center gap-2 p-1.5 rounded-lg border cursor-pointer text-xs transition ${
+                                    editingPermsHospitalIds.includes(h.id) || editingPermsHospitalIds.includes('all')
+                                      ? 'bg-blue-950/20 border-blue-500/40 text-blue-200'
+                                      : 'bg-slate-950 border-slate-800 text-slate-300'
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    disabled={editingPermsHospitalIds.includes('all')}
+                                    checked={editingPermsHospitalIds.includes('all') || editingPermsHospitalIds.includes(h.id)}
+                                    onChange={() => handleToggleEditingPerms(h.id)}
+                                    className="rounded text-blue-600 focus:ring-0"
+                                  />
+                                  <span className="truncate">{h.name}</span>
+                                </label>
+                              ))}
+                            </div>
+
+                            <div className="flex justify-end">
+                              <button
+                                type="button"
+                                onClick={() => handleSaveUserPermissions(u.id)}
+                                className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold transition flex items-center gap-1"
+                              >
+                                <Save className="w-3.5 h-3.5" />
+                                <span>Salvar Vínculos</span>
+                              </button>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Inline password edit form */}
                         {editingUserId === u.id && (

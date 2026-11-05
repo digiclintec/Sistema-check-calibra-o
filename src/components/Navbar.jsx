@@ -17,7 +17,8 @@ import {
   Calendar,
   Layers,
   FileCheck,
-  ShieldCheck
+  ShieldCheck,
+  PlusCircle
 } from 'lucide-react';
 
 export default function Navbar({ 
@@ -36,6 +37,7 @@ export default function Navbar({
   activeHospitalId,
   onSwitchHospital,
   onOpenTeamModal,
+  onOpenHospitalModal,
   activeMainTab = 'conferencia',
   onChangeMainTab,
   monthlyPlans = [],
@@ -73,13 +75,22 @@ export default function Navbar({
             </div>
           </div>
 
-          {/* Hospital Switcher Dropdown (Multi-Hospital SaaS) */}
-          {hospitals && hospitals.length > 0 && (
-            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 sm:p-1.5 rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700/60 max-w-[120px] xs:max-w-[150px] sm:max-w-xs shrink min-w-0">
+          {/* Hospital Switcher Dropdown (Multi-Hospital SaaS) & Quick Add */}
+          <div className="flex items-center gap-1 shrink min-w-0">
+            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 sm:p-1.5 rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700/60 max-w-[130px] xs:max-w-[160px] sm:max-w-xs shrink min-w-0">
               <Building2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0 ml-0.5 hidden xs:block" />
               <select
                 value={activeHospitalId || ''}
-                onChange={(e) => onSwitchHospital && onSwitchHospital(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === '__NEW_HOSPITAL__') {
+                    if (onOpenHospitalModal) onOpenHospitalModal('create');
+                  } else if (val === '__MANAGE_HOSPITALS__') {
+                    if (onOpenHospitalModal) onOpenHospitalModal('list');
+                  } else if (onSwitchHospital) {
+                    onSwitchHospital(val);
+                  }
+                }}
                 className="bg-transparent text-[11px] sm:text-sm font-semibold text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer truncate w-full"
                 title="Selecione o hospital ou clínica para visualizar os equipamentos"
               >
@@ -88,9 +99,26 @@ export default function Navbar({
                     🏥 {h.name}
                   </option>
                 ))}
+                <option disabled className="bg-slate-200 dark:bg-slate-800 text-slate-500">──────────</option>
+                <option value="__NEW_HOSPITAL__" className="bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 font-bold">
+                  ➕ Cadastrar Novo Hospital...
+                </option>
+                <option value="__MANAGE_HOSPITALS__" className="bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 font-bold">
+                  ⚙️ Gerenciar / Trocar Unidades...
+                </option>
               </select>
             </div>
-          )}
+
+            {/* Quick + Hospital Button (Always accessible) */}
+            <button
+              onClick={() => onOpenHospitalModal && onOpenHospitalModal('create')}
+              className="flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-bold bg-blue-600/10 hover:bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 transition shrink-0 shadow-sm"
+              title="Cadastrar Novo Hospital ou Clínica"
+            >
+              <PlusCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+              <span className="hidden sm:inline">+ Hospital</span>
+            </button>
+          </div>
 
           {/* Work Modality Selector (Equipes: Calibração / Preventiva / TSE - No mobile, o ModalityBar abaixo já cumpre esta função) */}
           {onChangeModality && (
