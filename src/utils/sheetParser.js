@@ -13,7 +13,80 @@ export function normalizeHeader(str) {
 }
 
 /**
- * Mapeamento inteligente de colunas comuns em planilhas de calibração
+ * Avalia se o valor preenchido na célula indica status concluído / checado
+ */
+export function parseCheckValue(val) {
+  if (val === true || val === 1) return true;
+  if (!val) return false;
+  
+  const str = String(val).trim().toLowerCase();
+  if (
+    str === 'sim' ||
+    str === 's' ||
+    str === 'ok' ||
+    str === 'true' ||
+    str === 'x' ||
+    str === 'v' ||
+    str === 'checado' ||
+    str === 'conferido' ||
+    str === 'concluido' ||
+    str === 'concluído' ||
+    str === 'realizado' ||
+    str === 'feito' ||
+    str === 'executado' ||
+    str === 'aprovado' ||
+    str === 'calibrado' ||
+    str === 'pass' ||
+    str === 'passed' ||
+    str === 'sim/ok' ||
+    str.includes('concluid') ||
+    str.includes('realizad') ||
+    str.includes('conferid') ||
+    str.includes('ok')
+  ) {
+    return true;
+  }
+
+  // Se a célula contém uma data (ex: 04/11/2026), significa que foi realizado naquela data
+  if (str.length >= 8 && /\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}/.test(str)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Converte valor de data (texto BR, ISO ou Date) para formato ISO
+ */
+export function parseDateValue(val) {
+  if (!val) return null;
+  if (val instanceof Date && !isNaN(val.getTime())) {
+    return val.toISOString();
+  }
+  const str = String(val).trim();
+  if (!str) return null;
+
+  // DD/MM/AAAA ou DD/MM/AAAA HH:mm:ss
+  const brMatch = str.match(/^(\d{1,2})[\/\.-](\d{1,2})[\/\.-](\d{2,4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+  if (brMatch) {
+    const day = parseInt(brMatch[1], 10);
+    const month = parseInt(brMatch[2], 10) - 1;
+    let year = parseInt(brMatch[3], 10);
+    if (year < 100) year += 2000;
+    const hour = brMatch[4] ? parseInt(brMatch[4], 10) : 12;
+    const min = brMatch[5] ? parseInt(brMatch[5], 10) : 0;
+    const sec = brMatch[6] ? parseInt(brMatch[6], 10) : 0;
+    const d = new Date(year, month, day, hour, min, sec);
+    if (!isNaN(d.getTime())) return d.toISOString();
+  }
+
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) return d.toISOString();
+  return str;
+}
+
+/**
+ * Mapeamento inteligente de colunas em planilhas brutas ou semi-tratadas
  */
 export function identifyColumns(headers) {
   const mapping = {
@@ -26,34 +99,137 @@ export function identifyColumns(headers) {
     setor: null,
     validadeCalibracao: null,
     statusCalibracao: null,
-    checado: null,
+    checadoGeral: null,
+    
+    // Frentes individuais (Multiequipes / Semi-tratadas)
+    checkCalibracao: null,
+    dataCalibracao: null,
+    usuarioCalibracao: null,
+    certificadoCalibracao: null,
+
+    checkPreventiva: null,
+    dataPreventiva: null,
+    usuarioPreventiva: null,
+
+    checkSeguranca: null,
+    dataSeguranca: null,
+    usuarioSeguranca: null,
+
+    usuarioGeral: null,
+    dataGeral: null,
     observacao: null,
+    os: null,
   };
 
   headers.forEach((h) => {
     const norm = normalizeHeader(h);
+    if (!norm) return;
 
-    // Tag / Identificador / Identificação
-    if (!mapping.tag && (
+    // --- FRENTE 1: CALIBRAÇÃO (Detecção Prioritária) ---
+    // Data da calibração
+    if (!mapping.dataCalibracao && (
+      (norm.includes('data') || norm.includes('dt')) && (norm.includes('calibr') || norm.includes('calib'))
+    )) {
+      mapping.dataCalibracao = h;
+    }
+    // Responsável / Técnico da calibração
+    else if (!mapping.usuarioCalibracao && (
+      (norm.includes('tecnico') || norm.includes('resp') || norm.includes('executor') || norm.includes('usuario')) &&
+      (norm.includes('calibr') || norm.includes('calib'))
+    )) {
+      mapping.usuarioCalibracao = h;
+    }
+    // Certificado / Laudo / Relatório de calibração
+    else if (!mapping.certificadoCalibracao && (
+      norm.includes('certif') || norm.includes('laudo') || (norm.includes('relatorio') && norm.includes('calibr'))
+    )) {
+      mapping.certificadoCalibracao = h;
+    }
+    // Check / Status da calibração (ex: "CALIBRAÇÃO - Status", "CALIBRAÇÃO", "CALIBRADO", "CHECK CALIBRAÇÃO")
+    else if (!mapping.checkCalibracao && (
+      (norm.includes('calibr') || norm.includes('calib')) &&
+      (norm.includes('status') || norm.includes('check') || norm.includes('situacao') || norm.includes('ok') || norm === 'calibracao' || norm === 'calibrado' || norm === 'calib')
+    )) {
+      mapping.checkCalibracao = h;
+    }
+
+    // --- FRENTE 2: MANUTENÇÃO PREVENTIVA ---
+    // Data da preventiva
+    else if (!mapping.dataPreventiva && (
+      (norm.includes('data') || norm.includes('dt')) && (norm.includes('preventiv') || norm.includes('mp'))
+    )) {
+      mapping.dataPreventiva = h;
+    }
+    // Responsável / Técnico da preventiva
+    else if (!mapping.usuarioPreventiva && (
+      (norm.includes('tecnico') || norm.includes('resp') || norm.includes('executor') || norm.includes('usuario')) &&
+      (norm.includes('preventiv') || norm.includes('mp'))
+    )) {
+      mapping.usuarioPreventiva = h;
+    }
+    // Check / Status da preventiva (ex: "PREVENTIVA - Status", "PREVENTIVA", "MANUTENÇÃO PREVENTIVA", "CHECK PREVENTIVA", "MP")
+    else if (!mapping.checkPreventiva && (
+      (norm.includes('preventiv') || norm.includes('mp') || norm.includes('manutencao')) &&
+      (norm.includes('status') || norm.includes('check') || norm.includes('situacao') || norm.includes('ok') || norm === 'preventiva' || norm === 'mp' || norm === 'manutencaopreventiva')
+    )) {
+      mapping.checkPreventiva = h;
+    }
+
+    // --- FRENTE 3: TESTE DE SEGURANÇA ELÉTRICA (TSE) ---
+    // Data da segurança
+    else if (!mapping.dataSeguranca && (
+      (norm.includes('data') || norm.includes('dt')) && (norm.includes('seguranc') || norm.includes('tse') || norm.includes('eletric'))
+    )) {
+      mapping.dataSeguranca = h;
+    }
+    // Responsável / Técnico da segurança
+    else if (!mapping.usuarioSeguranca && (
+      (norm.includes('tecnico') || norm.includes('resp') || norm.includes('executor') || norm.includes('usuario')) &&
+      (norm.includes('seguranc') || norm.includes('tse'))
+    )) {
+      mapping.usuarioSeguranca = h;
+    }
+    // Check / Status da segurança elétrica (ex: "SEG. ELÉTRICA - Status", "SEGURANÇA ELÉTRICA", "TSE")
+    else if (!mapping.checkSeguranca && (
+      (norm.includes('seguranc') || norm.includes('tse') || norm.includes('eletric')) &&
+      (norm.includes('status') || norm.includes('check') || norm.includes('situacao') || norm.includes('ok') || norm === 'seguranca' || norm === 'tse' || norm === 'segeletrica' || norm === 'segurancaeletrica')
+    )) {
+      mapping.checkSeguranca = h;
+    }
+
+    // --- CAMPOS DE IDENTIFICAÇÃO BÁSICA ---
+    // Tag / Identificador / IDEC / Tombamento / Patrimônio
+    else if (!mapping.tag && (
       norm.includes('tag') || 
+      norm.includes('idec') ||
       norm.includes('identifica') || 
       norm.includes('identificador') || 
+      norm.includes('patrimonio') ||
+      norm.includes('tombamento') ||
       norm.includes('codigoequipamento')
     )) {
       mapping.tag = h;
     }
-    // Código de barras / Patrimônio / Tombamento
+    // Código de barras
     else if (!mapping.codigoBarras && (
       norm.includes('codigobarras') ||
       norm.includes('codbarras') ||
       norm.includes('barcode') ||
       norm.includes('ean') ||
-      norm.includes('patrimonio') ||
-      norm.includes('tombamento') ||
-      norm.includes('cod') ||
-      norm === 'id'
+      norm.includes('cbarras')
     )) {
       mapping.codigoBarras = h;
+    }
+    // Número de série
+    else if (!mapping.serie && (
+      norm.includes('serie') || 
+      norm.includes('serial') || 
+      norm.includes('sn') || 
+      norm === 'ns' || 
+      norm.includes('ndeserie') ||
+      norm.includes('numerodeserie')
+    )) {
+      mapping.serie = h;
     }
     // Equipamento / Descrição / Instrumento / Tipo
     else if (!mapping.equipamento && (
@@ -72,12 +248,8 @@ export function identifyColumns(headers) {
       mapping.fabricante = h;
     }
     // Modelo
-    else if (!mapping.modelo && norm.includes('modelo')) {
+    else if (!mapping.modelo && (norm.includes('modelo') || norm === 'mod' || norm === 'ref')) {
       mapping.modelo = h;
-    }
-    // Número de série
-    else if (!mapping.serie && (norm.includes('serie') || norm.includes('serial') || norm.includes('sn'))) {
-      mapping.serie = h;
     }
     // Setor / Localização
     else if (!mapping.setor && (
@@ -86,6 +258,7 @@ export function identifyColumns(headers) {
       norm.includes('departamento') ||
       norm.includes('unidade') ||
       norm.includes('sala') ||
+      norm.includes('posto') ||
       norm.includes('area')
     )) {
       mapping.setor = h;
@@ -95,30 +268,78 @@ export function identifyColumns(headers) {
       norm.includes('validade') ||
       norm.includes('vencimento') ||
       norm.includes('proximacalibracao') ||
-      norm.includes('datacalibracao') ||
-      norm.includes('calibracao')
+      norm.includes('proxcalibracao')
     )) {
       mapping.validadeCalibracao = h;
     }
-    // Status
-    else if (!mapping.statusCalibracao && (norm.includes('status') || norm.includes('situacao'))) {
+    // Status Geral de Calibração (ex: "Status Calibração")
+    else if (!mapping.statusCalibracao && (
+      norm.includes('statuscalibracao') || 
+      (norm.includes('status') && !norm.includes('geral') && !norm.includes('prev') && !norm.includes('seg'))
+    )) {
       mapping.statusCalibracao = h;
     }
-    // Checado / OK
-    else if (!mapping.checado && (norm.includes('checado') || norm.includes('conferido') || norm.includes('check') || norm.includes('verificado'))) {
-      mapping.checado = h;
+    // Checado Geral / Status Geral / Check
+    else if (!mapping.checadoGeral && (
+      norm.includes('statusgeral') ||
+      norm.includes('checado') || 
+      norm.includes('conferido') || 
+      norm.includes('check') || 
+      norm.includes('verificado') ||
+      norm === 'status' ||
+      norm === 'situacao'
+    )) {
+      mapping.checadoGeral = h;
+    }
+    // Usuário / Técnico Geral
+    else if (!mapping.usuarioGeral && (
+      norm.includes('tecnico') || 
+      norm.includes('responsavel') || 
+      norm.includes('executor') || 
+      norm.includes('conferidopor') ||
+      norm.includes('usuario')
+    )) {
+      mapping.usuarioGeral = h;
+    }
+    // Data Geral
+    else if (!mapping.dataGeral && (
+      norm === 'data' || 
+      norm === 'dt' || 
+      norm.includes('datacheck') || 
+      norm.includes('dataconferencia')
+    )) {
+      mapping.dataGeral = h;
+    }
+    // Ordem de Serviço (OS)
+    else if (!mapping.os && (
+      norm === 'os' || 
+      norm === 'numos' || 
+      norm === 'noos' || 
+      norm.includes('ordemdeservico') || 
+      norm.includes('ordemservico')
+    )) {
+      mapping.os = h;
     }
     // Observação
-    else if (!mapping.observacao && (norm.includes('observacao') || norm.includes('obs') || norm.includes('nota'))) {
+    else if (!mapping.observacao && (
+      norm.includes('observacao') || 
+      norm.includes('obs') || 
+      norm.includes('nota') ||
+      norm.includes('defeito')
+    )) {
       mapping.observacao = h;
     }
   });
 
-  // Se nenhum campo de código de barras foi encontrado, use a primeira coluna com dados
-  if (!mapping.codigoBarras && headers.length > 0) {
+  // Fallbacks inteligentes se colunas essenciais não tiverem nome padrão:
+  if (!mapping.codigoBarras && mapping.serie) {
+    mapping.codigoBarras = mapping.serie;
+  } else if (!mapping.codigoBarras && mapping.tag) {
+    mapping.codigoBarras = mapping.tag;
+  } else if (!mapping.codigoBarras && headers.length > 0) {
     mapping.codigoBarras = headers[0];
   }
-  // Se nenhum campo de equipamento foi encontrado, use a 2ª coluna
+
   if (!mapping.equipamento && headers.length > 1) {
     mapping.equipamento = headers[1];
   } else if (!mapping.equipamento && headers.length > 0) {
@@ -142,23 +363,62 @@ export function normalizeRows(rows, mapping) {
     const rawSetor = mapping.setor ? String(row[mapping.setor] ?? '').trim() : 'Geral';
     const rawValidade = mapping.validadeCalibracao ? String(row[mapping.validadeCalibracao] ?? '').trim() : '';
     const rawStatus = mapping.statusCalibracao ? String(row[mapping.statusCalibracao] ?? '').trim() : '';
-    const rawChecado = mapping.checado ? row[mapping.checado] : false;
-    const rawObs = mapping.observacao ? String(row[mapping.observacao] ?? '').trim() : '';
+    
+    // Status Geral ou Legado
+    const rawChecadoGeral = mapping.checadoGeral ? row[mapping.checadoGeral] : false;
+    const isChecadoGeral = parseCheckValue(rawChecadoGeral);
 
-    // Verifica status booleano de check
-    const isChecked = Boolean(
-      rawChecado === true ||
-      rawChecado === 1 ||
-      String(rawChecado).toLowerCase() === 'sim' ||
-      String(rawChecado).toLowerCase() === 'true' ||
-      String(rawChecado).toLowerCase() === 'ok' ||
-      String(rawChecado).toLowerCase() === 'checado' ||
-      String(rawChecado).toLowerCase() === 'x'
-    );
+    // FRENTE 1: CALIBRAÇÃO
+    const hasCalCol = Boolean(mapping.checkCalibracao);
+    const rawCheckCal = hasCalCol ? row[mapping.checkCalibracao] : null;
+    const isCalChecked = hasCalCol ? parseCheckValue(rawCheckCal) : isChecadoGeral;
+    
+    let dataCal = mapping.dataCalibracao ? parseDateValue(row[mapping.dataCalibracao]) : null;
+    if (!dataCal && isCalChecked) {
+      dataCal = parseDateValue(rawCheckCal) || (mapping.dataGeral ? parseDateValue(row[mapping.dataGeral]) : null) || new Date().toISOString();
+    }
+    const userCal = mapping.usuarioCalibracao ? String(row[mapping.usuarioCalibracao] ?? '').trim() : (mapping.usuarioGeral ? String(row[mapping.usuarioGeral] ?? '').trim() : null);
 
-    // Determina status de calibração se não vier explícito
+    // FRENTE 2: PREVENTIVA
+    const hasPrevCol = Boolean(mapping.checkPreventiva);
+    const rawCheckPrev = hasPrevCol ? row[mapping.checkPreventiva] : null;
+    const isPrevChecked = hasPrevCol ? parseCheckValue(rawCheckPrev) : false;
+
+    let dataPrev = mapping.dataPreventiva ? parseDateValue(row[mapping.dataPreventiva]) : null;
+    if (!dataPrev && isPrevChecked) {
+      dataPrev = parseDateValue(rawCheckPrev) || (mapping.dataGeral ? parseDateValue(row[mapping.dataGeral]) : null) || new Date().toISOString();
+    }
+    const userPrev = mapping.usuarioPreventiva ? String(row[mapping.usuarioPreventiva] ?? '').trim() : (mapping.usuarioGeral ? String(row[mapping.usuarioGeral] ?? '').trim() : null);
+
+    // FRENTE 3: SEGURANÇA ELÉTRICA
+    const hasSegCol = Boolean(mapping.checkSeguranca);
+    const rawCheckSeg = hasSegCol ? row[mapping.checkSeguranca] : null;
+    const isSegChecked = hasSegCol ? parseCheckValue(rawCheckSeg) : false;
+
+    let dataSeg = mapping.dataSeguranca ? parseDateValue(row[mapping.dataSeguranca]) : null;
+    if (!dataSeg && isSegChecked) {
+      dataSeg = parseDateValue(rawCheckSeg) || (mapping.dataGeral ? parseDateValue(row[mapping.dataGeral]) : null) || new Date().toISOString();
+    }
+    const userSeg = mapping.usuarioSeguranca ? String(row[mapping.usuarioSeguranca] ?? '').trim() : (mapping.usuarioGeral ? String(row[mapping.usuarioGeral] ?? '').trim() : null);
+
+    // Observações, OS e Certificados
+    let rawObs = mapping.observacao ? String(row[mapping.observacao] ?? '').trim() : '';
+    if (mapping.os && row[mapping.os]) {
+      const osVal = `OS: ${String(row[mapping.os]).trim()}`;
+      if (!rawObs.includes(osVal)) {
+        rawObs = rawObs ? `${rawObs} | ${osVal}` : osVal;
+      }
+    }
+    if (mapping.certificadoCalibracao && row[mapping.certificadoCalibracao]) {
+      const certVal = `Certificado: ${String(row[mapping.certificadoCalibracao]).trim()}`;
+      if (!rawObs.includes(certVal)) {
+        rawObs = rawObs ? `${rawObs} | ${certVal}` : certVal;
+      }
+    }
+
+    // Determina status de validade da calibração se não vier explícito
     let calculatedStatus = rawStatus;
-    if (!calculatedStatus && rawValidade) {
+    if (!calculatedStatus && rawValidade && rawValidade !== 'N/A') {
       const parsedDate = new Date(rawValidade);
       if (!isNaN(parsedDate.getTime())) {
         const today = new Date();
@@ -187,6 +447,8 @@ export function normalizeRows(rows, mapping) {
     const finalBarcode = rawBarcode || rawSerie || rawTag || `CAL-${String(idx + 1).padStart(4, '0')}`;
     const finalTag = rawTag || (row['Identificação'] ? String(row['Identificação']).trim() : `TAG-${String(idx + 1).padStart(3, '0')}`);
 
+    const isGlobalChecked = Boolean(isCalChecked || isPrevChecked || isSegChecked || isChecadoGeral);
+
     return {
       id: uniqueId,
       codigoBarras: finalBarcode,
@@ -198,19 +460,23 @@ export function normalizeRows(rows, mapping) {
       setor: rawSetor,
       validadeCalibracao: rawValidade || 'N/A',
       statusCalibracao: calculatedStatus || 'Válido',
-      checado: isChecked,
-      dataCheck: isChecked ? new Date().toISOString() : null,
+      checado: isGlobalChecked,
+      dataCheck: dataCal || dataPrev || dataSeg || (isGlobalChecked ? new Date().toISOString() : null),
       observacao: rawObs,
+      
       // Suporte multiequipes (Calibração, Preventiva, Segurança Elétrica)
-      check_calibracao: isChecked,
-      data_calibracao: isChecked ? new Date().toISOString() : null,
-      usuario_calibracao: null,
-      check_preventiva: false,
-      data_preventiva: null,
-      usuario_preventiva: null,
-      check_seguranca: false,
-      data_seguranca: null,
-      usuario_seguranca: null,
+      check_calibracao: Boolean(isCalChecked),
+      data_calibracao: dataCal,
+      usuario_calibracao: userCal,
+      
+      check_preventiva: Boolean(isPrevChecked),
+      data_preventiva: dataPrev,
+      usuario_preventiva: userPrev,
+
+      check_seguranca: Boolean(isSegChecked),
+      data_seguranca: dataSeg,
+      usuario_seguranca: userSeg,
+
       _originalRow: row,
     };
   });
@@ -233,7 +499,9 @@ export function extractDataFromWorksheet(worksheet) {
     'codigo', 'cod', 'barcode', 'ean', 'patrimonio', 'tag', 'id',
     'equipamento', 'aparelho', 'instrumento', 'descricao', 'nome', 'item',
     'modelo', 'fabricante', 'marca', 'serie', 'serial', 'setor', 'local',
-    'validade', 'vencimento', 'calibracao', 'status', 'situacao', 'checado', 'check'
+    'validade', 'vencimento', 'calibracao', 'status', 'situacao', 'checado', 'check',
+    'preventiva', 'seguranca', 'tse', 'mp', 'tecnico', 'responsavel', 'executor',
+    'identificacao', 'idec', 'tombamento', 'ordem'
   ];
 
   let bestHeaderRowIndex = 0;
@@ -355,7 +623,7 @@ export async function parseSpreadsheetFile(file) {
 }
 
 /**
- * Converte link do Google Sheets para URL de exportação direta em CSV
+ * Converte link do Google Sheets ou Google Drive para URL de exportação direta
  */
 export function extractGoogleSheetsExportUrl(inputUrl) {
   if (!inputUrl) return null;
@@ -364,7 +632,11 @@ export function extractGoogleSheetsExportUrl(inputUrl) {
     return inputUrl;
   }
 
-  const match = inputUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  // Detecta ID do arquivo tanto em docs.google.com quanto em drive.google.com
+  const match = inputUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/) ||
+                inputUrl.match(/\/file\/d\/([a-zA-Z0-9-_]+)/) ||
+                inputUrl.match(/[?&]id=([a-zA-Z0-9-_]+)/);
+
   if (match && match[1]) {
     const spreadsheetId = match[1];
     const gidMatch = inputUrl.match(/[#&?]gid=([0-9]+)/);
