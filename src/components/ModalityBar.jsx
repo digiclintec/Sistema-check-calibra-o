@@ -1,11 +1,13 @@
 import React from 'react';
 import { MODALITIES } from '../utils/modalities';
-import { Target, Wrench, Zap, LayoutGrid, CheckCircle2, Info } from 'lucide-react';
+import { Target, Wrench, Zap, LayoutGrid, CheckCircle2, Info, Settings } from 'lucide-react';
 
 export default function ModalityBar({
   activeModality = 'calibracao',
   onChangeModality,
-  equipments = []
+  equipments = [],
+  serviceConfig = null,
+  onOpenServiceConfig = null
 }) {
   const total = equipments.length;
 
@@ -18,7 +20,7 @@ export default function ModalityBar({
     e.check_seguranca
   ).length;
 
-  const modalitiesList = [
+  const allModalitiesList = [
     {
       id: 'calibracao',
       label: 'Calibração',
@@ -58,6 +60,21 @@ export default function ModalityBar({
     }
   ];
 
+  const modalitiesList = allModalitiesList.filter(m => {
+    if (m.id === 'calibracao') return serviceConfig?.enableCalibracao ?? true;
+    if (m.id === 'preventiva') return serviceConfig?.enablePreventiva ?? true;
+    if (m.id === 'seguranca') return serviceConfig?.enableSeguranca ?? true;
+    if (m.id === 'geral') {
+      const activeCount = [
+        serviceConfig?.enableCalibracao ?? true,
+        serviceConfig?.enablePreventiva ?? true,
+        serviceConfig?.enableSeguranca ?? true
+      ].filter(Boolean).length;
+      return activeCount > 1;
+    }
+    return true;
+  });
+
   const currentMod = MODALITIES[activeModality] || MODALITIES.calibracao;
 
   return (
@@ -65,7 +82,7 @@ export default function ModalityBar({
       
       {/* Top Header Label */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 px-1">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             Frente de Trabalho / Equipe:
           </span>
@@ -73,21 +90,51 @@ export default function ModalityBar({
             <span>{currentMod.icon}</span>
             <span>{currentMod.name}</span>
           </span>
+          
+          {serviceConfig && (
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 border ${
+              serviceConfig.executionMode === 'all_at_once'
+                ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30'
+                : 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30'
+            }`}>
+              <span>{serviceConfig.executionMode === 'all_at_once' ? '⚡ Modo: Tudo Junto' : '🎯 Modo: Separado'}</span>
+            </span>
+          )}
         </div>
 
-        <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1 truncate">
-          <Info className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-          <span className="truncate">
-            {activeModality === 'preventiva' && 'Validações afetam apenas a Manutenção Preventiva.'}
-            {activeModality === 'calibracao' && 'Validações afetam apenas a Calibração Metrológica.'}
-            {activeModality === 'seguranca' && 'Validações afetam apenas o Teste de Segurança Elétrica (TSE).'}
-            {activeModality === 'geral' && 'Visão completa das 3 equipes em tempo real.'}
-          </span>
+        <div className="flex items-center gap-2 justify-between sm:justify-end">
+          <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1 truncate hidden md:flex">
+            <Info className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+            <span className="truncate">
+              {serviceConfig?.executionMode === 'all_at_once' 
+                ? '⚡ 1 bip carimba todos os parâmetros ativos de uma vez só.' 
+                : (activeModality === 'preventiva' && 'Validações afetam apenas a Manutenção Preventiva.') ||
+                  (activeModality === 'calibracao' && 'Validações afetam apenas a Calibração Metrológica.') ||
+                  (activeModality === 'seguranca' && 'Validações afetam apenas o Teste de Segurança Elétrica (TSE).') ||
+                  (activeModality === 'geral' && 'Visão completa das equipes ativas em tempo real.')
+              }
+            </span>
+          </div>
+
+          {onOpenServiceConfig && (
+            <button
+              onClick={onOpenServiceConfig}
+              className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 transition shrink-0 active:scale-95"
+              title="Configurar quais serviços checar (Calibração, Preventiva, TSE) e modo de bipagem"
+            >
+              <Settings className="w-3.5 h-3.5 text-blue-500" />
+              <span>Opções de Checagem</span>
+            </button>
+          )}
         </div>
       </div>
 
       {/* Segmented Modality Selector Tabs */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2 bg-slate-100 dark:bg-slate-800/60 p-1.5 rounded-xl sm:rounded-2xl">
+      <div className={`grid gap-1.5 sm:gap-2 bg-slate-100 dark:bg-slate-800/60 p-1.5 rounded-xl sm:rounded-2xl ${
+        modalitiesList.length === 1 ? 'grid-cols-1' :
+        modalitiesList.length === 2 ? 'grid-cols-2' :
+        modalitiesList.length === 3 ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-2 sm:grid-cols-4'
+      }`}>
         {modalitiesList.map((m) => {
           const Icon = m.icon;
           const isActive = activeModality === m.id;

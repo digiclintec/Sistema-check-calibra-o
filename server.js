@@ -696,14 +696,49 @@ app.get('/api/data', (req, res) => {
     hospitalPlan: hospital.plano || 'pro',
     equipments: hospital.equipments || [],
     activeSheetName: hospital.activeSheetName || '',
+    serviceConfig: hospital.serviceConfig || {
+      enableCalibracao: true,
+      enablePreventiva: true,
+      enableSeguranca: true,
+      executionMode: 'separated'
+    },
     lastUpdated: hospital.lastUpdated || db.lastUpdated || Date.now(),
     lastUpdatedBy: hospital.lastUpdatedBy || ''
   });
 });
 
+// Update service configuration for hospital
+app.post('/api/service-config', (req, res) => {
+  const { hospitalId, serviceConfig } = req.body || {};
+  const db = readDb();
+  const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
+  const idx = (db.hospitals || []).findIndex(h => h.id === targetId);
+
+  if (idx === -1) {
+    return res.status(404).json({ success: false, message: 'Hospital não encontrado.' });
+  }
+
+  db.hospitals[idx].serviceConfig = {
+    enableCalibracao: serviceConfig?.enableCalibracao ?? true,
+    enablePreventiva: serviceConfig?.enablePreventiva ?? true,
+    enableSeguranca: serviceConfig?.enableSeguranca ?? true,
+    executionMode: serviceConfig?.executionMode === 'all_at_once' ? 'all_at_once' : 'separated'
+  };
+
+  db.hospitals[idx].lastUpdated = Date.now();
+  db.lastUpdated = Date.now();
+  saveDb(db);
+
+  res.json({
+    success: true,
+    message: 'Configurações de serviço salvas com sucesso.',
+    serviceConfig: db.hospitals[idx].serviceConfig
+  });
+});
+
 // Save or Update spreadsheet for active hospital
 app.post('/api/data', (req, res) => {
-  const { equipments, activeSheetName, userEmail, userName, hospitalId } = req.body || {};
+  const { equipments, activeSheetName, userEmail, userName, hospitalId, serviceConfig } = req.body || {};
   const db = readDb();
   const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
   const idx = (db.hospitals || []).findIndex(h => h.id === targetId);
@@ -716,6 +751,14 @@ app.post('/api/data', (req, res) => {
 
   db.hospitals[idx].equipments = Array.isArray(equipments) ? equipments : [];
   db.hospitals[idx].activeSheetName = activeSheetName || '';
+  if (serviceConfig) {
+    db.hospitals[idx].serviceConfig = {
+      enableCalibracao: serviceConfig.enableCalibracao ?? true,
+      enablePreventiva: serviceConfig.enablePreventiva ?? true,
+      enableSeguranca: serviceConfig.enableSeguranca ?? true,
+      executionMode: serviceConfig.executionMode === 'all_at_once' ? 'all_at_once' : 'separated'
+    };
+  }
   db.hospitals[idx].lastUpdated = Date.now();
   db.hospitals[idx].lastUpdatedBy = inspectorLabel;
 

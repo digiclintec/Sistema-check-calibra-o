@@ -114,13 +114,29 @@ export function normalizeEquipmentModalities(eq) {
 /**
  * Retorna se o equipamento está checado de acordo com a modalidade
  */
-export function isEquipmentChecked(eq, modality = 'calibracao') {
+export function isEquipmentChecked(eq, modality = 'calibracao', serviceConfig = null) {
   if (!eq) return false;
   if (modality === 'calibracao') return Boolean(eq.check_calibracao);
   if (modality === 'preventiva') return Boolean(eq.check_preventiva);
   if (modality === 'seguranca') return Boolean(eq.check_seguranca);
-  // Se for visão geral, retorna true somente se as 3 frentes estiverem concluídas
-  return Boolean(eq.check_calibracao && eq.check_preventiva && eq.check_seguranca);
+  // Se for visão geral ou não especificado, checa se todas as modalidades ativas estão concluídas
+  return isEquipmentFullyChecked(eq, serviceConfig);
+}
+
+/**
+ * Retorna se o equipamento está 100% conferido considerando as modalidades ativas
+ */
+export function isEquipmentFullyChecked(eq, serviceConfig) {
+  if (!eq) return false;
+  const enableCal = serviceConfig?.enableCalibracao ?? true;
+  const enablePrev = serviceConfig?.enablePreventiva ?? true;
+  const enableSeg = serviceConfig?.enableSeguranca ?? true;
+
+  if (enableCal && !eq.check_calibracao) return false;
+  if (enablePrev && !eq.check_preventiva) return false;
+  if (enableSeg && !eq.check_seguranca) return false;
+
+  return true;
 }
 
 /**
