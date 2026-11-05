@@ -51,14 +51,14 @@ export default function MobileBottomBar({
         <span className="text-[8px] font-black uppercase tracking-tighter">BIPAR</span>
       </button>
 
-      {/* Install Mobile App Button */}
+      {/* Install Mobile App / APK Button */}
       <button
         onClick={onOpenInstall}
         className="flex flex-col items-center justify-center p-1 text-slate-600 dark:text-slate-400 hover:text-emerald-500 dark:hover:text-emerald-400 transition"
       >
         <Smartphone className="w-5 h-5 text-emerald-500" />
-        <span className="text-[10px] font-semibold mt-0.5 text-emerald-500 dark:text-emerald-400">
-          Baixar App
+        <span className="text-[10px] font-extrabold mt-0.5 text-emerald-600 dark:text-emerald-400">
+          Baixar APK
         </span>
       </button>
 

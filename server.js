@@ -1555,10 +1555,44 @@ app.post('/api/reset', (req, res) => {
   res.json({ success: true, message: 'Planilha do hospital limpa com sucesso.' });
 });
 
+// ---------------- DOWNLOAD APK & PWA ASSETLINKS ROUTES ---------------- //
+
+// Download do Instalador APK Direto para Android
+app.get(['/download/apk', '/download/calibracheck.apk', '/download/CalibraCheck.apk', '/downloads/CalibraCheck.apk'], (req, res) => {
+  const publicApk = path.join(__dirname, 'public', 'downloads', 'CalibraCheck.apk');
+  const distApk = path.join(__dirname, 'dist', 'downloads', 'CalibraCheck.apk');
+  const targetApk = fs.existsSync(publicApk) ? publicApk : (fs.existsSync(distApk) ? distApk : null);
+
+  if (targetApk) {
+    res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+    res.setHeader('Content-Disposition', 'attachment; filename="CalibraCheck.apk"');
+    return res.sendFile(targetApk);
+  }
+  res.status(404).send('Arquivo APK não encontrado.');
+});
+
+// Google Trusted Web Activity (TWA) Digital Asset Links
+app.get('/.well-known/assetlinks.json', (req, res) => {
+  const publicAssetlinks = path.join(__dirname, 'public', '.well-known', 'assetlinks.json');
+  const distAssetlinks = path.join(__dirname, 'dist', '.well-known', 'assetlinks.json');
+  const target = fs.existsSync(publicAssetlinks) ? publicAssetlinks : (fs.existsSync(distAssetlinks) ? distAssetlinks : null);
+
+  if (target) {
+    try {
+      const content = JSON.parse(fs.readFileSync(target, 'utf8'));
+      res.setHeader('Content-Type', 'application/json');
+      return res.json(content);
+    } catch (e) {
+      return res.status(500).send('Erro ao ler assetlinks.');
+    }
+  }
+  res.status(404).send('Assetlinks não encontrado.');
+});
+
 // Serve frontend static files from dist/
 const distPath = path.join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {
-  app.use(express.static(distPath));
+  app.use(express.static(distPath, { dotfiles: 'allow' }));
   app.use((req, res) => {
     res.sendFile(path.join(distPath, 'index.html'));
   });

@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "br.com.helpclintec.calibracheck",
+        "sha256_cert_fingerprints": ["8D:4E:3D:60:7B:F6:77:11:8F:2F:F6:0C:61:38:36:36:FA:C2:A6:3C:FD:DE:62:5E:24:22:83:96:EC:18:AB:A7"]
+      }
+    }]

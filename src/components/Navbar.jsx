@@ -251,14 +251,14 @@ export default function Navbar({
               </button>
             )}
 
-            {/* Install App on Android/iOS Button (Visível apenas em desktop/tablet pois o mobile já tem no rodapé) */}
+            {/* Install App / Download APK Button */}
             <button
               onClick={onOpenInstall}
               className="hidden sm:flex items-center gap-1.5 px-2 sm:px-2.5 py-2 rounded-xl text-xs font-bold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 transition shadow-sm"
-              title="Instalar aplicativo no Android ou iPhone"
+              title="Baixar instalador APK para Android ou instalar aplicativo"
             >
               <Smartphone className="w-4 h-4 text-emerald-500" />
-              <span className="hidden md:inline">Baixar App</span>
+              <span>Baixar APK</span>
             </button>
 
             {/* Export Excel Button (Active when data exists) */}
