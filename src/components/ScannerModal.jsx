@@ -1117,51 +1117,129 @@ export default function ScannerModal({
     setLastScannedFeedback(null);
   };
 
-  // Leitura ultra-inteligente a partir de foto/galeria (Código de Barras + OCR Automático)
+  // Leitura ultra-inteligente a partir de foto/câmera nativa (Código de Barras + OCR Automático)
   const handlePhotoScan = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setLastScannedFeedback({
       status: 'analyzing',
-      code: 'Foto',
-      message: 'Analisando imagem (tentando Código de Barras e leitura de Número de Série)...',
+      code: '📸 Câmera Nativa',
+      message: 'Processando foto em alta resolução do sensor nativo...',
       timestamp: new Date().toLocaleTimeString('pt-BR')
     });
 
     try {
-      // 1. Tenta decodificar código de barras 1D/2D
       let decodedBarcode = null;
 
-      // 1a. Tenta leitor Html5Qrcode / ZXing
-      try {
-        const scanner = html5QrCodeRef.current || new Html5Qrcode('barcode-reader-box', {
-          formatsToSupport: SUPPORTED_FORMATS
-        });
-        decodedBarcode = await scanner.scanFile(file, true);
-      } catch (barcodeErr) {
-        // 1b. Se falhar ZXing, tenta BarcodeDetector nativo no ImageBitmap
-        if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
-          try {
-            const bmp = await createImageBitmap(file);
-            const nativeDetector = new window.BarcodeDetector({
-              formats: ['code_128', 'code_39', 'code_93', 'ean_13', 'qr_code', 'data_matrix']
-            });
-            const detected = await nativeDetector.detect(bmp);
-            if (detected && detected.length > 0 && detected[0].rawValue) {
-              decodedBarcode = detected[0].rawValue;
+      // PASSO 1: Detecção ultra-rápida por hardware nativo no Android (Google Play Services BarcodeDetector)
+      if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
+        try {
+          const bmp = await createImageBitmap(file);
+          const nativeDetector = new window.BarcodeDetector({
+            formats: [
+              'code_128', 
+              'code_39', 
+              'code_93', 
+              'ean_13', 
+              'ean_8', 
+              'itf', 
+              'qr_code', 
+              'data_matrix', 
+              'upc_a', 
+              'upc_e'
+            ]
+          });
+          const detected = await nativeDetector.detect(bmp);
+          if (detected && detected.length > 0) {
+            for (const item of detected) {
+              if (item.rawValue) {
+                decodedBarcode = item.rawValue;
+                console.log('[Camera Nativa] BarcodeDetector detectou com sucesso:', decodedBarcode);
+                break;
+              }
             }
-          } catch (e) {}
+          }
+        } catch (detectorErr) {
+          console.warn('[Camera Nativa] BarcodeDetector direto:', detectorErr);
         }
       }
 
+      // PASSO 2: Se não detectou no bitmap bruto, gera versão otimizada em Canvas (1600px max, contraste aprimorado)
+      let optimizedDataUrl = null;
+      let optimizedBlob = null;
+      if (!decodedBarcode) {
+        try {
+          const processed = await new Promise((resolve) => {
+            const img = new Image();
+            const url = URL.createObjectURL(file);
+            img.onload = () => {
+              URL.revokeObjectURL(url);
+              const maxDim = 1600;
+              let w = img.width;
+              let h = img.height;
+              if (w > maxDim || h > maxDim) {
+                if (w > h) { h = Math.round((h * maxDim) / w); w = maxDim; }
+                else { w = Math.round((w * maxDim) / h); h = maxDim; }
+              }
+              const canvas = document.createElement('canvas');
+              canvas.width = w;
+              canvas.height = h;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0, w, h);
+              
+              canvas.toBlob((blob) => {
+                resolve({
+                  dataUrl: canvas.toDataURL('image/jpeg', 0.90),
+                  blob: blob ? new File([blob], 'optimized.jpg', { type: 'image/jpeg' }) : null
+                });
+              }, 'image/jpeg', 0.90);
+            };
+            img.onerror = () => resolve({ dataUrl: null, blob: null });
+            img.src = url;
+          });
+
+          optimizedDataUrl = processed.dataUrl;
+          optimizedBlob = processed.blob;
+        } catch (optErr) {
+          console.warn('[Camera Nativa] Falha na otimização de imagem:', optErr);
+        }
+      }
+
+      // PASSO 3: Tenta BarcodeDetector e Html5Qrcode na imagem otimizada
+      if (!decodedBarcode && optimizedBlob) {
+        if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
+          try {
+            const bmpOpt = await createImageBitmap(optimizedBlob);
+            const nativeDetector = new window.BarcodeDetector({
+              formats: ['code_128', 'code_39', 'code_93', 'ean_13', 'ean_8', 'itf', 'qr_code', 'data_matrix']
+            });
+            const detectedOpt = await nativeDetector.detect(bmpOpt);
+            if (detectedOpt && detectedOpt.length > 0 && detectedOpt[0].rawValue) {
+              decodedBarcode = detectedOpt[0].rawValue;
+            }
+          } catch (e) {}
+        }
+
+        if (!decodedBarcode) {
+          try {
+            const scanner = html5QrCodeRef.current || new Html5Qrcode('barcode-reader-box', {
+              formatsToSupport: SUPPORTED_FORMATS
+            });
+            decodedBarcode = await scanner.scanFile(optimizedBlob, true);
+          } catch (scannerErr) {}
+        }
+      }
+
+      // Se encontrou código de barras pela Câmera Nativa, bipe imediato!
       if (decodedBarcode) {
+        setFocusFeedbackText('✓ Código Lido pela Câmera Nativa!');
         handleDecoded(decodedBarcode);
         e.target.value = '';
         return;
       }
 
-      // 2. Fallback Inteligente: Se as barrinhas estiverem com reflexo, executa o Agente OCR
+      // PASSO 4: Fallback Inteligente OCR (Se a etiqueta tiver texto com NS/IDEC ou código sem barras)
       setLastScannedFeedback({
         status: 'analyzing',
         code: 'OCR',
@@ -1169,50 +1247,29 @@ export default function ScannerModal({
         timestamp: new Date().toLocaleTimeString('pt-BR')
       });
 
-      // Cria imagem otimizada em canvas com contraste aprimorado
-      const optimizedDataUrl = await new Promise((resolve) => {
-        const img = new Image();
-        const url = URL.createObjectURL(file);
-        img.onload = () => {
-          URL.revokeObjectURL(url);
-          const maxDim = 1600;
-          let w = img.width;
-          let h = img.height;
-          if (w > maxDim || h > maxDim) {
-            if (w > h) { h = Math.round((h * maxDim) / w); w = maxDim; }
-            else { w = Math.round((w * maxDim) / h); h = maxDim; }
-          }
-          const canvas = document.createElement('canvas');
-          canvas.width = w;
-          canvas.height = h;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, w, h);
-          resolve(canvas.toDataURL('image/jpeg', 0.85));
-        };
-        img.onerror = () => resolve(url);
-        img.src = url;
-      });
-
       let ocrText = '';
-      try {
-        const { createWorker } = await import('tesseract.js');
-        const worker = await createWorker('por+eng', 1);
-        const ret = await worker.recognize(optimizedDataUrl);
-        ocrText = ret.data.text || '';
-        await worker.terminate();
-      } catch (clientErr) {
-        const res = await fetch('/api/ocr-scan', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ imageBase64: optimizedDataUrl })
-        });
-        const d = await res.json();
-        ocrText = d.text || '';
+      if (optimizedDataUrl) {
+        try {
+          const { createWorker } = await import('tesseract.js');
+          const worker = await createWorker('por+eng', 1);
+          const ret = await worker.recognize(optimizedDataUrl);
+          ocrText = ret.data.text || '';
+          await worker.terminate();
+        } catch (clientErr) {
+          const res = await fetch('/api/ocr-scan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageBase64: optimizedDataUrl })
+          });
+          const d = await res.json();
+          ocrText = d.text || '';
+        }
       }
 
       if (ocrText) {
         const agentResult = processPhotoTextWithAgent(ocrText, equipments);
         if (agentResult.matchedEquipments.length > 0) {
+          setFocusFeedbackText('✓ Identificado pelo Agente OCR!');
           for (const match of agentResult.matchedEquipments) {
             handleDecoded(match.matchedToken || match.equipment.serie || match.equipment.tag);
           }
@@ -1225,18 +1282,18 @@ export default function ScannerModal({
       if (soundEnabled) playErrorSound();
       setLastScannedFeedback({
         status: 'not_found',
-        code: 'Foto',
-        message: 'Nenhum código de barras ou número de série legível foi identificado na foto. Tente tirar a foto mais próxima da etiqueta da bomba.',
+        code: '📸 Câmera Nativa',
+        message: 'Nenhum código de barras ou número de série legível foi identificado na foto. Enquadre a etiqueta de mais perto com boa iluminação.',
         timestamp: new Date().toLocaleTimeString('pt-BR')
       });
 
     } catch (err) {
-      console.error('Erro ao ler foto:', err);
+      console.error('Erro ao ler foto da câmera nativa:', err);
       if (soundEnabled) playErrorSound();
       setLastScannedFeedback({
         status: 'not_found',
-        code: 'Foto',
-        message: `Falha ao ler foto: ${err.message}`,
+        code: '📸 Câmera Nativa',
+        message: `Falha ao processar foto: ${err.message}`,
         timestamp: new Date().toLocaleTimeString('pt-BR')
       });
     }
@@ -1554,12 +1611,13 @@ export default function ScannerModal({
                 </div>
 
                 <button
+                  type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="px-2 py-1 rounded-xl bg-slate-900 hover:bg-slate-800 text-blue-400 border border-slate-800 text-[11px] flex items-center gap-1 font-semibold transition shrink-0"
-                  title="Ler código a partir de foto"
+                  className="px-2.5 py-1 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white border border-emerald-400/60 text-[11px] flex items-center gap-1.5 font-bold shadow-md shadow-emerald-600/25 transition active:scale-95 shrink-0"
+                  title="Abrir o aplicativo de Câmera Oficial do celular (Samsung, Motorola, Xiaomi) com todas as lentes nativas"
                 >
-                  <ImageIcon className="w-3.5 h-3.5" />
-                  <span>Foto</span>
+                  <Camera className="w-3.5 h-3.5 text-white" />
+                  <span>📸 Câmera Nativa</span>
                 </button>
               </div>
             </div>
@@ -1727,13 +1785,27 @@ export default function ScannerModal({
             )}
           </div>
 
-          {/* Dica de Foco Prático para o Técnico */}
+          {/* Barra Inferior do Viewfinder: Dica + Botão de Ação Rápida Câmera Nativa */}
           {scanning && !cameraError && (
-            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 pointer-events-none whitespace-nowrap">
-              <div className="bg-slate-950/80 backdrop-blur-md text-slate-300 border border-slate-800 px-2.5 py-0.5 rounded-full text-[10px] font-medium shadow-lg flex items-center gap-1.5">
+            <div className="absolute bottom-2.5 left-2.5 right-2.5 z-20 flex items-center justify-between pointer-events-none">
+              <div className="bg-slate-950/85 backdrop-blur-md text-slate-300 border border-slate-800 px-2.5 py-1 rounded-full text-[10px] font-medium shadow-lg flex items-center gap-1.5 truncate max-w-[55%] xs:max-w-none">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
-                <span>Afaste a 15-25cm da bomba para o foco agir • Toque na tela para focar</span>
+                <span className="truncate">Afaste a 15-25cm para focar</span>
               </div>
+
+              {/* Botão Flutuante de Ação Rápida: Abrir Câmera Oficial do Android */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  fileInputRef.current?.click();
+                }}
+                className="pointer-events-auto px-3 py-1 rounded-full bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 text-white font-extrabold text-[11px] shadow-xl shadow-emerald-950/70 border border-emerald-400/80 flex items-center gap-1.5 transition active:scale-95 shrink-0"
+                title="Abrir o aplicativo de Câmera Oficial do celular (Samsung, Motorola, Xiaomi) com todas as lentes nativas"
+              >
+                <Camera className="w-3.5 h-3.5 text-white animate-pulse" />
+                <span>📸 Câmera do Celular</span>
+              </button>
             </div>
           )}
 
