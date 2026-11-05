@@ -27,10 +27,12 @@ import {
   Wrench,
   Zap,
   LayoutGrid,
-  Settings
+  Settings,
+  Palette
 } from 'lucide-react';
 import { extractCleanSerialNumber, parseCompositeBarcode } from '../utils/gs1Parser';
 import { MODALITIES, isEquipmentChecked, getCheckMeta } from '../utils/modalities';
+import { getSectorColor, getEffectiveSector, getSectorBadgeStyles } from '../utils/sectorColors';
 
 export default function EquipmentTable({ 
   equipments, 
@@ -44,7 +46,9 @@ export default function EquipmentTable({
   activeModality = 'calibracao',
   onChangeModality,
   serviceConfig = null,
-  onOpenServiceConfig = null
+  onOpenServiceConfig = null,
+  sectorColors = {},
+  onOpenSectorColors = null
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSector, setSelectedSector] = useState('ALL');
@@ -58,9 +62,10 @@ export default function EquipmentTable({
   const sectors = useMemo(() => {
     const list = new Set();
     equipments.forEach(e => {
-      if (e.setor) list.add(e.setor);
+      if (e.setor_retirada && e.setor_retirada.trim()) list.add(e.setor_retirada.trim());
+      if (e.setor && e.setor.trim()) list.add(e.setor.trim());
     });
-    return Array.from(list).sort();
+    return Array.from(list).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [equipments]);
 
   const handleQuickSubmit = (e) => {
@@ -87,7 +92,12 @@ export default function EquipmentTable({
     }
 
     if (selectedSector !== 'ALL') {
-      result = result.filter(e => e.setor === selectedSector);
+      const targetSec = selectedSector.toLowerCase();
+      result = result.filter(e => {
+        const eff = getEffectiveSector(e).toLowerCase();
+        const orig = (e.setor || '').toLowerCase();
+        return eff === targetSec || orig === targetSec;
+      });
     }
 
     if (searchQuery.trim()) {
@@ -222,24 +232,39 @@ export default function EquipmentTable({
         {/* Row 2.5: Sector Selector & Filter Chips */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 w-full overflow-hidden">
           
-          {/* Sector Selector */}
-          {sectors.length > 0 && (
-            <div className="flex items-center gap-1.5 w-full sm:w-auto shrink-0">
-              <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-              <select
-                value={selectedSector}
-                onChange={(e) => setSelectedSector(e.target.value)}
-                className="w-full sm:w-auto bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:border-blue-500 truncate"
+          {/* Sector Selector & Color Customizer */}
+          <div className="flex items-center gap-1.5 w-full sm:w-auto shrink-0 flex-wrap">
+            {sectors.length > 0 && (
+              <div className="flex items-center gap-1.5 min-w-0">
+                <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <select
+                  value={selectedSector}
+                  onChange={(e) => setSelectedSector(e.target.value)}
+                  className="w-full sm:w-auto bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:border-blue-500 truncate"
+                >
+                  <option value="ALL">Todos os Setores ({equipments.length})</option>
+                  {sectors.map((sec) => (
+                    <option key={sec} value={sec}>
+                      {sec}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {onOpenSectorColors && (
+              <button
+                type="button"
+                onClick={onOpenSectorColors}
+                className="py-1.5 px-2.5 bg-orange-50 hover:bg-orange-100 dark:bg-orange-950/40 dark:hover:bg-orange-950/70 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-800/60 rounded-xl text-xs font-bold flex items-center gap-1.5 transition active:scale-95 shrink-0"
+                title="Personalizar cores de cada setor na planilha"
               >
-                <option value="ALL">Todos os Setores ({equipments.length})</option>
-                {sectors.map((sec) => (
-                  <option key={sec} value={sec}>
-                    {sec}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+                <Palette className="w-3.5 h-3.5 text-orange-500" />
+                <span className="hidden sm:inline">Cores dos Setores</span>
+                <span className="sm:hidden">Cores</span>
+              </button>
+            )}
+          </div>
 
           {/* Active Filter Chips */}
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 w-full sm:w-auto no-scrollbar">
@@ -332,9 +357,15 @@ export default function EquipmentTable({
             const isPrevOk = Boolean(item.check_preventiva);
             const isSegOk = Boolean(item.check_seguranca);
 
+            const effectiveSector = getEffectiveSector(item);
+            const sectorColor = getSectorColor(effectiveSector, sectorColors);
+            const isDiffSector = item.setor_retirada && item.setor && 
+              item.setor_retirada.trim().toLowerCase() !== item.setor.trim().toLowerCase();
+
             return (
               <div
                 key={item.id}
+                style={{ borderLeft: `5px solid ${sectorColor.hex}` }}
                 className={`p-4 rounded-2xl border transition-all ${
                   isCheckedCurrent
                     ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-300/60 dark:border-emerald-800/50'
@@ -357,11 +388,18 @@ export default function EquipmentTable({
                 {/* Specs / Details */}
                 <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400 py-2 border-t border-b border-slate-100 dark:border-slate-800/60">
                   <div>
-                    <span className="text-[10px] text-slate-400 block">Setor:</span>
-                    <span className="font-medium text-slate-700 dark:text-slate-200">{item.setor || 'Geral'}</span>
-                    {item.setor_retirada && (
-                      <span className="block text-[10px] text-teal-600 dark:text-teal-400 font-bold mt-0.5">
-                        📍 Retirado em: {item.setor_retirada}
+                    <span className="text-[10px] text-slate-400 block mb-0.5">Setor (Coleta/Origem):</span>
+                    <span 
+                      style={getSectorBadgeStyles(sectorColor)}
+                      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold border shadow-xs"
+                      title={`Setor de Coleta / Efetivo: ${effectiveSector}`}
+                    >
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: sectorColor.hex }} />
+                      <span>{effectiveSector}</span>
+                    </span>
+                    {isDiffSector && (
+                      <span className="block text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                        🏢 Origem: {item.setor}
                       </span>
                     )}
                   </div>
@@ -554,9 +592,15 @@ export default function EquipmentTable({
                 const isPrevOk = Boolean(item.check_preventiva);
                 const isSegOk = Boolean(item.check_seguranca);
 
+                const effectiveSector = getEffectiveSector(item);
+                const sectorColor = getSectorColor(effectiveSector, sectorColors);
+                const isDiffSector = item.setor_retirada && item.setor && 
+                  item.setor_retirada.trim().toLowerCase() !== item.setor.trim().toLowerCase();
+
                 return (
                   <tr 
                     key={item.id}
+                    style={{ borderLeft: `4px solid ${sectorColor.hex}` }}
                     className={`transition-colors duration-200 group ${
                       isCheckedCurrent 
                         ? 'bg-emerald-50/40 dark:bg-emerald-950/15' 
@@ -602,13 +646,18 @@ export default function EquipmentTable({
                     </td>
 
                     <td className="py-3 px-4 hidden lg:table-cell text-slate-600 dark:text-slate-300">
-                      <div className="flex flex-col gap-0.5 items-start">
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs">
-                          {item.setor || 'Geral'}
+                      <div className="flex flex-col gap-1 items-start">
+                        <span 
+                          style={getSectorBadgeStyles(sectorColor)}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border shadow-xs"
+                          title={`Setor de Coleta / Efetivo: ${effectiveSector}`}
+                        >
+                          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: sectorColor.hex }} />
+                          <span>{effectiveSector}</span>
                         </span>
-                        {item.setor_retirada && (
-                          <span className="inline-flex items-center gap-1 text-[10px] text-teal-600 dark:text-teal-400 font-bold" title={`Retirado em: ${item.setor_retirada}`}>
-                            📍 Retirado: {item.setor_retirada}
+                        {isDiffSector && (
+                          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium pl-1 flex items-center gap-1" title={`Cadastrado originalmente em: ${item.setor}`}>
+                            🏢 Origem: {item.setor}
                           </span>
                         )}
                       </div>

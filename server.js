@@ -839,8 +839,48 @@ app.get('/api/data', (req, res) => {
       enableSeguranca: true,
       executionMode: 'separated'
     },
+    sectorColors: hospital.sectorColors || db.sectorColors || {},
     lastUpdated: hospital.lastUpdated || db.lastUpdated || Date.now(),
     lastUpdatedBy: hospital.lastUpdatedBy || ''
+  });
+});
+
+// Sector Colors routes
+app.get('/api/sector-colors', (req, res) => {
+  const db = readDb();
+  const targetId = req.query.hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
+  const hospital = (db.hospitals || []).find(h => h.id === targetId) || db.hospitals?.[0] || {};
+  res.json({
+    success: true,
+    hospitalId: hospital.id,
+    sectorColors: hospital.sectorColors || db.sectorColors || {}
+  });
+});
+
+app.post('/api/sector-colors', (req, res) => {
+  const { hospitalId, sectorColors } = req.body || {};
+  const db = readDb();
+  const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
+  const idx = (db.hospitals || []).findIndex(h => h.id === targetId);
+
+  if (idx !== -1) {
+    db.hospitals[idx].sectorColors = {
+      ...(db.hospitals[idx].sectorColors || {}),
+      ...(sectorColors || {})
+    };
+    db.hospitals[idx].lastUpdated = Date.now();
+  }
+  db.sectorColors = {
+    ...(db.sectorColors || {}),
+    ...(sectorColors || {})
+  };
+  db.lastUpdated = Date.now();
+  saveDb(db);
+
+  res.json({
+    success: true,
+    message: 'Cores dos setores salvas com sucesso.',
+    sectorColors: idx !== -1 ? db.hospitals[idx].sectorColors : db.sectorColors
   });
 });
 
@@ -875,7 +915,7 @@ app.post('/api/service-config', (req, res) => {
 
 // Save or Update spreadsheet for active hospital
 app.post('/api/data', (req, res) => {
-  const { equipments, activeSheetName, userEmail, userName, hospitalId, serviceConfig } = req.body || {};
+  const { equipments, activeSheetName, userEmail, userName, hospitalId, serviceConfig, sectorColors } = req.body || {};
   const db = readDb();
   const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
   const idx = (db.hospitals || []).findIndex(h => h.id === targetId);
@@ -894,6 +934,12 @@ app.post('/api/data', (req, res) => {
       enablePreventiva: serviceConfig.enablePreventiva ?? true,
       enableSeguranca: serviceConfig.enableSeguranca ?? true,
       executionMode: serviceConfig.executionMode === 'all_at_once' ? 'all_at_once' : 'separated'
+    };
+  }
+  if (sectorColors) {
+    db.hospitals[idx].sectorColors = {
+      ...(db.hospitals[idx].sectorColors || {}),
+      ...sectorColors
     };
   }
   db.hospitals[idx].lastUpdated = Date.now();
@@ -919,6 +965,7 @@ app.post('/api/data', (req, res) => {
     hospitalName: db.hospitals[idx].name,
     equipments: db.hospitals[idx].equipments,
     activeSheetName: db.hospitals[idx].activeSheetName,
+    sectorColors: db.hospitals[idx].sectorColors || db.sectorColors || {},
     lastUpdated: db.hospitals[idx].lastUpdated
   });
 });

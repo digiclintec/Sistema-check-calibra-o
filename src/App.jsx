@@ -36,6 +36,7 @@ import SpreadsheetAuditView from './components/SpreadsheetAuditView';
 import SheetServicesConfigModal from './components/SheetServicesConfigModal';
 import ManualCheckPasswordModal from './components/ManualCheckPasswordModal';
 import ModalityBar from './components/ModalityBar';
+import SectorColorModal from './components/SectorColorModal';
 
 import { parseSpreadsheetFile, exportToExcel } from './utils/sheetParser';
 import { SAMPLE_EQUIPMENT } from './utils/sampleData';
@@ -129,6 +130,38 @@ export default function App() {
     };
   });
   const [serviceConfigModal, setServiceConfigModal] = useState({ isOpen: false, isInitialSetup: false });
+
+  // Custom Sector Colors (Map of normalizedSectorKey -> hex)
+  const [isSectorColorModalOpen, setIsSectorColorModalOpen] = useState(false);
+  const [sectorColors, setSectorColors] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`calibracheck_sector_colors_${activeHospitalId}`);
+      if (saved) return JSON.parse(saved);
+      const globalSaved = localStorage.getItem('calibracheck_sector_colors');
+      if (globalSaved) return JSON.parse(globalSaved);
+    } catch (e) {}
+    return {};
+  });
+
+  const handleSaveSectorColors = async (newColors) => {
+    setSectorColors(newColors);
+    try {
+      localStorage.setItem(`calibracheck_sector_colors_${activeHospitalId}`, JSON.stringify(newColors));
+      localStorage.setItem('calibracheck_sector_colors', JSON.stringify(newColors));
+      await fetch('/api/sector-colors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hospitalId: activeHospitalId, sectorColors: newColors })
+      });
+      broadcastChannelRef.current?.postMessage({
+        type: 'SECTOR_COLORS_UPDATE',
+        payload: { hospitalId: activeHospitalId, sectorColors: newColors }
+      });
+      showToast('success', 'Cores dos setores salvas e sincronizadas!');
+    } catch (e) {
+      showToast('info', 'Cores dos setores salvas localmente.');
+    }
+  };
 
   const handleSaveServiceConfig = async (newConfig) => {
     setServiceConfig(newConfig);
@@ -335,6 +368,9 @@ export default function App() {
       if (data.success) {
         setEquipments(data.equipments || []);
         setActiveSheetName(data.activeSheetName || '');
+        if (data.sectorColors) {
+          setSectorColors(data.sectorColors);
+        }
         const target = hospitals.find(h => h.id === hospId);
         showToast('info', `Alternado para: ${target?.name || hospId}`);
       }
@@ -373,6 +409,10 @@ export default function App() {
             if (payload.lastAction) {
               showToast('info', payload.lastAction);
             }
+          }
+        } else if (type === 'SECTOR_COLORS_UPDATE') {
+          if (!payload.hospitalId || payload.hospitalId === activeHospitalId) {
+            setSectorColors(payload.sectorColors || {});
           }
         }
       };
@@ -445,6 +485,9 @@ export default function App() {
         }
         if (data.serviceConfig) {
           setServiceConfig(data.serviceConfig);
+        }
+        if (data.sectorColors) {
+          setSectorColors(data.sectorColors);
         }
       }
     } catch (err) {
@@ -1224,6 +1267,8 @@ export default function App() {
             onRefresh={syncWithServer}
             serviceConfig={serviceConfig}
             onOpenServiceConfig={() => setServiceConfigModal({ isOpen: true, isInitialSetup: false })}
+            sectorColors={sectorColors}
+            onOpenSectorColors={() => setIsSectorColorModalOpen(true)}
           />
         ) : activeMainTab === 'planejamento' ? (
           <MonthlyPlanningTab
@@ -1327,6 +1372,8 @@ export default function App() {
               onChangeModality={setActiveModality}
               serviceConfig={serviceConfig}
               onOpenServiceConfig={() => setServiceConfigModal({ isOpen: true, isInitialSetup: false })}
+              sectorColors={sectorColors}
+              onOpenSectorColors={() => setIsSectorColorModalOpen(true)}
             />
 
           </div>
@@ -1399,6 +1446,15 @@ export default function App() {
         planTitle={activeSheetName}
         totalEquipments={equipments.length}
         isInitialSetup={serviceConfigModal.isInitialSetup}
+      />
+
+      {/* Modal de Personalização de Cores dos Setores na Planilha */}
+      <SectorColorModal
+        isOpen={isSectorColorModalOpen}
+        onClose={() => setIsSectorColorModalOpen(false)}
+        equipments={equipments}
+        sectorColors={sectorColors}
+        onSaveSectorColors={handleSaveSectorColors}
       />
 
       {/* Dedicated Hospital Registration, Switching & Access Modal */}

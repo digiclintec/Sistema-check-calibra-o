@@ -24,9 +24,11 @@ import {
   Wrench,
   Zap,
   MapPin,
-  Clock3
+  Clock3,
+  Palette
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { getSectorColor, getEffectiveSector, getSectorBadgeStyles } from '../utils/sectorColors';
 
 export default function SpreadsheetAuditView({
   equipments = [],
@@ -35,7 +37,9 @@ export default function SpreadsheetAuditView({
   onRefresh,
   isRefreshing = false,
   serviceConfig = null,
-  onOpenServiceConfig = null
+  onOpenServiceConfig = null,
+  sectorColors = {},
+  onOpenSectorColors = null
 }) {
   const [viewMode, setViewMode] = useState('equipments'); // 'equipments' | 'ponto'
   const [searchQuery, setSearchQuery] = useState('');
@@ -43,11 +47,14 @@ export default function SpreadsheetAuditView({
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [technicianFilter, setTechnicianFilter] = useState('ALL');
 
-  // Setores disponíveis
+  // Setores disponíveis (tanto cadastrados quanto de retirada)
   const sectors = useMemo(() => {
-    return Array.from(new Set(
-      equipments.map(e => String(e.setor || '').trim()).filter(Boolean)
-    )).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    const list = new Set();
+    equipments.forEach(e => {
+      if (e.setor_retirada && e.setor_retirada.trim()) list.add(e.setor_retirada.trim());
+      if (e.setor && e.setor.trim()) list.add(e.setor.trim());
+    });
+    return Array.from(list).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [equipments]);
 
   // Técnicos disponíveis a partir das checagens
@@ -301,25 +308,33 @@ export default function SpreadsheetAuditView({
   const handleExportAuditExcel = () => {
     if (equipments.length === 0) return;
 
-    const dataToExport = equipments.map((item, idx) => ({
-      'Item': idx + 1,
-      'Tag / Patrimônio': item.tag || '',
-      'Número de Série': item.serie || '',
-      'Equipamento / Modelo': item.nome || item.equipamento || '',
-      'Setor Cadastrado': item.setor || '',
-      'Setor de Retirada': item.setor_retirada || '',
-      'Status Calibração': item.check_calibracao ? 'CONFERIDO' : 'PENDENTE',
-      'Técnico Calibração': item.usuario_calibracao || '',
-      'Data Calibração': item.data_calibracao ? new Date(item.data_calibracao).toLocaleDateString('pt-BR') : '',
-      'Status Preventiva': item.check_preventiva ? 'CONFERIDO' : 'PENDENTE',
-      'Técnico Preventiva': item.usuario_preventiva || '',
-      'Data Preventiva': item.data_preventiva ? new Date(item.data_preventiva).toLocaleDateString('pt-BR') : '',
-      'Status Seg. Elétrica': item.check_seguranca ? 'CONFERIDO' : 'PENDENTE',
-      'Técnico Seg. Elétrica': item.usuario_seguranca || '',
-      'Data Seg. Elétrica': item.data_seguranca ? new Date(item.data_seguranca).toLocaleDateString('pt-BR') : '',
-      '100% Concluído': (item.check_calibracao && item.check_preventiva && item.check_seguranca) ? 'SIM' : 'NÃO',
-      'Observação': item.observacao || ''
-    }));
+    const dataToExport = equipments.map((item, idx) => {
+      const effectiveSector = getEffectiveSector(item);
+      const isDiff = item.setor_retirada && item.setor && 
+        item.setor_retirada.trim().toLowerCase() !== item.setor.trim().toLowerCase();
+
+      return {
+        'Item': idx + 1,
+        'Tag / Patrimônio': item.tag || '',
+        'Número de Série': item.serie || '',
+        'Equipamento / Modelo': item.nome || item.equipamento || '',
+        'Setor Efetivo (Cor)': effectiveSector,
+        'Setor Cadastrado': item.setor || '',
+        'Setor de Retirada (Coleta)': item.setor_retirada || item.setor || '',
+        'Movimentado de Setor?': isDiff ? 'SIM (Retirado em outro setor)' : 'NÃO',
+        'Status Calibração': item.check_calibracao ? 'CONFERIDO' : 'PENDENTE',
+        'Técnico Calibração': item.usuario_calibracao || '',
+        'Data Calibração': item.data_calibracao ? new Date(item.data_calibracao).toLocaleDateString('pt-BR') : '',
+        'Status Preventiva': item.check_preventiva ? 'CONFERIDO' : 'PENDENTE',
+        'Técnico Preventiva': item.usuario_preventiva || '',
+        'Data Preventiva': item.data_preventiva ? new Date(item.data_preventiva).toLocaleDateString('pt-BR') : '',
+        'Status Seg. Elétrica': item.check_seguranca ? 'CONFERIDO' : 'PENDENTE',
+        'Técnico Seg. Elétrica': item.usuario_seguranca || '',
+        'Data Seg. Elétrica': item.data_seguranca ? new Date(item.data_seguranca).toLocaleDateString('pt-BR') : '',
+        '100% Concluído': (item.check_calibracao && item.check_preventiva && item.check_seguranca) ? 'SIM' : 'NÃO',
+        'Observação': item.observacao || ''
+      };
+    });
 
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
     const workbook = XLSX.utils.book_new();
@@ -637,6 +652,20 @@ export default function SpreadsheetAuditView({
                 <option value="SECTOR_DIFF">📦 Divergência de Setor</option>
               </select>
             )}
+
+            {/* Botão de Cores dos Setores */}
+            {onOpenSectorColors && (
+              <button
+                type="button"
+                onClick={onOpenSectorColors}
+                className="px-3 py-2 bg-orange-50 hover:bg-orange-100 dark:bg-orange-950/40 dark:hover:bg-orange-950/70 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-800/60 rounded-xl text-xs font-bold flex items-center gap-1.5 transition active:scale-95 shrink-0"
+                title="Personalizar cores de cada setor na planilha"
+              >
+                <Palette className="w-3.5 h-3.5 text-orange-500" />
+                <span className="hidden sm:inline">Cores dos Setores</span>
+                <span className="sm:hidden">Cores</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -675,9 +704,14 @@ export default function SpreadsheetAuditView({
                     const isDiffSector = item.setor_retirada && item.setor && 
                       item.setor_retirada.trim().toLowerCase() !== item.setor.trim().toLowerCase();
 
+                    const effectiveSector = getEffectiveSector(item);
+                    const effectiveColor = getSectorColor(effectiveSector, sectorColors);
+                    const originalColor = getSectorColor(item.setor, sectorColors);
+
                     return (
                       <tr 
                         key={item.id || item.tag || idx}
+                        style={{ borderLeft: `4px solid ${effectiveColor.hex}` }}
                         className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors ${
                           isComplete ? 'bg-emerald-500/[0.02]' : ''
                         }`}
@@ -687,22 +721,25 @@ export default function SpreadsheetAuditView({
                         <td className="py-2.5 px-3 font-mono text-slate-700 dark:text-slate-300 text-[11px]">{item.serie || '—'}</td>
                         <td className="py-2.5 px-3 text-slate-800 dark:text-slate-200 font-medium">{item.nome || item.equipamento || '—'}</td>
                         <td className="py-2.5 px-3 text-slate-600 dark:text-slate-400">
-                          <span className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md font-medium text-[11px]">
-                            {item.setor || 'Geral'}
+                          <span 
+                            style={getSectorBadgeStyles(originalColor)}
+                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md font-semibold text-[11px] border"
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: originalColor.hex }} />
+                            <span>{item.setor || 'Geral'}</span>
                           </span>
                         </td>
                         <td className="py-2.5 px-3">
                           {item.setor_retirada ? (
-                            isDiffSector ? (
-                              <span className="inline-flex items-center gap-1 bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded-md font-bold text-[11px]">
-                                <ArrowRight className="w-3 h-3 text-amber-500" />
-                                <span>{item.setor_retirada}</span>
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-2 py-0.5 rounded-md font-medium text-[11px]">
-                                {item.setor_retirada}
-                              </span>
-                            )
+                            <span 
+                              style={getSectorBadgeStyles(effectiveColor)}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md font-bold text-[11px] border shadow-xs"
+                              title={`Setor de Coleta: ${item.setor_retirada}${isDiffSector ? ` (Origem: ${item.setor})` : ''}`}
+                            >
+                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: effectiveColor.hex }} />
+                              {isDiffSector && <ArrowRight className="w-3 h-3" />}
+                              <span>{item.setor_retirada}</span>
+                            </span>
                           ) : (
                             <span className="text-slate-400 text-[11px]">—</span>
                           )}
@@ -870,9 +907,23 @@ export default function SpreadsheetAuditView({
                     <strong className="text-slate-700 dark:text-slate-300 font-mono">{formatDate(tech.lastAction) || 'N/A'}</strong>
                   </div>
                   {tech.sectors.size > 0 && (
-                    <div className="pt-1 text-[10px] text-slate-400 flex items-center gap-1 truncate">
-                      <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
-                      <span className="truncate">Setores: {Array.from(tech.sectors).join(', ')}</span>
+                    <div className="pt-1.5 flex flex-wrap items-center gap-1">
+                      <span className="text-[10px] text-slate-400 flex items-center gap-1 mr-0.5">
+                        <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                        Setores:
+                      </span>
+                      {Array.from(tech.sectors).map(sec => {
+                        const sColor = getSectorColor(sec, sectorColors);
+                        return (
+                          <span
+                            key={sec}
+                            style={getSectorBadgeStyles(sColor)}
+                            className="text-[10px] font-bold px-1.5 py-0.2 rounded border shadow-2xs"
+                          >
+                            {sec}
+                          </span>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -938,9 +989,18 @@ export default function SpreadsheetAuditView({
                         <td className="py-2 px-3 font-mono font-bold text-slate-900 dark:text-white">{entry.tag}</td>
                         <td className="py-2 px-3 font-mono text-slate-600 dark:text-slate-400">{entry.serie}</td>
                         <td className="py-2 px-3">
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[11px] font-medium text-slate-700 dark:text-slate-300">
-                            📍 {entry.setorRetirada}
-                          </span>
+                          {(() => {
+                            const pColor = getSectorColor(entry.setorRetirada, sectorColors);
+                            return (
+                              <span 
+                                style={getSectorBadgeStyles(pColor)}
+                                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold border shadow-xs"
+                              >
+                                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: pColor.hex }} />
+                                <span>📍 {entry.setorRetirada}</span>
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td className="py-2 px-3 text-slate-500 text-[11px]">{entry.setorOriginal}</td>
                       </tr>
