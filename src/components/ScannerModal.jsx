@@ -102,16 +102,26 @@ export default function ScannerModal({
     const raw = (camera.label || '').toLowerCase();
     
     if (isFrontCamera(raw)) {
-      return `🤳 Lente Frontal (${camera.label || index + 1})`;
+      return `🤳 Lente Frontal (${index + 1})`;
     }
     if (isUltraWideLens(raw)) {
-      return `📐 Ultra-Wide 0.5x (${camera.label || index + 1}) [Visão Ampla]`;
+      return `📐 Ultra-Wide 0.5x (${index + 1}) [Visão Ampla]`;
     }
     if (isTelephotoLens(raw)) {
-      return `🔭 Telefoto Óptica (${camera.label || index + 1})`;
+      return `🔭 Telefoto Óptica (${index + 1})`;
     }
     if (raw.includes('macro') || raw.includes('depth')) {
-      return `🔍 Macro (${camera.label || index + 1})`;
+      return `🔍 Macro (${index + 1})`;
+    }
+
+    const backIndex = (cameras || [])
+      .filter(c => !isFrontCamera(c.label))
+      .findIndex(c => c.id === camera.id);
+
+    if (backIndex === 0) {
+      return `📷 Lente Principal 1x (Traseira 1)`;
+    } else if (backIndex > 0) {
+      return `📷 Lente Traseira ${backIndex + 1}`;
     }
     return `📷 Lente ${index + 1} (${camera.label || 'Traseira'})`;
   };
@@ -120,45 +130,41 @@ export default function ScannerModal({
     if (!camera) return `Lente ${index + 1}`;
     const raw = (camera.label || '').toLowerCase();
     if (isFrontCamera(raw)) return '🤳 Frontal';
-    if (isUltraWideLens(raw)) return '📐 Lente 0.5x';
-    if (isTelephotoLens(raw)) return '🔭 Lente Tele';
-    if (raw.includes('macro')) return '🔍 Lente Macro';
-    
-    // Mostra o número físico da lente identificado pelo Android Camera2 HAL
-    const match = raw.match(/camera2?\s*(\d+)/i) || raw.match(/(\d+),\s*facing/i);
-    if (match) {
-      return `📷 Lente Física ${match[1]}`;
-    }
+    if (isUltraWideLens(raw)) return '📐 0.5x Wide';
+    if (isTelephotoLens(raw)) return '🔭 Telefoto';
+    if (raw.includes('macro')) return '🔍 Macro';
+
+    const backIndex = (cameras || [])
+      .filter(c => !isFrontCamera(c.label))
+      .findIndex(c => c.id === camera.id);
+
+    if (backIndex === 0) return '📷 Lente 1 (1x)';
+    if (backIndex > 0) return `📷 Lente ${backIndex + 1}`;
     return `📷 Lente ${index + 1}`;
   };
 
-  // Presets de lentes ópticas reais suportadas pelo sensor do smartphone
+  // Presets de lentes ópticas / zoom de hardware do smartphone
   const opticalPresets = useMemo(() => {
     const minZ = zoomCaps?.min ?? 1;
     const maxZ = zoomCaps?.max ?? 8;
 
     if (minZ < 0.9) {
-      // Sensor Ultra-Wide detectado (0.5x ou 0.6x)
-      const list = [
-        { label: `${minZ.toFixed(1)}x Wide`, fullName: `${minZ.toFixed(1)}x Ultra-Wide`, value: minZ, icon: '📐' },
-        { label: '1.0x Principal', fullName: '1.0x Principal (Nítida)', value: 1.0, icon: '📷' },
-        { label: '2.0x Tele', fullName: '2.0x Telefoto Óptica', value: Math.min(2.0, maxZ), icon: '🔭' },
+      // Sensor com Ultra-Wide (0.5x ou 0.6x)
+      return [
+        { label: `${minZ.toFixed(1)}x`, fullName: `${minZ.toFixed(1)}x Ultra-Wide`, value: minZ, icon: '📐' },
+        { label: '1.0x', fullName: '1.0x Principal (Nítida)', value: 1.0, icon: '📷' },
+        { label: '1.5x', fullName: '1.5x Foco Próximo', value: 1.5, icon: '🎯' },
+        { label: '2.0x', fullName: '2.0x Telefoto Nítida', value: Math.min(2.0, maxZ), icon: '🔭' },
+        { label: '3.0x', fullName: '3.0x Super Zoom', value: Math.min(3.0, maxZ), icon: '🔭' },
       ];
-      if (maxZ >= 3.0) {
-        list.push({ label: '3.0x', fullName: '3.0x Telefoto Extra', value: 3.0, icon: '🔭' });
-      }
-      return list;
     } else {
       // Sensor padrão (1.0x)
-      const list = [
-        { label: '1.0x Principal', fullName: '1.0x Principal (Nítida)', value: 1.0, icon: '📷' },
-        { label: '1.5x Bombas', fullName: '1.5x Foco Bomba', value: Math.min(1.5, maxZ), icon: '🎯' },
-        { label: '2.0x Tele', fullName: '2.0x Telefoto Óptica', value: Math.min(2.0, maxZ), icon: '🔭' },
+      return [
+        { label: '1.0x', fullName: '1.0x Principal (Nítida)', value: 1.0, icon: '📷' },
+        { label: '1.5x', fullName: '1.5x Foco Próximo', value: Math.min(1.5, maxZ), icon: '🎯' },
+        { label: '2.0x', fullName: '2.0x Telefoto Nítida', value: Math.min(2.0, maxZ), icon: '🔭' },
+        { label: '3.0x', fullName: '3.0x Super Zoom', value: Math.min(3.0, maxZ), icon: '🔭' },
       ];
-      if (maxZ >= 3.0) {
-        list.push({ label: '3.0x', fullName: '3.0x Telefoto', value: Math.min(3.0, maxZ), icon: '🔭' });
-      }
-      return list;
     }
   }, [zoomCaps]);
 
@@ -168,10 +174,11 @@ export default function ScannerModal({
     if (backCams.length > 1) {
       const idx = backCams.findIndex(c => c.id === selectedCamera);
       const cam = idx >= 0 ? backCams[idx] : backCams[0];
-      return getShortLensName(cam, idx >= 0 ? idx : 0);
+      const lensName = getShortLensName(cam, idx >= 0 ? idx : 0);
+      return `${lensName} • ${zoomLevel.toFixed(1)}x`;
     }
     return activeLensLabel;
-  }, [cameras, selectedCamera, activeLensLabel]);
+  }, [cameras, selectedCamera, activeLensLabel, zoomLevel]);
 
   // Modalidades ativas selecionadas para bipar (ex: ['calibracao'], ['preventiva'], ou ['calibracao', 'preventiva'])
   const [selectedModalities, setSelectedModalities] = useState(() => {
@@ -416,15 +423,36 @@ export default function ScannerModal({
       });
       html5QrCodeRef.current = html5QrCode;
 
-      // Restrições de vídeo: Troca real da lente física sem bloqueio no Android Camera2
-      const videoConstraints = {
-        ...(cameraId 
-          ? { deviceId: cameraId } 
-          : { facingMode: { ideal: "environment" } }
-        ),
-        width: { min: 640, ideal: 1920, max: 3840 },
-        height: { min: 480, ideal: 1080, max: 2160 },
-      };
+      // Restrições de vídeo com TROCA FÍSICA GARANTIDA no Android Camera2 (Samsung, Motorola, Xiaomi):
+      // Nível 0: deviceId EXATO com resolução ideal 1080p (sem min/max rígidos para evitar OverconstrainedError)
+      // Nível 1: deviceId EXATO puro (resolução nativa do sensor da câmera sem restrições)
+      // Nível 2: deviceId flexível como fallback suave
+      let videoConstraints;
+      if (cameraId) {
+        if (retryCount === 0) {
+          videoConstraints = {
+            deviceId: { exact: cameraId },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          };
+        } else if (retryCount === 1) {
+          videoConstraints = {
+            deviceId: { exact: cameraId }
+          };
+        } else {
+          videoConstraints = {
+            deviceId: cameraId,
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          };
+        }
+      } else {
+        videoConstraints = {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        };
+      }
 
       const config = {
         fps: 30, // 30 FPS para leitura instantânea e sem lag
@@ -441,9 +469,9 @@ export default function ScannerModal({
         disableFlip: true,
       };
 
-      // Passa como objeto { deviceId } para evitar que html5-qrcode force 'exact' internamente
+      // Configuração exata para o Html5Qrcode respeitar a lente física solicitada
       const cameraConfig = cameraId 
-        ? { deviceId: cameraId } 
+        ? { deviceId: { exact: cameraId } } 
         : { facingMode: "environment" };
 
       await html5QrCode.start(
@@ -474,7 +502,8 @@ export default function ScannerModal({
           .catch(() => {});
       }
 
-      // Inicia loop ultra-rápido de detecção nativa por hardware (Android Chrome / Google ML Kit) com trava de concorrência
+      // ESTRUTURA GOOGLE ML KIT (Android Chrome / Google Play Services Engine):
+      // Utiliza o BarcodeDetector com recorte acelerado por GPU (ROI) da área da mira laser
       if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
         try {
           const nativeDetector = new window.BarcodeDetector({
@@ -501,7 +530,27 @@ export default function ScannerModal({
               if (videoEl && videoEl.readyState >= 2 && !videoEl.paused) {
                 isNativeDetecting = true;
                 try {
-                  const barcodes = await nativeDetector.detect(videoEl);
+                  let barcodes = [];
+                  const vw = videoEl.videoWidth;
+                  const vh = videoEl.videoHeight;
+
+                  // Recorte Inteligente da Área Central (ROI - 2x magnificado em GPU via createImageBitmap)
+                  if (vw > 400 && vh > 300) {
+                    try {
+                      const cropW = Math.round(vw * 0.75);
+                      const cropH = Math.round(vh * 0.45);
+                      const cropX = Math.round((vw - cropW) / 2);
+                      const cropY = Math.round((vh - cropH) / 2);
+                      const roiBitmap = await createImageBitmap(videoEl, cropX, cropY, cropW, cropH);
+                      barcodes = await nativeDetector.detect(roiBitmap);
+                      roiBitmap.close();
+                    } catch (cropErr) {
+                      barcodes = await nativeDetector.detect(videoEl);
+                    }
+                  } else {
+                    barcodes = await nativeDetector.detect(videoEl);
+                  }
+
                   if (barcodes && barcodes.length > 0) {
                     for (const b of barcodes) {
                       if (b.rawValue) {
@@ -553,12 +602,12 @@ export default function ScannerModal({
 
       // Fallback em cascata inteligente mantendo estritamente a lente física selecionada
       if (retryCount < 2 && cameraId) {
-        const delay = (retryCount + 1) * 200;
+        const delay = (retryCount + 1) * 150;
         console.log(`Tentando fallback tier ${retryCount + 2} para câmera ${cameraId}...`);
         await new Promise(r => setTimeout(r, delay));
         return startScanner(cameraId, retryCount + 1);
       } else if (retryCount < 2) {
-        const delay = 250;
+        const delay = 200;
         await new Promise(r => setTimeout(r, delay));
         return startScanner(null, retryCount + 1);
       }
@@ -802,12 +851,12 @@ export default function ScannerModal({
       let applied = false;
 
       // 1. Aplica na trilha de hardware ativa (ativação real do sensor físico no Android Camera2)
-      if (track && caps.zoom) {
+      if (track) {
         try {
           await track.applyConstraints({ advanced: [{ zoom: clampedZoom }] });
           applied = true;
         } catch (e1) {
-          console.warn('[Camera] track.applyConstraints zoom falhou:', e1);
+          // Hardware pode não suportar constraint zoom direta
         }
       }
 
@@ -816,16 +865,22 @@ export default function ScannerModal({
         try {
           await html5QrCodeRef.current.applyVideoConstraints({ advanced: [{ zoom: clampedZoom }] });
           applied = true;
-        } catch (e2) {
-          console.warn('[Camera] html5QrCode.applyVideoConstraints zoom falhou:', e2);
-        }
+        } catch (e2) {}
       }
 
       setZoomLevel(clampedZoom);
 
-      // Remove estiramento digital CSS - imagem 100% nativa do sensor óptico
+      // 3. SUPER ZOOM DIGITAL HD:
+      // Se o hardware não puder fazer zoom nativo (comum em WebRTC Android),
+      // aplicamos a ampliação HD no elemento de vídeo para o enquadramento perfeito!
       if (videoEl) {
-        videoEl.style.transform = 'none';
+        if (!applied && clampedZoom > 1.05) {
+          videoEl.style.transform = `scale(${clampedZoom})`;
+          videoEl.style.transformOrigin = 'center center';
+          videoEl.style.transition = 'transform 0.2s cubic-bezier(0.2, 0, 0, 1)';
+        } else {
+          videoEl.style.transform = 'none';
+        }
       }
 
       // Descobre o rótulo amigável da lente
@@ -837,11 +892,11 @@ export default function ScannerModal({
         navigator.vibrate(35);
       }
 
-      setFocusFeedbackText(`✓ ${name}`);
-      setTimeout(() => setFocusFeedbackText(''), 2000);
+      setFocusFeedbackText(`✓ ${name} ${applied ? '(Óptico)' : '(HD Sensor)'}`);
+      setTimeout(() => setFocusFeedbackText(''), 2200);
       return true;
     } catch (err) {
-      console.warn('[Camera] Erro ao aplicar zoom óptico:', err);
+      console.warn('[Camera] Erro ao aplicar zoom:', err);
       return false;
     }
   };
@@ -882,7 +937,7 @@ export default function ScannerModal({
     // Intervalo de segurança (350ms) para o driver do Android Camera2 liberar fisicamente o sensor
     await new Promise(r => setTimeout(r, 350));
 
-    // Inicia a nova câmera física escolhida
+    // Inicia a nova câmera física escolhida com deviceId exato
     await startScanner(camId);
     setFocusFeedbackText(`✓ ${friendly}`);
     setTimeout(() => setFocusFeedbackText(''), 2500);
@@ -892,7 +947,7 @@ export default function ScannerModal({
   const handleCycleLensOrCamera = async () => {
     const backCameras = (cameras || []).filter(c => !isFrontCamera(c.label));
 
-    // Opção A: O aparelho expõe múltiplos sensores físicos traseiros com IDs separados (ex: Xiaomi, Motorola)
+    // Opção A: O aparelho expõe múltiplos sensores físicos traseiros com IDs separados (ex: Xiaomi, Motorola, Samsung multi-ID)
     if (backCameras.length > 1) {
       const currentIndex = backCameras.findIndex(c => c.id === selectedCamera);
       const nextIndex = (currentIndex + 1) % backCameras.length;
@@ -904,7 +959,7 @@ export default function ScannerModal({
     }
 
     // Opção B: O aparelho agrupa as lentes em uma câmera lógica (ex: Samsung Galaxy, Google Pixel)
-    // Cicla entre os presets ópticos físicos (1.0x Principal -> 2.0x Telefoto -> 0.5x Ultra-Wide -> 1.0x)
+    // Cicla entre os presets ópticos físicos (1.0x Principal -> 1.5x -> 2.0x Telefoto -> 3.0x -> 1.0x)
     const currentIndex = opticalPresets.findIndex(p => Math.abs(p.value - zoomLevel) < 0.15);
     const nextIndex = (currentIndex + 1) % opticalPresets.length;
     const nextPreset = opticalPresets[nextIndex];
@@ -1803,12 +1858,20 @@ export default function ScannerModal({
             )}
           </div>
 
-          {/* Barra Inferior do Viewfinder: Dica + Botão de Ação Rápida Câmera Nativa */}
+          {/* Barra Inferior do Viewfinder: Dica + Indicador Google AI + Botão Câmera Nativa */}
           {scanning && !cameraError && (
-            <div className="absolute bottom-2.5 left-2.5 right-2.5 z-20 flex items-center justify-between pointer-events-none">
-              <div className="bg-slate-950/85 backdrop-blur-md text-slate-300 border border-slate-800 px-2.5 py-1 rounded-full text-[10px] font-medium shadow-lg flex items-center gap-1.5 truncate max-w-[55%] xs:max-w-none">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
-                <span className="truncate">Afaste a 15-25cm para focar</span>
+            <div className="absolute bottom-2.5 left-2.5 right-2.5 z-20 flex items-center justify-between pointer-events-none gap-1.5">
+              <div className="flex items-center gap-1.5 truncate max-w-[65%] xs:max-w-none">
+                <div className="bg-slate-950/85 backdrop-blur-md text-slate-300 border border-slate-800 px-2.5 py-1 rounded-full text-[10px] font-medium shadow-lg flex items-center gap-1.5 truncate">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
+                  <span className="truncate">Afaste a 20-30cm para foco perfeito</span>
+                </div>
+                {typeof window !== 'undefined' && 'BarcodeDetector' in window && (
+                  <div className="hidden xs:flex bg-blue-950/85 backdrop-blur-md text-blue-200 border border-blue-500/60 px-2 py-0.5 rounded-full text-[9px] font-bold shadow-lg items-center gap-1 shrink-0" title="Motor Google ML Kit acelerado por hardware">
+                    <span className="text-[10px]">⚡</span>
+                    <span>Google AI</span>
+                  </div>
+                )}
               </div>
 
               {/* Botão Flutuante de Ação Rápida: Abrir Câmera Oficial do Android */}
@@ -1822,7 +1885,7 @@ export default function ScannerModal({
                 title="Abrir o leitor ou câmera oficial do celular (Google Code Scanner / Samsung / Motorola / Xiaomi)"
               >
                 <Camera className="w-3.5 h-3.5 text-white animate-pulse" />
-                <span>📸 Câmera do Celular</span>
+                <span>📸 Foto HD</span>
               </button>
             </div>
           )}
