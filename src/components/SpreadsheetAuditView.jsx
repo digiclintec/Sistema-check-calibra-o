@@ -76,6 +76,7 @@ export default function SpreadsheetAuditView({
     let calOk = 0;
     let prevOk = 0;
     let segOk = 0;
+    let externaOk = 0;
     let complete100 = 0;
     let withSectorDiff = 0;
 
@@ -83,6 +84,7 @@ export default function SpreadsheetAuditView({
       if (e.check_calibracao) calOk++;
       if (e.check_preventiva) prevOk++;
       if (e.check_seguranca) segOk++;
+      if (e.check_externa) externaOk++;
 
       const isComplete = (
         (!serviceConfig || !serviceConfig.enableCalibracao || e.check_calibracao) &&
@@ -107,6 +109,8 @@ export default function SpreadsheetAuditView({
       prevPct: total > 0 ? Math.round((prevOk / total) * 100) : 0,
       segOk,
       segPct: total > 0 ? Math.round((segOk / total) * 100) : 0,
+      externaOk,
+      externaPct: total > 0 ? Math.round((externaOk / total) * 100) : 0,
       complete100,
       complete100Pct: total > 0 ? Math.round((complete100 / total) * 100) : 0,
       pendingTotal: total - complete100,
@@ -276,6 +280,7 @@ export default function SpreadsheetAuditView({
       if (statusFilter === 'PENDING_CAL') return !item.check_calibracao;
       if (statusFilter === 'PENDING_PREV') return !item.check_preventiva;
       if (statusFilter === 'PENDING_SEG') return !item.check_seguranca;
+      if (statusFilter === 'EXTERNA') return Boolean(item.check_externa);
       if (statusFilter === 'SECTOR_DIFF') {
         return item.setor_retirada && item.setor && 
           item.setor_retirada.trim().toLowerCase() !== item.setor.trim().toLowerCase();
@@ -665,7 +670,16 @@ export default function SpreadsheetAuditView({
                         <td className="py-2.5 px-3 text-center text-slate-400 font-mono text-[11px]">{idx + 1}</td>
                         <td className="py-2.5 px-3 font-bold text-slate-900 dark:text-white font-mono text-[11px]">{item.tag || '—'}</td>
                         <td className="py-2.5 px-3 font-mono text-slate-700 dark:text-slate-300 text-[11px]">{item.serie || '—'}</td>
-                        <td className="py-2.5 px-3 text-slate-800 dark:text-slate-200 font-medium">{item.nome || item.equipamento || '—'}</td>
+                        <td className="py-2.5 px-3 text-slate-800 dark:text-slate-200 font-medium">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span>{item.nome || item.equipamento || '—'}</span>
+                            {item.check_externa && (
+                              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-950/70 dark:text-purple-300 border border-purple-300">
+                                📦 Manut. Externa
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="py-2.5 px-3 text-slate-600 dark:text-slate-400">
                           <span 
                             style={getSectorBadgeStyles(originalColor)}
@@ -693,7 +707,18 @@ export default function SpreadsheetAuditView({
 
                         {/* Calibração */}
                         <td className="py-2 px-3 text-center bg-blue-500/[0.03] dark:bg-blue-950/10">
-                          {item.check_calibracao ? (
+                          {item.check_externa ? (
+                            <div className="inline-flex flex-col items-center">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-500/15 text-purple-700 dark:text-purple-300 font-bold text-[10px] border border-purple-500/30">
+                                <span>📦 Terceirizada</span>
+                              </span>
+                              {item.usuario_externa && (
+                                <span className="text-[9px] text-slate-400 truncate max-w-[110px] mt-0.5">
+                                  {item.usuario_externa}
+                                </span>
+                              )}
+                            </div>
+                          ) : item.check_calibracao ? (
                             <div className="inline-flex flex-col items-center">
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold text-[11px] border border-emerald-500/30">
                                 <CheckCircle2 className="w-3 h-3 text-emerald-500" />

@@ -685,6 +685,7 @@ export default function App() {
     const total = equipments.length;
     const checked = equipments.filter(e => isEquipmentChecked(e, activeModality, serviceConfig)).length;
     const pending = total - checked;
+    const externa = equipments.filter(e => Boolean(e.check_externa)).length;
     
     let expired = 0;
     let expiringSoon = 0;
@@ -699,7 +700,7 @@ export default function App() {
     });
 
     const percent = total > 0 ? Math.round((checked / total) * 100) : 0;
-    return { total, checked, pending, expired, expiringSoon, percent };
+    return { total, checked, pending, expired, expiringSoon, percent, externa };
   }, [equipments, activeModality, serviceConfig]);
 
   // Confetti when 100% checked
@@ -742,10 +743,27 @@ export default function App() {
       if (item.id === id || item.codigoBarras === id) {
         const copy = { ...item };
         targetMods.forEach(m => {
-          if (m === 'calibracao') {
+          if (m === 'externa' || m === 'manutencao_externa') {
+            copy.check_externa = nextState;
+            copy.data_externa = nextState ? nowIso : null;
+            copy.usuario_externa = nextState ? inspector : null;
+            copy.motivo_externa = nextState ? 'Calibração e conserto por equipe externa terceirizada' : null;
+            if (nextState) {
+              // Conforme solicitado: Não colocar como calibração
+              copy.check_calibracao = false;
+              copy.data_calibracao = null;
+              copy.usuario_calibracao = null;
+            }
+          } else if (m === 'calibracao') {
             copy.check_calibracao = nextState;
             copy.data_calibracao = nextState ? nowIso : null;
             copy.usuario_calibracao = nextState ? inspector : null;
+            if (nextState) {
+              copy.check_externa = false;
+              copy.data_externa = null;
+              copy.usuario_externa = null;
+              copy.motivo_externa = null;
+            }
           } else if (m === 'preventiva') {
             copy.check_preventiva = nextState;
             copy.data_preventiva = nextState ? nowIso : null;
@@ -757,9 +775,9 @@ export default function App() {
           }
         });
 
-        copy.checado = Boolean(copy.check_calibracao || copy.check_preventiva || copy.check_seguranca);
-        copy.dataCheck = copy.data_calibracao || copy.data_preventiva || copy.data_seguranca || null;
-        copy.conferidoPor = copy.usuario_calibracao || copy.usuario_preventiva || copy.usuario_seguranca || null;
+        copy.checado = Boolean(copy.check_calibracao || copy.check_preventiva || copy.check_seguranca || copy.check_externa);
+        copy.dataCheck = copy.data_calibracao || copy.data_preventiva || copy.data_seguranca || copy.data_externa || null;
+        copy.conferidoPor = copy.usuario_calibracao || copy.usuario_preventiva || copy.usuario_seguranca || copy.usuario_externa || null;
         return copy;
       }
       return item;
@@ -915,10 +933,24 @@ export default function App() {
         checkedCount++;
         const copy = { ...item };
         
+        if (targetMods.includes('externa') || targetMods.includes('manutencao_externa')) {
+          copy.check_externa = true;
+          copy.data_externa = nowIso;
+          copy.usuario_externa = inspector;
+          copy.motivo_externa = 'Calibração e conserto por equipe externa terceirizada';
+          // Conforme solicitado: Não colocar como calibração
+          copy.check_calibracao = false;
+          copy.data_calibracao = null;
+          copy.usuario_calibracao = null;
+        }
         if (targetMods.includes('calibracao')) {
           copy.check_calibracao = true;
           copy.data_calibracao = nowIso;
           copy.usuario_calibracao = inspector;
+          copy.check_externa = false;
+          copy.data_externa = null;
+          copy.usuario_externa = null;
+          copy.motivo_externa = null;
         }
         if (targetMods.includes('preventiva')) {
           copy.check_preventiva = true;
@@ -942,8 +974,8 @@ export default function App() {
           copy.usuario_retirada = inspector;
         }
 
-        copy.checado = true;
-        copy.dataCheck = nowIso;
+        copy.checado = Boolean(copy.check_calibracao || copy.check_preventiva || copy.check_seguranca || copy.check_externa);
+        copy.dataCheck = copy.data_calibracao || copy.data_preventiva || copy.data_seguranca || copy.data_externa || nowIso;
         copy.conferidoPor = inspector;
         return copy;
       }
@@ -1123,10 +1155,23 @@ export default function App() {
     const copy = { ...updated[targetIndex] };
 
     targetMods.forEach(m => {
-      if (m === 'calibracao') {
+      if (m === 'externa' || m === 'manutencao_externa') {
+        copy.check_externa = true;
+        copy.data_externa = copy.data_externa || nowIso;
+        copy.usuario_externa = copy.usuario_externa || inspector;
+        copy.motivo_externa = 'Calibração e conserto por equipe externa terceirizada';
+        // Conforme solicitado: Não colocar como calibração interna
+        copy.check_calibracao = false;
+        copy.data_calibracao = null;
+        copy.usuario_calibracao = null;
+      } else if (m === 'calibracao') {
         copy.check_calibracao = true;
         copy.data_calibracao = copy.data_calibracao || nowIso;
         copy.usuario_calibracao = copy.usuario_calibracao || inspector;
+        copy.check_externa = false;
+        copy.data_externa = null;
+        copy.usuario_externa = null;
+        copy.motivo_externa = null;
       } else if (m === 'preventiva') {
         copy.check_preventiva = true;
         copy.data_preventiva = copy.data_preventiva || nowIso;
@@ -1138,8 +1183,8 @@ export default function App() {
       }
     });
 
-    copy.checado = true;
-    copy.dataCheck = nowIso;
+    copy.checado = Boolean(copy.check_calibracao || copy.check_preventiva || copy.check_seguranca || copy.check_externa);
+    copy.dataCheck = copy.data_calibracao || copy.data_preventiva || copy.data_seguranca || copy.data_externa || nowIso;
     copy.conferidoPor = inspector;
     updated[targetIndex] = copy;
 

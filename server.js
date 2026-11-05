@@ -474,6 +474,7 @@ app.get('/api/hospitals', (req, res) => {
     const calOk = listEq.filter(e => e.check_calibracao).length;
     const prevOk = listEq.filter(e => e.check_preventiva).length;
     const segOk = listEq.filter(e => e.check_seguranca).length;
+    const externaOk = listEq.filter(e => e.check_externa).length;
     const complete100 = listEq.filter(e => e.check_calibracao && e.check_preventiva && e.check_seguranca).length;
     const checkedCount = listEq.filter(e => e.checado).length;
 
@@ -499,6 +500,8 @@ app.get('/api/hospitals', (req, res) => {
       prevPercent: total > 0 ? Math.round((prevOk / total) * 100) : 0,
       segOk,
       segPercent: total > 0 ? Math.round((segOk / total) * 100) : 0,
+      externaOk,
+      externaPercent: total > 0 ? Math.round((externaOk / total) * 100) : 0,
       complete100,
       completePercent: total > 0 ? Math.round((complete100 / total) * 100) : 0,
       activeSheetName: h.activeSheetName || '',
@@ -1359,7 +1362,19 @@ app.post('/api/toggle-check', (req, res) => {
   const nowIso = new Date().toISOString();
 
   let nextChecked = false;
-  if (modality === 'preventiva') {
+  if (modality === 'externa' || modality === 'manutencao_externa') {
+    nextChecked = !Boolean(item.check_externa);
+    item.check_externa = nextChecked;
+    item.data_externa = nextChecked ? nowIso : null;
+    item.usuario_externa = nextChecked ? inspectorLabel : null;
+    item.motivo_externa = nextChecked ? 'Calibração e conserto por equipe externa terceirizada' : null;
+    if (nextChecked) {
+      // Conforme solicitado: Manutenção externa não é calibração interna
+      item.check_calibracao = false;
+      item.data_calibracao = null;
+      item.usuario_calibracao = null;
+    }
+  } else if (modality === 'preventiva') {
     nextChecked = !Boolean(item.check_preventiva);
     item.check_preventiva = nextChecked;
     item.data_preventiva = nextChecked ? nowIso : null;
@@ -1375,6 +1390,13 @@ app.post('/api/toggle-check', (req, res) => {
     item.check_calibracao = nextChecked;
     item.data_calibracao = nextChecked ? nowIso : null;
     item.usuario_calibracao = nextChecked ? inspectorLabel : null;
+    if (nextChecked) {
+      // Se marcou calibração interna, desmarca externa
+      item.check_externa = false;
+      item.data_externa = null;
+      item.usuario_externa = null;
+      item.motivo_externa = null;
+    }
   }
 
   // Se foi informado setor de retirada (coleta) da bomba
@@ -1385,9 +1407,9 @@ app.post('/api/toggle-check', (req, res) => {
   }
 
   // Compatibilidade legada
-  item.checado = Boolean(item.check_calibracao || item.check_preventiva || item.check_seguranca);
-  item.dataCheck = item.data_calibracao || item.data_preventiva || item.data_seguranca || null;
-  item.conferidoPor = item.usuario_calibracao || item.usuario_preventiva || item.usuario_seguranca || null;
+  item.checado = Boolean(item.check_calibracao || item.check_preventiva || item.check_seguranca || item.check_externa);
+  item.dataCheck = item.data_calibracao || item.data_preventiva || item.data_seguranca || item.data_externa || null;
+  item.conferidoPor = item.usuario_calibracao || item.usuario_preventiva || item.usuario_seguranca || item.usuario_externa || null;
 
   list[idx] = { ...item };
 
@@ -1479,6 +1501,16 @@ app.post('/api/batch-check', (req, res) => {
     const itemSerie = String(item.serie || '').toLowerCase();
 
     if (idSet.has(itemId) || idSet.has(itemBarcode) || idSet.has(itemTag) || idSet.has(itemSerie)) {
+      if (targetModalities.includes('externa') || targetModalities.includes('manutencao_externa')) {
+        item.check_externa = true;
+        item.data_externa = nowIso;
+        item.usuario_externa = inspectorLabel;
+        item.motivo_externa = 'Calibração e conserto por equipe externa terceirizada';
+        // Conforme solicitado: Manutenção Externa não é calibração interna
+        item.check_calibracao = false;
+        item.data_calibracao = null;
+        item.usuario_calibracao = null;
+      }
       if (targetModalities.includes('preventiva')) {
         item.check_preventiva = true;
         item.data_preventiva = nowIso;
@@ -1493,6 +1525,11 @@ app.post('/api/batch-check', (req, res) => {
         item.check_calibracao = true;
         item.data_calibracao = nowIso;
         item.usuario_calibracao = inspectorLabel;
+        // Se marcou calibração interna, remove externa
+        item.check_externa = false;
+        item.data_externa = null;
+        item.usuario_externa = null;
+        item.motivo_externa = null;
       }
 
       // Atribui o setor de retirada (coleta) específico deste item ou o padrão do lote
@@ -1508,8 +1545,8 @@ app.post('/api/batch-check', (req, res) => {
         item.usuario_retirada = inspectorLabel;
       }
 
-      item.checado = Boolean(item.check_calibracao || item.check_preventiva || item.check_seguranca);
-      item.dataCheck = item.data_calibracao || item.data_preventiva || item.data_seguranca || nowIso;
+      item.checado = Boolean(item.check_calibracao || item.check_preventiva || item.check_seguranca || item.check_externa);
+      item.dataCheck = item.data_calibracao || item.data_preventiva || item.data_seguranca || item.data_externa || nowIso;
       item.conferidoPor = inspectorLabel;
       checkedCount++;
     }
@@ -1724,6 +1761,18 @@ app.post('/api/mass-check', (req, res) => {
             item.usuario_seguranca = targetTechnician;
             modified = true;
           }
+        } else if (m === 'externa' || m === 'manutencao_externa') {
+          if (!onlyPending || !item.check_externa) {
+            item.check_externa = true;
+            item.data_externa = targetDate;
+            item.usuario_externa = targetTechnician;
+            item.motivo_externa = 'Calibração e conserto por equipe externa terceirizada';
+            // Conforme solicitado: Não colocar como calibração
+            item.check_calibracao = false;
+            item.data_calibracao = null;
+            item.usuario_calibracao = null;
+            modified = true;
+          }
         }
       });
     } else {
@@ -1744,6 +1793,12 @@ app.post('/api/mass-check', (req, res) => {
           item.data_seguranca = null;
           item.usuario_seguranca = null;
           modified = true;
+        } else if (m === 'externa' || m === 'manutencao_externa') {
+          item.check_externa = false;
+          item.data_externa = null;
+          item.usuario_externa = null;
+          item.motivo_externa = null;
+          modified = true;
         }
       });
     }
@@ -1753,9 +1808,9 @@ app.post('/api/mass-check', (req, res) => {
     }
 
     // Compatibilidade legada
-    item.checado = Boolean(item.check_calibracao || item.check_preventiva || item.check_seguranca);
-    item.dataCheck = item.data_calibracao || item.data_preventiva || item.data_seguranca || null;
-    item.conferidoPor = item.usuario_calibracao || item.usuario_preventiva || item.usuario_seguranca || null;
+    item.checado = Boolean(item.check_calibracao || item.check_preventiva || item.check_seguranca || item.check_externa);
+    item.dataCheck = item.data_calibracao || item.data_preventiva || item.data_seguranca || item.data_externa || null;
+    item.conferidoPor = item.usuario_calibracao || item.usuario_preventiva || item.usuario_seguranca || item.usuario_externa || null;
   }
 
   db.hospitals[hospIdx].equipments = list;

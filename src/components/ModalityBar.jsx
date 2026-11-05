@@ -1,6 +1,6 @@
 import React from 'react';
 import { MODALITIES } from '../utils/modalities';
-import { Target, Wrench, Zap, LayoutGrid, CheckCircle2, Info, Settings } from 'lucide-react';
+import { Target, Wrench, Zap, LayoutGrid, CheckCircle2, Info, Settings, Package } from 'lucide-react';
 
 export default function ModalityBar({
   activeModality = 'calibracao',
@@ -14,6 +14,7 @@ export default function ModalityBar({
   const calOk = equipments.filter(e => e.check_calibracao !== undefined ? e.check_calibracao : e.checado).length;
   const prevOk = equipments.filter(e => e.check_preventiva).length;
   const segOk = equipments.filter(e => e.check_seguranca).length;
+  const externaOk = equipments.filter(e => Boolean(e.check_externa)).length;
   const allThreeOk = equipments.filter(e => 
     (e.check_calibracao !== undefined ? e.check_calibracao : e.checado) && 
     e.check_preventiva && 
@@ -48,6 +49,16 @@ export default function ModalityBar({
       color: 'amber',
       activeBg: 'bg-amber-600 text-white shadow-amber-500/25',
       badgeClass: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+    },
+    {
+      id: 'externa',
+      label: 'Manutenção Externa',
+      shortLabel: 'Manut. Externa',
+      icon: Package,
+      count: externaOk,
+      color: 'purple',
+      activeBg: 'bg-purple-600 text-white shadow-purple-500/25',
+      badgeClass: 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300'
     },
     {
       id: 'geral',
@@ -111,6 +122,7 @@ export default function ModalityBar({
                 : (activeModality === 'preventiva' && 'Validações afetam apenas a Manutenção Preventiva.') ||
                   (activeModality === 'calibracao' && 'Validações afetam apenas a Calibração Metrológica.') ||
                   (activeModality === 'seguranca' && 'Validações afetam apenas o Teste de Segurança Elétrica (TSE).') ||
+                  (activeModality === 'externa' && 'Equipamentos enviados para calibração e conserto por equipe terceirizada.') ||
                   (activeModality === 'geral' && 'Visão completa das equipes ativas em tempo real.')
               }
             </span>
@@ -133,7 +145,8 @@ export default function ModalityBar({
       <div className={`grid gap-1.5 sm:gap-2 bg-slate-100 dark:bg-slate-800/60 p-1.5 rounded-xl sm:rounded-2xl ${
         modalitiesList.length === 1 ? 'grid-cols-1' :
         modalitiesList.length === 2 ? 'grid-cols-2' :
-        modalitiesList.length === 3 ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-2 sm:grid-cols-4'
+        modalitiesList.length === 3 ? 'grid-cols-1 sm:grid-cols-3' :
+        modalitiesList.length === 4 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5'
       }`}>
         {modalitiesList.map((m) => {
           const Icon = m.icon;

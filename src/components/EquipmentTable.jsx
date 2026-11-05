@@ -83,6 +83,8 @@ export default function EquipmentTable({
       result = result.filter(e => isEquipmentChecked(e, activeModality));
     } else if (activeFilter === 'pendentes') {
       result = result.filter(e => !isEquipmentChecked(e, activeModality));
+    } else if (activeFilter === 'externa' || activeFilter === 'manutencao_externa') {
+      result = result.filter(e => Boolean(e.check_externa));
     } else if (activeFilter === 'vencidos') {
       result = result.filter(e => 
         e.statusCalibracao?.toLowerCase().includes('vencid') || 
@@ -356,6 +358,7 @@ export default function EquipmentTable({
             const isCalOk = Boolean(item.check_calibracao !== undefined ? item.check_calibracao : item.checado);
             const isPrevOk = Boolean(item.check_preventiva);
             const isSegOk = Boolean(item.check_seguranca);
+            const isExtOk = Boolean(item.check_externa);
 
             const effectiveSector = getEffectiveSector(item);
             const sectorColor = getSectorColor(effectiveSector, sectorColors);
@@ -382,7 +385,14 @@ export default function EquipmentTable({
                       {item.equipamento}
                     </h4>
                   </div>
-                  <div>{getStatusBadge(item.statusCalibracao)}</div>
+                  <div className="flex flex-col items-end gap-1">
+                    {isExtOk && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 dark:bg-purple-950/70 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                        📦 Manut. Externa
+                      </span>
+                    )}
+                    {getStatusBadge(item.statusCalibracao)}
+                  </div>
                 </div>
 
                 {/* Specs / Details */}
@@ -426,14 +436,7 @@ export default function EquipmentTable({
                       </span>
                     )}
                   </div>
-                  <div className={`grid gap-1.5 ${
-                    ((serviceConfig?.enableCalibracao ?? true) ? 1 : 0) +
-                    ((serviceConfig?.enablePreventiva ?? true) ? 1 : 0) +
-                    ((serviceConfig?.enableSeguranca ?? true) ? 1 : 0) === 1 ? 'grid-cols-1' :
-                    ((serviceConfig?.enableCalibracao ?? true) ? 1 : 0) +
-                    ((serviceConfig?.enablePreventiva ?? true) ? 1 : 0) +
-                    ((serviceConfig?.enableSeguranca ?? true) ? 1 : 0) === 2 ? 'grid-cols-2' : 'grid-cols-3'
-                  }`}>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                     {/* Calibração Pill */}
                     {(serviceConfig?.enableCalibracao ?? true) && (
                       <button
@@ -496,6 +499,25 @@ export default function EquipmentTable({
                         </span>
                       </button>
                     )}
+
+                    {/* Manutenção Externa Pill */}
+                    <button
+                      type="button"
+                      onClick={() => onToggleCheck(item.id, 'externa')}
+                      className={`p-1.5 rounded-xl border text-[10px] font-bold flex flex-col items-center justify-center transition active:scale-95 ${
+                        isExtOk
+                          ? 'bg-purple-100 dark:bg-purple-950/80 border-purple-300 dark:border-purple-800 text-purple-700 dark:text-purple-300'
+                          : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400 hover:border-purple-400'
+                      }`}
+                      title="Equipamento enviado para calibração e conserto por terceirizados"
+                    >
+                      <span className="flex items-center gap-1">
+                        📦 Manut. Externa
+                      </span>
+                      <span className={`text-[9px] mt-0.5 font-normal ${isExtOk ? 'text-purple-600 dark:text-purple-400 font-bold' : 'text-slate-400'}`}>
+                        {isExtOk ? '✓ Enviada' : '⏳ Não enviada'}
+                      </span>
+                    </button>
                   </div>
 
                   {/* Auditoria / Quem conferiu a modalidade ativa */}
@@ -591,6 +613,7 @@ export default function EquipmentTable({
                 const isCalOk = Boolean(item.check_calibracao !== undefined ? item.check_calibracao : item.checado);
                 const isPrevOk = Boolean(item.check_preventiva);
                 const isSegOk = Boolean(item.check_seguranca);
+                const isExtOk = Boolean(item.check_externa);
 
                 const effectiveSector = getEffectiveSector(item);
                 const sectorColor = getSectorColor(effectiveSector, sectorColors);
@@ -622,9 +645,14 @@ export default function EquipmentTable({
                     </td>
 
                     <td className="py-3 px-4">
-                      <div className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
+                      <div className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2 flex-wrap">
                         <span>{item.equipamento}</span>
-                        {isCheckedCurrent && (
+                        {isExtOk && (
+                          <span className="text-[10px] bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300 px-1.5 py-0.2 rounded font-bold border border-purple-200 dark:border-purple-800 flex items-center gap-1">
+                            📦 Manut. Externa
+                          </span>
+                        )}
+                        {isCheckedCurrent && !isExtOk && (
                           <span className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 px-1.5 py-0.2 rounded font-semibold">
                             OK ({currentMod.shortName})
                           </span>
@@ -720,6 +748,20 @@ export default function EquipmentTable({
                             ⚡ {isSegOk ? '✓ Seg' : '⏳ Seg'}
                           </button>
                         )}
+
+                        {/* Manutenção Externa */}
+                        <button
+                          type="button"
+                          onClick={() => onToggleCheck(item.id, 'externa')}
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold border transition active:scale-95 ${
+                            isExtOk
+                              ? 'bg-purple-100 dark:bg-purple-950/80 border-purple-300 dark:border-purple-800 text-purple-700 dark:text-purple-300 shadow-xs ring-1 ring-purple-400/40'
+                              : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 hover:text-purple-600'
+                          }`}
+                          title={`Manutenção Externa: ${isExtOk ? 'Enviada para conserto/calibração terceirizada' : 'Não enviada'}. Clique para alternar.`}
+                        >
+                          📦 {isExtOk ? '✓ Externa' : 'Externa'}
+                        </button>
                       </div>
                     </td>
 

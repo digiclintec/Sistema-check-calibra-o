@@ -1,9 +1,9 @@
 import React from 'react';
-import { CheckCircle2, Clock, AlertTriangle, Layers, Percent, Target, Wrench, Zap, LayoutGrid } from 'lucide-react';
+import { CheckCircle2, Clock, AlertTriangle, Layers, Percent, Target, Wrench, Zap, LayoutGrid, Package } from 'lucide-react';
 import { MODALITIES } from '../utils/modalities';
 
 export default function StatsCards({ stats, activeFilter, onSelectFilter, activeModality = 'calibracao' }) {
-  const { total, checked, pending, expired, expiringSoon, percent } = stats;
+  const { total, checked, pending, expired, expiringSoon, percent, externa = 0 } = stats;
   const currentMod = MODALITIES[activeModality] || MODALITIES.calibracao;
 
   const modalityLabels = {
@@ -27,6 +27,13 @@ export default function StatsCards({ stats, activeFilter, onSelectFilter, active
       pendingTitle: 'Pendentes de Teste Seg.',
       pendingSubtext: 'Aguardando teste de segurança elétrica',
       progressGradient: 'bg-gradient-to-r from-amber-600 to-orange-500'
+    },
+    externa: {
+      checkedTitle: 'Manutenção Externa',
+      checkedSubtext: `${percent}% recolhidas p/ conserto/calibração terceirizada`,
+      pendingTitle: 'Bombas no Hospital',
+      pendingSubtext: 'Permanecem na unidade hospitalar',
+      progressGradient: 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-500'
     },
     geral: {
       checkedTitle: '100% Concluídos (3 Frentes)',
@@ -62,7 +69,7 @@ export default function StatsCards({ stats, activeFilter, onSelectFilter, active
       value: checked,
       subtext: modalityLabels.checkedSubtext,
       icon: CheckCircle2,
-      color: activeModality === 'preventiva' ? 'emerald' : (activeModality === 'seguranca' ? 'amber' : 'blue'),
+      color: activeModality === 'preventiva' ? 'emerald' : (activeModality === 'seguranca' ? 'amber' : (activeModality === 'externa' ? 'purple' : 'blue')),
       borderColor: 'border-emerald-500/20',
       bgColor: 'bg-emerald-500/10',
       textColor: 'text-emerald-600 dark:text-emerald-400',
@@ -79,6 +86,18 @@ export default function StatsCards({ stats, activeFilter, onSelectFilter, active
       bgColor: 'bg-amber-500/10',
       textColor: 'text-amber-600 dark:text-amber-400',
       activeRing: 'ring-2 ring-amber-500 shadow-amber-500/20',
+    },
+    {
+      id: 'externa',
+      label: 'Manutenção Externa',
+      value: externa,
+      subtext: 'Terceirizada (conserto/calibração)',
+      icon: Package,
+      color: 'purple',
+      borderColor: 'border-purple-500/20',
+      bgColor: 'bg-purple-500/10',
+      textColor: 'text-purple-600 dark:text-purple-400',
+      activeRing: 'ring-2 ring-purple-500 shadow-purple-500/20',
     },
     {
       id: 'vencidos',
@@ -125,8 +144,8 @@ export default function StatsCards({ stats, activeFilter, onSelectFilter, active
         </div>
       </div>
 
-      {/* Cards Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 w-full">
+      {/* Cards Grid (5 Cards incluindo Manutenção Externa) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 w-full">
         {cards.map((card) => {
           const Icon = card.icon;
           const isSelected = activeFilter === card.id;

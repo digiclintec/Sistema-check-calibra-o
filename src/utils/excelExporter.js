@@ -109,9 +109,14 @@ export function exportStyledEquipmentsExcel(equipments = [], options = {}) {
     { title: 'SEG. ELÉTRICA - Data/Hora', wch: 22, align: 'center', group: 'seg' },
     { title: 'SEG. ELÉTRICA - Responsável', wch: 26, align: 'left', group: 'seg' },
     
+    // Frente 4: Manutenção Externa (Terceirizada)
+    { title: 'MANUT. EXTERNA - Status', wch: 24, align: 'center', group: 'ext' },
+    { title: 'MANUT. EXTERNA - Data/Envio', wch: 22, align: 'center', group: 'ext' },
+    { title: 'MANUT. EXTERNA - Responsável', wch: 26, align: 'left', group: 'ext' },
+
     // Status Geral Unificado
-    { title: 'STATUS GERAL', wch: 28, align: 'center', group: 'geral' },
-    { title: 'Observações', wch: 30, align: 'left', group: 'base' }
+    { title: 'STATUS GERAL', wch: 32, align: 'center', group: 'geral' },
+    { title: 'Observações', wch: 32, align: 'left', group: 'base' }
   ];
 
   const totalCols = headerColumns.length;
@@ -131,12 +136,15 @@ export function exportStyledEquipmentsExcel(equipments = [], options = {}) {
 
   // Preenche dados linha a linha
   equipments.forEach((item, idx) => {
+    const isExtOk = Boolean(item.check_externa);
     const isCalOk = Boolean(item.check_calibracao !== undefined ? item.check_calibracao : item.checado);
     const isPrevOk = Boolean(item.check_preventiva);
     const isSegOk = Boolean(item.check_seguranca);
 
     let statusGeral = 'PENDENTE';
-    if (isCalOk && isPrevOk && isSegOk) {
+    if (isExtOk) {
+      statusGeral = '📦 MANUTENÇÃO EXTERNA (TERCEIRIZADA)';
+    } else if (isCalOk && isPrevOk && isSegOk) {
       statusGeral = '100% CONCLUÍDO (3 Frentes)';
     } else if (isCalOk || isPrevOk || isSegOk) {
       const feitas = [];
@@ -153,7 +161,12 @@ export function exportStyledEquipmentsExcel(equipments = [], options = {}) {
     const calDate = item.data_calibracao ? new Date(item.data_calibracao).toLocaleString('pt-BR') : (isCalOk && item.dataCheck ? new Date(item.dataCheck).toLocaleString('pt-BR') : '');
     const prevDate = item.data_preventiva ? new Date(item.data_preventiva).toLocaleString('pt-BR') : '';
     const segDate = item.data_seguranca ? new Date(item.data_seguranca).toLocaleString('pt-BR') : '';
+    const extDate = item.data_externa ? new Date(item.data_externa).toLocaleString('pt-BR') : '';
     const retDate = item.data_retirada ? new Date(item.data_retirada).toLocaleString('pt-BR') : '';
+
+    const obsText = isExtOk 
+      ? `Manutenção e calibração por terceirizados. ${item.motivo_externa || ''}`.trim()
+      : (item.observacao || '');
 
     aoa.push([
       idx + 1,
@@ -171,7 +184,7 @@ export function exportStyledEquipmentsExcel(equipments = [], options = {}) {
       item.usuario_retirada || '',
       item.validadeCalibracao || '',
       item.statusCalibracao || '',
-      isCalOk ? 'CONFERIDO / OK' : 'PENDENTE',
+      isCalOk ? 'CONFERIDO / OK' : (isExtOk ? 'TERCEIRIZADA' : 'PENDENTE'),
       calDate,
       item.usuario_calibracao || (isCalOk ? item.conferidoPor : '') || '',
       isPrevOk ? 'CONFERIDO / OK' : 'PENDENTE',
@@ -180,8 +193,11 @@ export function exportStyledEquipmentsExcel(equipments = [], options = {}) {
       isSegOk ? 'CONFERIDO / OK' : 'PENDENTE',
       segDate,
       item.usuario_seguranca || '',
+      isExtOk ? 'ENVIADA / TERCEIRIZADA' : 'NÃO ENVIADA',
+      extDate,
+      item.usuario_externa || '',
       statusGeral,
-      item.observacao || ''
+      obsText
     ]);
   });
 
@@ -233,6 +249,7 @@ export function exportStyledEquipmentsExcel(equipments = [], options = {}) {
     cal: { fillHex: '1E40AF', fontHex: 'FFFFFF', borderBottom: '60A5FA' },     // Azul Calibração
     prev: { fillHex: '065F46', fontHex: 'FFFFFF', borderBottom: '34D399' },    // Verde Preventiva
     seg: { fillHex: '5B21B6', fontHex: 'FFFFFF', borderBottom: 'A78BFA' },     // Roxo Seg. Elétrica
+    ext: { fillHex: '6B21A8', fontHex: 'FFFFFF', borderBottom: 'C084FC' },     // Roxo Manut. Externa
     geral: { fillHex: '0F172A', fontHex: 'FFFFFF', borderBottom: '10B981' }    // Emerald Status Geral
   };
 
@@ -323,7 +340,7 @@ export function exportStyledEquipmentsExcel(equipments = [], options = {}) {
         return;
       }
 
-      // 3. Colunas de Status das Frentes (Calibração, Preventiva, Seg. Elétrica)
+      // 3. Colunas de Status das Frentes (Calibração, Preventiva, Seg. Elétrica, Manut. Externa)
       if (col.title.endsWith('- Status')) {
         const val = String(cell.v || '');
         if (val.includes('CONFERIDO') || val.includes('OK')) {
@@ -336,6 +353,18 @@ export function exportStyledEquipmentsExcel(equipments = [], options = {}) {
               bottom: { style: 'thin', color: { rgb: '86EFAC' } },
               left: { style: 'thin', color: { rgb: '86EFAC' } },
               right: { style: 'thin', color: { rgb: '86EFAC' } }
+            }
+          };
+        } else if (val.includes('ENVIADA') || val.includes('TERCEIRIZADA')) {
+          cell.s = {
+            fill: { patternType: 'solid', fgColor: { rgb: 'F3E8FF' } }, // Roxo pastel
+            font: { name: 'Segoe UI', sz: 10, bold: true, color: { rgb: '6B21A8' } },
+            alignment: { vertical: 'center', horizontal: 'center' },
+            border: {
+              top: { style: 'thin', color: { rgb: 'D8B4FE' } },
+              bottom: { style: 'thin', color: { rgb: 'D8B4FE' } },
+              left: { style: 'thin', color: { rgb: 'D8B4FE' } },
+              right: { style: 'thin', color: { rgb: 'D8B4FE' } }
             }
           };
         } else {
@@ -357,7 +386,14 @@ export function exportStyledEquipmentsExcel(equipments = [], options = {}) {
       // 4. Coluna STATUS GERAL
       if (col.title === 'STATUS GERAL') {
         const val = String(cell.v || '');
-        if (val.includes('100% CONCLUÍDO')) {
+        if (val.includes('MANUTENÇÃO EXTERNA')) {
+          cell.s = {
+            fill: { patternType: 'solid', fgColor: { rgb: '9333EA' } }, // Roxo vibrante
+            font: { name: 'Segoe UI', sz: 10, bold: true, color: { rgb: 'FFFFFF' } },
+            alignment: { vertical: 'center', horizontal: 'center' },
+            border: THIN_BORDER
+          };
+        } else if (val.includes('100% CONCLUÍDO')) {
           cell.s = {
             fill: { patternType: 'solid', fgColor: { rgb: '10B981' } }, // Emerald sólido
             font: { name: 'Segoe UI', sz: 10, bold: true, color: { rgb: 'FFFFFF' } },

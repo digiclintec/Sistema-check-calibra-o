@@ -57,6 +57,22 @@ export const MODALITIES = {
     bgLight: 'bg-amber-50 dark:bg-amber-950/40',
     description: 'Corrente de fuga, isolação e aterramento (NBR IEC 60601)'
   },
+  externa: {
+    id: 'externa',
+    name: 'Manutenção Externa (Terceirizada)',
+    shortName: 'Manut. Externa',
+    icon: '📦',
+    color: 'purple',
+    checkField: 'check_externa',
+    dateField: 'data_externa',
+    userField: 'usuario_externa',
+    badgeClass: 'bg-purple-100 text-purple-800 dark:bg-purple-950/70 dark:text-purple-300 border-purple-200 dark:border-purple-800',
+    btnClass: 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-500 hover:from-purple-500 hover:to-indigo-500 text-white shadow-purple-500/20',
+    ringClass: 'ring-purple-500',
+    textColor: 'text-purple-600 dark:text-purple-400',
+    bgLight: 'bg-purple-50 dark:bg-purple-950/40',
+    description: 'Equipamento recolhido para calibração e conserto por equipe externa terceirizada'
+  },
   geral: {
     id: 'geral',
     name: 'Visão Integrada (Todas as Equipes)',
@@ -106,8 +122,14 @@ export function normalizeEquipmentModalities(eq) {
     data_seguranca: eq.data_seguranca || null,
     usuario_seguranca: eq.usuario_seguranca || null,
 
+    // Manutenção Externa (Terceirizada)
+    check_externa: Boolean(eq.check_externa),
+    data_externa: eq.data_externa || null,
+    usuario_externa: eq.usuario_externa || null,
+    motivo_externa: eq.motivo_externa || null,
+
     // Campo compatível legado
-    checado: checkCalibracao || checkPreventiva || checkSeguranca
+    checado: checkCalibracao || checkPreventiva || checkSeguranca || Boolean(eq.check_externa)
   };
 }
 
@@ -119,6 +141,7 @@ export function isEquipmentChecked(eq, modality = 'calibracao', serviceConfig = 
   if (modality === 'calibracao') return Boolean(eq.check_calibracao);
   if (modality === 'preventiva') return Boolean(eq.check_preventiva);
   if (modality === 'seguranca') return Boolean(eq.check_seguranca);
+  if (modality === 'externa' || modality === 'manutencao_externa') return Boolean(eq.check_externa);
   // Se for visão geral ou não especificado, checa se todas as modalidades ativas estão concluídas
   return isEquipmentFullyChecked(eq, serviceConfig);
 }
@@ -158,6 +181,15 @@ export function getCheckMeta(eq, modality = 'calibracao') {
       checked: Boolean(eq.check_seguranca),
       date: eq.data_seguranca,
       user: eq.usuario_seguranca
+    };
+  }
+
+  if (modality === 'externa' || modality === 'manutencao_externa') {
+    return {
+      checked: Boolean(eq.check_externa),
+      date: eq.data_externa,
+      user: eq.usuario_externa,
+      motivo: eq.motivo_externa || 'Calibração e conserto por terceirizados'
     };
   }
 

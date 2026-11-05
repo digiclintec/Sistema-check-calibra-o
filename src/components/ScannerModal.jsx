@@ -1284,13 +1284,26 @@ export default function ScannerModal({
                 type="button"
                 onClick={() => handleSetExactModalities(['calibracao', 'preventiva', 'seguranca'])}
                 className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition flex items-center gap-1 ${
-                  selectedModalities.length === 3
+                  selectedModalities.length === 3 && !selectedModalities.includes('externa')
                     ? 'bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-400'
                     : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
                 }`}
                 title="Bipar todos os 3 serviços de uma vez só"
               >
                 <span>📋 Todos (3)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSetExactModalities(['externa'])}
+                className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition flex items-center gap-1 ${
+                  selectedModalities.length === 1 && selectedModalities.includes('externa')
+                    ? 'bg-purple-600 text-white shadow-sm ring-1 ring-purple-400'
+                    : 'bg-purple-950/40 text-purple-300 hover:text-white border border-purple-800/80'
+                }`}
+                title="Bipar como Manutenção Externa (calibração e conserto por equipe terceirizada)"
+              >
+                <span>📦 Manutenção Externa</span>
               </button>
             </div>
           </div>
@@ -1346,6 +1359,24 @@ export default function ScannerModal({
                 {selectedModalities.includes('seguranca') ? '✓' : ''}
               </div>
               <span>⚡ Seg. Elétrica</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleToggleModality('externa')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold transition border shrink-0 ${
+                selectedModalities.includes('externa')
+                  ? 'bg-purple-600/25 text-purple-300 border-purple-500/60 shadow-xs ring-1 ring-purple-500/40'
+                  : 'bg-slate-900/60 text-slate-500 border-slate-800 hover:text-purple-300'
+              }`}
+              title="Equipamento para envio à manutenção externa terceirizada"
+            >
+              <div className={`w-3.5 h-3.5 rounded flex items-center justify-center border text-[9px] font-black ${
+                selectedModalities.includes('externa') ? 'bg-purple-600 border-purple-400 text-white' : 'border-slate-700 bg-slate-950'
+              }`}>
+                {selectedModalities.includes('externa') ? '✓' : ''}
+              </div>
+              <span>📦 Manut. Externa</span>
             </button>
           </div>
         </div>
@@ -1972,6 +2003,8 @@ export default function ScannerModal({
                                       ? 'bg-blue-900/60 text-blue-300 border-blue-700'
                                       : m === 'preventiva'
                                       ? 'bg-emerald-900/60 text-emerald-300 border-emerald-700'
+                                      : m === 'externa'
+                                      ? 'bg-purple-900/60 text-purple-300 border-purple-700'
                                       : 'bg-amber-900/60 text-amber-300 border-amber-700'
                                   }`}
                                 >
