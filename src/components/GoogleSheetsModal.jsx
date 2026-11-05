@@ -12,9 +12,9 @@ import {
 } from 'lucide-react';
 import { extractGoogleSheetsExportUrl, parseCsvText, parseSpreadsheetFile } from '../utils/sheetParser';
 
-export default function GoogleSheetsModal({ isOpen, onClose, onImportData }) {
-  const [activeTab, setActiveTab] = useState('file'); // 'file', 'paste', 'link'
-  const [sheetUrl, setSheetUrl] = useState('');
+export default function GoogleSheetsModal({ isOpen, onClose, onImportData, currentGoogleSheetUrl = '' }) {
+  const [activeTab, setActiveTab] = useState(currentGoogleSheetUrl ? 'link' : 'file'); // 'file', 'paste', 'link'
+  const [sheetUrl, setSheetUrl] = useState(currentGoogleSheetUrl || '');
   const [pastedData, setPastedData] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -66,7 +66,10 @@ export default function GoogleSheetsModal({ isOpen, onClose, onImportData }) {
         throw new Error('A planilha retornou sem registros de equipamentos válidos.');
       }
 
-      onImportData(data);
+      onImportData({
+        ...data,
+        googleSheetUrl: data.googleSheetUrl || sheetUrl.trim()
+      });
       onClose();
     } catch (err) {
       console.error(err);
@@ -249,34 +252,47 @@ export default function GoogleSheetsModal({ isOpen, onClose, onImportData }) {
           {activeTab === 'link' && (
             <form onSubmit={handleFetchUrl} className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                  Cole o link público da sua planilha do Google:
+                <label className="block text-xs font-medium text-slate-300 mb-1.5 flex items-center justify-between">
+                  <span>Cole o link público de compartilhamento da sua planilha Google:</span>
+                  <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                    Sincronização Ativa
+                  </span>
                 </label>
                 <input
                   type="url"
-                  placeholder="https://docs.google.com/spreadsheets/d/.../edit"
+                  placeholder="https://docs.google.com/spreadsheets/d/.../edit?usp=sharing"
                   value={sheetUrl}
                   onChange={(e) => setSheetUrl(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 font-mono"
                 />
               </div>
 
-              <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-4 space-y-2 text-xs text-slate-400">
-                <p className="font-semibold text-slate-200 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-blue-400" />
-                  Nota sobre links do Google Sheets:
+              <div className="bg-emerald-950/30 border border-emerald-800/40 rounded-2xl p-4 space-y-2 text-xs text-emerald-200">
+                <p className="font-bold text-emerald-300 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  Sincronização em Tempo Real (Link Ativo):
+                </p>
+                <p className="leading-relaxed text-emerald-200/90">
+                  Ao vincular o link, qualquer alteração que a equipe fizer na planilha do Google (novas linhas, troca de setores, anotações ou checagens) será <strong>atualizada automaticamente no sistema</strong> a cada 25 segundos, sem perder as bipagens já feitas pelos técnicos!
+                </p>
+              </div>
+
+              <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-3.5 space-y-1.5 text-xs text-slate-400">
+                <p className="font-semibold text-slate-300">
+                  Dica de compartilhamento no Google Sheets:
                 </p>
                 <p className="leading-relaxed">
-                  O Google frequentemente bloqueia links diretos por segurança (CORS e login). Se o link falhar, use a aba <strong>"Subir Arquivo Cru"</strong> ou <strong>"Copiar e Colar"</strong> acima, que funcionam na hora!
+                  No Google Sheets, certifique-se de que a planilha esteja como <strong>"Qualquer pessoa com o link"</strong> para permitir que o sistema leia as alterações.
                 </p>
               </div>
 
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2 disabled:opacity-50"
+                className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2 disabled:opacity-50 shadow-md shadow-emerald-600/20"
               >
-                {loading ? 'Carregando planilha...' : 'Tentar Carregar via Link'}
+                {loading ? 'Conectando e lendo planilha...' : 'Conectar Planilha com Sincronização ao Vivo'}
                 {!loading && <ArrowRight className="w-4 h-4" />}
               </button>
             </form>

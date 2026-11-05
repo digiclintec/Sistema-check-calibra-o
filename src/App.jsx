@@ -13,7 +13,11 @@ import {
   Users,
   Wifi,
   Building2,
-  Crown
+  Crown,
+  RefreshCw,
+  Link2,
+  Unlink,
+  ExternalLink
 } from 'lucide-react';
 
 import LoginScreen from './components/LoginScreen';
@@ -142,6 +146,24 @@ export default function App() {
     } catch (e) {}
     return {};
   });
+
+  // Google Sheets Live Sync State (Sincronização em Tempo Real via Link Compartilhado)
+  const [googleSheetUrl, setGoogleSheetUrl] = useState(() => {
+    try {
+      return localStorage.getItem(`calibracheck_google_url_${activeHospitalId}`) || '';
+    } catch (e) {
+      return '';
+    }
+  });
+  const [isSyncingGoogle, setIsSyncingGoogle] = useState(false);
+  const [lastGoogleSyncTime, setLastGoogleSyncTime] = useState(null);
+
+  useEffect(() => {
+    try {
+      const savedUrl = localStorage.getItem(`calibracheck_google_url_${activeHospitalId}`) || '';
+      setGoogleSheetUrl(savedUrl);
+    } catch (e) {}
+  }, [activeHospitalId]);
 
   const handleSaveSectorColors = async (newColors) => {
     setSectorColors(newColors);
@@ -473,21 +495,35 @@ export default function App() {
       const res = await fetch(`/api/data?hospitalId=${encodeURIComponent(activeHospitalId)}`);
       if (!res.ok) return;
       const data = await res.json();
-      if (data.success && data.lastUpdated && data.lastUpdated > lastUpdatedServerRef.current) {
-        lastUpdatedServerRef.current = data.lastUpdated;
-        
-        // If server data differs, update local state
-        if (data.equipments && data.equipments.length >= 0) {
-          setEquipments(data.equipments.map(normalizeEquipmentModalities));
-          if (data.activeSheetName !== undefined) {
-            setActiveSheetName(data.activeSheetName);
+      if (data.success) {
+        if (data.googleSheetUrl !== undefined) {
+          setGoogleSheetUrl(data.googleSheetUrl || '');
+          if (data.googleSheetUrl) {
+            localStorage.setItem(`calibracheck_google_url_${activeHospitalId}`, data.googleSheetUrl);
+          } else {
+            localStorage.removeItem(`calibracheck_google_url_${activeHospitalId}`);
           }
         }
-        if (data.serviceConfig) {
-          setServiceConfig(data.serviceConfig);
+        if (data.lastGoogleSheetSync) {
+          setLastGoogleSyncTime(data.lastGoogleSheetSync);
         }
-        if (data.sectorColors) {
-          setSectorColors(data.sectorColors);
+
+        if (data.lastUpdated && data.lastUpdated > lastUpdatedServerRef.current) {
+          lastUpdatedServerRef.current = data.lastUpdated;
+          
+          // If server data differs, update local state
+          if (data.equipments && data.equipments.length >= 0) {
+            setEquipments(data.equipments.map(normalizeEquipmentModalities));
+            if (data.activeSheetName !== undefined) {
+              setActiveSheetName(data.activeSheetName);
+            }
+          }
+          if (data.serviceConfig) {
+            setServiceConfig(data.serviceConfig);
+          }
+          if (data.sectorColors) {
+            setSectorColors(data.sectorColors);
+          }
         }
       }
     } catch (err) {
@@ -504,7 +540,7 @@ export default function App() {
   }, [currentUser, syncWithServer]);
 
   // Push full update to server & broadcast
-  const pushServerUpdate = async (newEquipments, sheetName, actionDesc) => {
+  const pushServerUpdate = async (newEquipments, sheetName, actionDesc, gUrl = undefined) => {
     setEquipments(newEquipments);
     if (sheetName !== undefined) setActiveSheetName(sheetName);
 
@@ -515,22 +551,27 @@ export default function App() {
         hospitalId: activeHospitalId,
         equipments: newEquipments,
         activeSheetName: sheetName !== undefined ? sheetName : activeSheetName,
+        googleSheetUrl: gUrl !== undefined ? gUrl : googleSheetUrl,
         lastAction: actionDesc
       }
     });
 
     // Post to backend server
     try {
+      const body = {
+        hospitalId: activeHospitalId,
+        equipments: newEquipments,
+        activeSheetName: sheetName !== undefined ? sheetName : activeSheetName,
+        userEmail: currentUser?.email,
+        userName: currentUser?.name
+      };
+      if (gUrl !== undefined) {
+        body.googleSheetUrl = gUrl;
+      }
       const res = await fetch('/api/data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          hospitalId: activeHospitalId,
-          equipments: newEquipments,
-          activeSheetName: sheetName !== undefined ? sheetName : activeSheetName,
-          userEmail: currentUser?.email,
-          userName: currentUser?.name
-        })
+        body: JSON.stringify(body)
       });
       const data = await res.json();
       if (data.success && data.lastUpdated) {
@@ -540,6 +581,71 @@ export default function App() {
       console.warn('API sync offline:', err);
     }
   };
+
+  // Sincronização com Google Sheets via Link Compartilhado (Merge Inteligente sem perda de checks)
+  const handleSyncGoogleSheet = async (isManual = false) => {
+    if (!googleSheetUrl) return;
+    setIsSyncingGoogle(true);
+    try {
+      const res = await fetch('/api/sync-google-sheet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hospitalId: activeHospitalId,
+          url: googleSheetUrl
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Falha ao sincronizar com Google Sheets');
+      }
+
+      setLastGoogleSyncTime(Date.now());
+
+      if (data.hasChanges) {
+        setEquipments(data.equipments.map(normalizeEquipmentModalities));
+        if (data.activeSheetName) setActiveSheetName(data.activeSheetName);
+        lastUpdatedServerRef.current = Date.now();
+        showToast('info', `🔄 Planilha Google atualizada: ${data.addedCount} novo(s), ${data.updatedCount} alteração(ões) incorporada(s)!`);
+      } else if (isManual) {
+        showToast('success', 'Planilha Google já está 100% atualizada! Nenhuma alteração pendente.');
+      }
+    } catch (err) {
+      console.error('Erro na sincronização com Google Sheets:', err);
+      if (isManual) {
+        showToast('error', `Erro ao sincronizar com Google: ${err.message}`);
+      }
+    } finally {
+      setIsSyncingGoogle(false);
+    }
+  };
+
+  // Desvincular link do Google Sheets mantendo os dados no sistema
+  const handleUnlinkGoogleSheet = async () => {
+    if (window.confirm('Deseja desvincular o link do Google Sheets? A planilha continuará salva localmente neste hospital com todas as checagens intactas.')) {
+      setGoogleSheetUrl('');
+      localStorage.removeItem(`calibracheck_google_url_${activeHospitalId}`);
+      try {
+        await fetch('/api/unlink-google-sheet', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hospitalId: activeHospitalId })
+        });
+      } catch (e) {}
+      showToast('info', 'Link desvinculado. Hospital operando no modo de arquivo local.');
+    }
+  };
+
+  // Polling automático da planilha do Google a cada 25s se houver link ativo
+  useEffect(() => {
+    if (!currentUser || !googleSheetUrl) return;
+    const interval = setInterval(() => {
+      if (!isSyncingGoogle) {
+        handleSyncGoogleSheet(false);
+      }
+    }, 25000);
+    return () => clearInterval(interval);
+  }, [currentUser, googleSheetUrl, isSyncingGoogle]);
 
   // Hardware Barcode Scanner listener (USB/Bluetooth Gun)
   useEffect(() => {
@@ -1067,7 +1173,10 @@ export default function App() {
   const processFile = async (file) => {
     try {
       const result = await parseSpreadsheetFile(file);
-      await pushServerUpdate(result.equipments, result.fileName, `Planilha carregada: ${result.fileName}`);
+      // Arquivo local (.xlsx, .csv) - Opera como arquivo local seguro
+      setGoogleSheetUrl('');
+      localStorage.removeItem(`calibracheck_google_url_${activeHospitalId}`);
+      await pushServerUpdate(result.equipments, result.fileName, `Planilha carregada: ${result.fileName}`, '');
       const checkedCount = (result.equipments || []).filter(e => e.checado).length;
       if (checkedCount > 0) {
         showToast('success', `Planilha "${result.fileName}" carregada com ${result.total} itens (${checkedCount} já validados da planilha)!`);
@@ -1102,14 +1211,27 @@ export default function App() {
     }
   };
 
-  // Google Sheets import
+  // Google Sheets import (com suporte a link ao vivo e sincronização automática)
   const handleGoogleDataImport = async (data) => {
-    await pushServerUpdate(data.equipments, data.fileName, 'Planilha Google importada');
+    const gUrl = data.googleSheetUrl || '';
+    setGoogleSheetUrl(gUrl);
+    if (gUrl) {
+      localStorage.setItem(`calibracheck_google_url_${activeHospitalId}`, gUrl);
+    }
+    await pushServerUpdate(data.equipments, data.fileName, 'Planilha Google importada', gUrl);
     const checkedCount = (data.equipments || []).filter(e => e.checado).length;
-    if (checkedCount > 0) {
-      showToast('success', `Planilha importada com ${data.total} equipamentos (${checkedCount} já validados da planilha)!`);
+    if (gUrl) {
+      if (checkedCount > 0) {
+        showToast('success', `Planilha Google conectada com ${data.total} equipamentos (${checkedCount} já validados). Sincronização em tempo real ativada!`);
+      } else {
+        showToast('success', `Planilha Google conectada com ${data.total} equipamentos! Sincronização em tempo real ativada.`);
+      }
     } else {
-      showToast('success', `Planilha importada com ${data.total} equipamentos!`);
+      if (checkedCount > 0) {
+        showToast('success', `Planilha importada com ${data.total} equipamentos (${checkedCount} já validados da planilha)!`);
+      } else {
+        showToast('success', `Planilha importada com ${data.total} equipamentos!`);
+      }
     }
     loadHospitals();
     setServiceConfigModal({ isOpen: true, isInitialSetup: true });
@@ -1117,7 +1239,9 @@ export default function App() {
 
   // Load sample data
   const handleLoadSample = async () => {
-    await pushServerUpdate(SAMPLE_EQUIPMENT, 'Exemplo_Calibracao_Padrao.xlsx', 'Exemplo carregado');
+    setGoogleSheetUrl('');
+    localStorage.removeItem(`calibracheck_google_url_${activeHospitalId}`);
+    await pushServerUpdate(SAMPLE_EQUIPMENT, 'Exemplo_Calibracao_Padrao.xlsx', 'Exemplo carregado', '');
     showToast('success', '10 equipamentos de exemplo carregados para teste imediato!');
     loadHospitals();
     setServiceConfigModal({ isOpen: true, isInitialSetup: true });
@@ -1126,7 +1250,9 @@ export default function App() {
   // Reset / Clear hospital data
   const handleResetData = async () => {
     if (window.confirm(`Deseja limpar todos os dados da planilha atual do "${activeHospital?.name || 'hospital atual'}"?`)) {
-      await pushServerUpdate([], '', 'Planilha limpa');
+      setGoogleSheetUrl('');
+      localStorage.removeItem(`calibracheck_google_url_${activeHospitalId}`);
+      await pushServerUpdate([], '', 'Planilha limpa', '');
       try {
         await fetch('/api/reset', {
           method: 'POST',
@@ -1310,22 +1436,75 @@ export default function App() {
                     <span className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-2 py-0.5 rounded-full font-mono shrink-0">
                       {equipments.length} itens
                     </span>
-                    <span className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-400 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1 shrink-0">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                      Tempo Real
-                    </span>
+                    {googleSheetUrl ? (
+                      <span className="text-[10px] bg-emerald-50 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800/80 px-2 py-0.5 rounded-full font-bold flex items-center gap-1 shrink-0">
+                        <RefreshCw className={`w-3 h-3 ${isSyncingGoogle ? 'animate-spin text-emerald-600' : 'text-emerald-500'}`} />
+                        <span>Google Sheets Ao Vivo</span>
+                      </span>
+                    ) : (
+                      <span className="text-[10px] bg-blue-50 text-blue-700 dark:bg-blue-950/80 dark:text-blue-400 border border-blue-200 dark:border-blue-900/60 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1 shrink-0">
+                        <FileSpreadsheet className="w-3 h-3 text-blue-500" />
+                        <span>Arquivo Local</span>
+                      </span>
+                    )}
                   </div>
-                  <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                    Arquivo ativo: <span className="font-medium text-slate-700 dark:text-slate-300">{activeSheetName || 'Planilha Compartilhada'}</span>
+                  <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5 flex items-center gap-1.5 flex-wrap">
+                    <span>Arquivo ativo: <strong className="text-slate-700 dark:text-slate-300">{activeSheetName || 'Planilha Compartilhada'}</strong></span>
+                    {googleSheetUrl && (
+                      <a 
+                        href={googleSheetUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-0.5 font-bold shrink-0"
+                        title="Abrir planilha no Google Sheets em nova aba"
+                      >
+                        <span>Abrir no Google</span>
+                        <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                    )}
                   </p>
                 </div>
               </div>
 
               {/* Action Buttons */}
-              <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto w-full sm:w-auto">
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 self-end sm:self-auto w-full sm:w-auto flex-wrap sm:flex-nowrap">
+                {/* Sincronização Google Sheets Ao Vivo */}
+                {googleSheetUrl ? (
+                  <>
+                    <button
+                      onClick={() => handleSyncGoogleSheet(true)}
+                      disabled={isSyncingGoogle}
+                      className="flex-1 sm:flex-initial py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition shadow-sm disabled:opacity-50"
+                      title="Sincronizar agora com o Google Sheets para puxar novos itens ou edições"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isSyncingGoogle ? 'animate-spin' : ''}`} />
+                      <span>{isSyncingGoogle ? 'Sincronizando...' : 'Sincronizar Google'}</span>
+                    </button>
+
+                    <button
+                      onClick={handleUnlinkGoogleSheet}
+                      className="p-2 text-slate-400 hover:text-amber-500 rounded-xl hover:bg-amber-50 dark:hover:bg-amber-950/30 transition shrink-0"
+                      title="Desvincular Google Sheets e manter apenas como arquivo local deste hospital"
+                    >
+                      <Unlink className="w-4 h-4" />
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => setIsGoogleModalOpen(true)}
+                    className="flex-1 sm:flex-initial py-2 px-2.5 sm:px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition border border-slate-200 dark:border-slate-700"
+                    title="Conectar um link público do Google Sheets para ver alterações da equipe em tempo real"
+                  >
+                    <Link2 className="w-3.5 h-3.5 text-emerald-500" />
+                    <span className="hidden sm:inline">Vincular Link Google</span>
+                    <span className="sm:hidden">Vincular Google</span>
+                  </button>
+                )}
+
                 <button
                   onClick={handleExport}
                   className="flex-1 sm:flex-initial py-2 px-3 sm:px-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition shadow-sm"
+                  title="Exportar planilha atualizada em formato Excel (.xlsx) com cores e checks"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Baixar Excel</span>
@@ -1434,6 +1613,7 @@ export default function App() {
         isOpen={isGoogleModalOpen}
         onClose={() => setIsGoogleModalOpen(false)}
         onImportData={handleGoogleDataImport}
+        currentGoogleSheetUrl={googleSheetUrl}
       />
 
       {/* Modal de Configuração de Serviços e Modo de Bipagem da Planilha */}

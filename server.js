@@ -833,6 +833,10 @@ app.get('/api/data', (req, res) => {
     hospitalPlan: hospital.plano || 'pro',
     equipments: hospital.equipments || [],
     activeSheetName: hospital.activeSheetName || '',
+    googleSheetUrl: hospital.googleSheetUrl || '',
+    googleSheetAutoSync: hospital.googleSheetAutoSync !== false,
+    lastGoogleSheetSync: hospital.lastGoogleSheetSync || null,
+    googleSheetSyncStatus: hospital.googleSheetSyncStatus || 'idle',
     serviceConfig: hospital.serviceConfig || {
       enableCalibracao: true,
       enablePreventiva: true,
@@ -915,7 +919,17 @@ app.post('/api/service-config', (req, res) => {
 
 // Save or Update spreadsheet for active hospital
 app.post('/api/data', (req, res) => {
-  const { equipments, activeSheetName, userEmail, userName, hospitalId, serviceConfig, sectorColors } = req.body || {};
+  const { 
+    equipments, 
+    activeSheetName, 
+    userEmail, 
+    userName, 
+    hospitalId, 
+    serviceConfig, 
+    sectorColors,
+    googleSheetUrl,
+    googleSheetAutoSync
+  } = req.body || {};
   const db = readDb();
   const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
   const idx = (db.hospitals || []).findIndex(h => h.id === targetId);
@@ -928,6 +942,12 @@ app.post('/api/data', (req, res) => {
 
   db.hospitals[idx].equipments = Array.isArray(equipments) ? equipments : [];
   db.hospitals[idx].activeSheetName = activeSheetName || '';
+  if (googleSheetUrl !== undefined) {
+    db.hospitals[idx].googleSheetUrl = googleSheetUrl;
+  }
+  if (googleSheetAutoSync !== undefined) {
+    db.hospitals[idx].googleSheetAutoSync = googleSheetAutoSync;
+  }
   if (serviceConfig) {
     db.hospitals[idx].serviceConfig = {
       enableCalibracao: serviceConfig.enableCalibracao ?? true,
@@ -970,11 +990,12 @@ app.post('/api/data', (req, res) => {
   });
 });
 
-// Fetch and parse Google Sheets / Google Drive spreadsheet URL
-app.post('/api/fetch-google-sheet', async (req, res) => {
-  const { url } = req.body || {};
+// ---------------- GOOGLE SHEETS LIVE SYNC ENGINE ---------------- //
+
+// Helper: Fetch binary data from Google Sheets / Drive and parse
+async function fetchAndParseGoogleSheet(url) {
   if (!url || typeof url !== 'string') {
-    return res.status(400).json({ success: false, message: 'URL da planilha não fornecida.' });
+    throw new Error('URL da planilha não fornecida.');
   }
 
   const cleanUrl = url.trim();
@@ -983,14 +1004,13 @@ app.post('/api/fetch-google-sheet', async (req, res) => {
                 cleanUrl.match(/[?&]id=([a-zA-Z0-9-_]+)/);
 
   if (!match || !match[1]) {
-    return res.status(400).json({ success: false, message: 'Link do Google Sheets ou Google Drive inválido.' });
+    throw new Error('Link do Google Sheets ou Google Drive inválido.');
   }
 
   const docId = match[1];
   const gidMatch = cleanUrl.match(/[#&?]gid=([0-9]+)/);
   const gidParam = gidMatch ? `&gid=${gidMatch[1]}` : '';
 
-  // URLs de download candidatas
   const candidateUrls = [
     `https://docs.google.com/spreadsheets/d/${docId}/export?format=xlsx${gidParam}`,
     `https://drive.usercontent.google.com/download?id=${docId}&export=download&confirm=t`,
@@ -1019,7 +1039,6 @@ app.post('/api/fetch-google-sheet', async (req, res) => {
       const arrayBuf = await response.arrayBuffer();
       const uint8 = new Uint8Array(arrayBuf);
 
-      // Verifica se a resposta foi uma página HTML de login / restrição
       if (contentType.includes('text/html')) {
         const textSample = new TextDecoder().decode(uint8.slice(0, 4000));
         if (
@@ -1033,41 +1052,284 @@ app.post('/api/fetch-google-sheet', async (req, res) => {
         }
       }
 
-      // Tenta decodificar como planilha com SheetJS
-      try {
-        const parsed = parseWorkbookBuffer(uint8, 'Google Sheets');
-        if (parsed && parsed.equipments && parsed.equipments.length > 0) {
-          return res.json({
-            success: true,
-            fileName: 'Google Sheets (' + (parsed.sheetName || 'Planilha') + ')',
-            sheetName: parsed.sheetName,
-            headers: parsed.headers,
-            mapping: parsed.mapping,
-            equipments: parsed.equipments,
-            total: parsed.total
-          });
-        }
-      } catch (parseErr) {
-        lastError = parseErr;
+      const parsed = parseWorkbookBuffer(uint8, 'Google Sheets');
+      if (parsed && parsed.equipments && parsed.equipments.length > 0) {
+        return {
+          ...parsed,
+          docId,
+          cleanUrl
+        };
       }
-    } catch (netErr) {
-      lastError = netErr;
+    } catch (err) {
+      lastError = err;
     }
   }
 
   if (isRestricted) {
-    return res.status(403).json({
-      success: false,
-      isRestricted: true,
-      message: 'Esta planilha no Google Drive está com acesso "Restrito". Para permitir a importação via link: no Google Sheets/Drive, clique em "Compartilhar" (canto superior direito) e altere de "Restrito" para "Qualquer pessoa com o link" (Leitor). Ou clique em Arquivo > Fazer o download > Microsoft Excel (.xlsx) e envie o arquivo na primeira aba!'
-    });
+    const restrictedErr = new Error('Esta planilha no Google Drive está com acesso "Restrito". No Google Sheets, clique em "Compartilhar" e mude para "Qualquer pessoa com o link" (Leitor).');
+    restrictedErr.isRestricted = true;
+    throw restrictedErr;
   }
 
-  return res.status(400).json({
-    success: false,
-    message: lastError ? `Não foi possível ler a planilha: ${lastError.message}` : 'Não foi possível baixar ou ler os dados desta planilha do Google.'
-  });
+  throw lastError || new Error('Não foi possível baixar ou ler os dados desta planilha do Google.');
+}
+
+// Helper: Smart merge incoming Google Sheets equipments with current equipments
+// Preserves technician checks done in CalibraCheck while pulling new rows or updated metadata from Google Sheets
+function smartMergeGoogleSheet(currentEquipments = [], incomingEquipments = []) {
+  let addedCount = 0;
+  let updatedCount = 0;
+
+  const currentMap = new Map();
+  for (const item of currentEquipments) {
+    if (item.codigoBarras) currentMap.set(`cb:${String(item.codigoBarras).trim().toLowerCase()}`, item);
+    if (item.serie) currentMap.set(`sn:${String(item.serie).trim().toLowerCase()}`, item);
+    if (item.tag) currentMap.set(`tag:${String(item.tag).trim().toLowerCase()}`, item);
+    if (item.id) currentMap.set(`id:${String(item.id).trim().toLowerCase()}`, item);
+  }
+
+  const merged = [];
+  const processedCurrentIds = new Set();
+
+  for (const incoming of incomingEquipments) {
+    let match = null;
+    if (incoming.codigoBarras && currentMap.has(`cb:${String(incoming.codigoBarras).trim().toLowerCase()}`)) {
+      match = currentMap.get(`cb:${String(incoming.codigoBarras).trim().toLowerCase()}`);
+    } else if (incoming.serie && currentMap.has(`sn:${String(incoming.serie).trim().toLowerCase()}`)) {
+      match = currentMap.get(`sn:${String(incoming.serie).trim().toLowerCase()}`);
+    } else if (incoming.tag && currentMap.has(`tag:${String(incoming.tag).trim().toLowerCase()}`)) {
+      match = currentMap.get(`tag:${String(incoming.tag).trim().toLowerCase()}`);
+    } else if (incoming.id && currentMap.has(`id:${String(incoming.id).trim().toLowerCase()}`)) {
+      match = currentMap.get(`id:${String(incoming.id).trim().toLowerCase()}`);
+    }
+
+    if (match) {
+      processedCurrentIds.add(match.id);
+
+      const localCal = match.check_calibracao !== undefined ? match.check_calibracao : match.checado;
+      const sheetCal = incoming.check_calibracao !== undefined ? incoming.check_calibracao : incoming.checado;
+      
+      const localPrev = !!match.check_preventiva;
+      const sheetPrev = !!incoming.check_preventiva;
+
+      const localSeg = !!match.check_seguranca;
+      const sheetSeg = !!incoming.check_seguranca;
+
+      const finalCal = localCal || sheetCal;
+      const finalPrev = localPrev || sheetPrev;
+      const finalSeg = localSeg || sheetSeg;
+
+      let itemChanged = false;
+      if (finalCal !== localCal || finalPrev !== localPrev || finalSeg !== localSeg) itemChanged = true;
+      if (incoming.setor && incoming.setor !== match.setor) itemChanged = true;
+      if (incoming.setor_retirada && incoming.setor_retirada !== match.setor_retirada) itemChanged = true;
+      if (incoming.modelo && incoming.modelo !== match.modelo) itemChanged = true;
+      if (incoming.fabricante && incoming.fabricante !== match.fabricante) itemChanged = true;
+      if (incoming.observacao && incoming.observacao !== match.observacao) itemChanged = true;
+      if (incoming.tag && incoming.tag !== match.tag) itemChanged = true;
+
+      if (itemChanged) {
+        updatedCount++;
+      }
+
+      merged.push({
+        ...match,
+        equipamento: incoming.equipamento || match.equipamento,
+        modelo: incoming.modelo || match.modelo,
+        fabricante: incoming.fabricante || match.fabricante,
+        setor: incoming.setor || match.setor,
+        setor_retirada: incoming.setor_retirada !== undefined ? incoming.setor_retirada : match.setor_retirada,
+        data_retirada: incoming.data_retirada || match.data_retirada,
+        observacao: incoming.observacao !== undefined ? incoming.observacao : match.observacao,
+        tag: incoming.tag || match.tag,
+        
+        check_calibracao: finalCal,
+        usuario_calibracao: localCal ? match.usuario_calibracao : (sheetCal ? (incoming.usuario_calibracao || 'Google Sheets') : null),
+        data_calibracao: localCal ? match.data_calibracao : (sheetCal ? (incoming.data_calibracao || new Date().toISOString()) : null),
+
+        check_preventiva: finalPrev,
+        usuario_preventiva: localPrev ? match.usuario_preventiva : (sheetPrev ? (incoming.usuario_preventiva || 'Google Sheets') : null),
+        data_preventiva: localPrev ? match.data_preventiva : (sheetPrev ? (incoming.data_preventiva || new Date().toISOString()) : null),
+
+        check_seguranca: finalSeg,
+        usuario_seguranca: localSeg ? match.usuario_seguranca : (sheetSeg ? (incoming.usuario_seguranca || 'Google Sheets') : null),
+        data_seguranca: localSeg ? match.data_seguranca : (sheetSeg ? (incoming.data_seguranca || new Date().toISOString()) : null),
+
+        checado: finalCal,
+        _originalRow: incoming._originalRow || match._originalRow
+      });
+    } else {
+      addedCount++;
+      merged.push(incoming);
+    }
+  }
+
+  for (const existing of currentEquipments) {
+    if (!processedCurrentIds.has(existing.id)) {
+      merged.push(existing);
+    }
+  }
+
+  return {
+    merged,
+    addedCount,
+    updatedCount,
+    totalChanges: addedCount + updatedCount
+  };
+}
+
+// Route 1: Fetch and parse Google Sheets URL (Primeira Importação)
+app.post('/api/fetch-google-sheet', async (req, res) => {
+  const { url } = req.body || {};
+  try {
+    const parsed = await fetchAndParseGoogleSheet(url);
+    res.json({
+      success: true,
+      googleSheetUrl: parsed.cleanUrl,
+      fileName: 'Google Sheets (' + (parsed.sheetName || 'Planilha') + ')',
+      sheetName: parsed.sheetName,
+      headers: parsed.headers,
+      mapping: parsed.mapping,
+      equipments: parsed.equipments,
+      total: parsed.total
+    });
+  } catch (err) {
+    if (err.isRestricted) {
+      return res.status(403).json({ success: false, isRestricted: true, message: err.message });
+    }
+    return res.status(400).json({ success: false, message: err.message || 'Erro ao carregar planilha do Google.' });
+  }
 });
+
+// Route 2: Sync Active Google Sheet in Real-Time (Merge inteligente preservando checks)
+app.post('/api/sync-google-sheet', async (req, res) => {
+  const { hospitalId, url } = req.body || {};
+  const db = readDb();
+  const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
+  const idx = (db.hospitals || []).findIndex(h => h.id === targetId);
+
+  if (idx === -1) {
+    return res.status(404).json({ success: false, message: 'Hospital ativo não encontrado.' });
+  }
+
+  const hospital = db.hospitals[idx];
+  const targetUrl = (url || hospital.googleSheetUrl || '').trim();
+
+  if (!targetUrl) {
+    return res.status(400).json({ success: false, message: 'Nenhuma URL de Google Sheets associada a este hospital.' });
+  }
+
+  try {
+    const parsed = await fetchAndParseGoogleSheet(targetUrl);
+    if (!parsed || !parsed.equipments || parsed.equipments.length === 0) {
+      throw new Error('A planilha retornou vazia ou sem linhas de equipamentos válidas.');
+    }
+
+    const currentEquipments = hospital.equipments || [];
+    const { merged, addedCount, updatedCount, totalChanges } = smartMergeGoogleSheet(currentEquipments, parsed.equipments);
+
+    hospital.googleSheetUrl = targetUrl;
+    hospital.lastGoogleSheetSync = Date.now();
+    hospital.googleSheetSyncStatus = 'synced';
+
+    if (totalChanges > 0 || currentEquipments.length === 0) {
+      hospital.equipments = merged;
+      if (!hospital.activeSheetName || hospital.activeSheetName.includes('Google Sheets')) {
+        hospital.activeSheetName = 'Google Sheets (' + (parsed.sheetName || 'Planilha') + ')';
+      }
+      hospital.lastUpdated = Date.now();
+      hospital.lastUpdatedBy = `Google Sheets Sync (+${addedCount} novos, ${updatedCount} atualizados)`;
+      db.lastUpdated = Date.now();
+      saveDb(db);
+    } else {
+      saveDb(db);
+    }
+
+    res.json({
+      success: true,
+      hasChanges: totalChanges > 0,
+      addedCount,
+      updatedCount,
+      totalChanges,
+      equipments: hospital.equipments,
+      total: hospital.equipments.length,
+      activeSheetName: hospital.activeSheetName,
+      lastGoogleSheetSync: hospital.lastGoogleSheetSync,
+      sheetName: parsed.sheetName
+    });
+
+  } catch (err) {
+    console.error('Erro ao sincronizar com Google Sheets:', err.message);
+    hospital.googleSheetSyncStatus = 'error';
+    hospital.lastGoogleSheetSyncError = err.message;
+    saveDb(db);
+    res.status(500).json({
+      success: false,
+      message: err.message || 'Erro ao sincronizar com Google Sheets.'
+    });
+  }
+});
+
+// Route 3: Desvincular Link do Google Sheets (mantendo dados locais intactos)
+app.post('/api/unlink-google-sheet', (req, res) => {
+  const { hospitalId } = req.body || {};
+  const db = readDb();
+  const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
+  const idx = (db.hospitals || []).findIndex(h => h.id === targetId);
+
+  if (idx !== -1) {
+    db.hospitals[idx].googleSheetUrl = '';
+    db.hospitals[idx].googleSheetAutoSync = false;
+    db.hospitals[idx].googleSheetSyncStatus = 'idle';
+    db.lastUpdated = Date.now();
+    saveDb(db);
+  }
+
+  res.json({ success: true, message: 'Link do Google Sheets desvinculado com sucesso.' });
+});
+
+// Background Auto-Sync Worker for all hospitals connected to Google Sheets (Executa a cada 25s)
+setInterval(async () => {
+  try {
+    const db = readDb();
+    if (!Array.isArray(db.hospitals)) return;
+
+    let dbModified = false;
+
+    for (const hospital of db.hospitals) {
+      if (hospital.googleSheetUrl && hospital.googleSheetAutoSync !== false) {
+        try {
+          const parsed = await fetchAndParseGoogleSheet(hospital.googleSheetUrl);
+          if (parsed && Array.isArray(parsed.equipments) && parsed.equipments.length > 0) {
+            const currentEquipments = hospital.equipments || [];
+            const { merged, addedCount, updatedCount, totalChanges } = smartMergeGoogleSheet(currentEquipments, parsed.equipments);
+
+            hospital.lastGoogleSheetSync = Date.now();
+            hospital.googleSheetSyncStatus = 'synced';
+
+            if (totalChanges > 0 || currentEquipments.length === 0) {
+              hospital.equipments = merged;
+              hospital.lastUpdated = Date.now();
+              hospital.lastUpdatedBy = `Google Sheets Auto-Sync (+${addedCount} novos, ${updatedCount} atualizados)`;
+              db.lastUpdated = Date.now();
+              dbModified = true;
+              console.log(`[GoogleSheets Auto-Sync] Sincronizado hospital "${hospital.name}": +${addedCount} novos, ${updatedCount} atualizados.`);
+            }
+          }
+        } catch (err) {
+          hospital.googleSheetSyncStatus = 'error';
+          hospital.lastGoogleSheetSyncError = err.message;
+        }
+      }
+    }
+
+    if (dbModified) {
+      saveDb(db);
+    }
+  } catch (globalErr) {
+    // Silent
+  }
+}, 25000);
 
 // Check or Uncheck an equipment inside active hospital with multi-modality support
 app.post('/api/toggle-check', (req, res) => {
