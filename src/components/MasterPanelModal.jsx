@@ -56,6 +56,12 @@ export default function MasterPanelModal({
   const [editingUserId, setEditingUserId] = useState(null);
   const [newPassword, setNewPassword] = useState('');
 
+  // Hospital editing state (renomear hospital / editar cidade / cnpj)
+  const [editingHospitalId, setEditingHospitalId] = useState(null);
+  const [editingHospitalName, setEditingHospitalName] = useState('');
+  const [editingHospitalCity, setEditingHospitalCity] = useState('');
+  const [editingHospitalCnpj, setEditingHospitalCnpj] = useState('');
+
   // Inline user hospital permissions editing
   const [editingPermsUserId, setEditingPermsUserId] = useState(null);
   const [editingPermsHospitalIds, setEditingPermsHospitalIds] = useState([]);
@@ -263,6 +269,51 @@ export default function MasterPanelModal({
     }
   };
 
+  const handleStartEditHospital = (h) => {
+    setEditingHospitalId(h.id);
+    setEditingHospitalName(h.name || '');
+    setEditingHospitalCity(h.cidade || '');
+    setEditingHospitalCnpj(h.cnpj || '');
+    setMessage(null);
+  };
+
+  const handleCancelEditHospital = () => {
+    setEditingHospitalId(null);
+    setEditingHospitalName('');
+    setEditingHospitalCity('');
+    setEditingHospitalCnpj('');
+  };
+
+  const handleSaveHospitalEdit = async (hospId) => {
+    if (!editingHospitalName.trim()) {
+      setMessage({ type: 'error', text: 'O nome do hospital não pode ficar em branco.' });
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/hospitals/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: hospId,
+          name: editingHospitalName.trim(),
+          cidade: editingHospitalCity.trim(),
+          cnpj: editingHospitalCnpj.trim()
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessage({ type: 'success', text: `Hospital renomeado com sucesso para "${editingHospitalName.trim()}"!` });
+        setEditingHospitalId(null);
+        if (onRefreshHospitals) onRefreshHospitals();
+      } else {
+        setMessage({ type: 'error', text: data.message || 'Erro ao renomear hospital.' });
+      }
+    } catch (e) {
+      setMessage({ type: 'error', text: 'Erro de conexão ao renomear hospital.' });
+    }
+  };
+
   const handleDeleteUser = async (id, name) => {
     if (!window.confirm(`Tem certeza que deseja excluir o acesso de "${name}"?`)) {
       return;
@@ -438,32 +489,98 @@ export default function MasterPanelModal({
                   >
                     {/* Header Row */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h4 className="font-bold text-white text-base tracking-wide">{h.name}</h4>
-                          {isActive && (
-                            <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-blue-600 text-white shadow-sm flex items-center gap-1">
-                              <Check className="w-3 h-3" /> Em Operação
-                            </span>
-                          )}
-                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
-                            h.plano === 'enterprise' 
-                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                              : h.plano === 'basico'
-                              ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                              : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                          }`}>
-                            Plano {planName}
-                          </span>
-                        </div>
+                      <div className="flex-1 min-w-0">
+                        {editingHospitalId === h.id ? (
+                          <form
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              handleSaveHospitalEdit(h.id);
+                            }}
+                            className="flex flex-col gap-2 pt-1"
+                          >
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <input
+                                type="text"
+                                value={editingHospitalName}
+                                onChange={(e) => setEditingHospitalName(e.target.value)}
+                                placeholder="Nome do Hospital..."
+                                autoFocus
+                                className="bg-slate-900 border border-blue-500 rounded-xl px-3 py-1.5 text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 w-full sm:w-80 shadow-inner"
+                              />
+                              <button
+                                type="submit"
+                                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-md"
+                                title="Salvar nome do hospital"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                                <span>Salvar</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleCancelEditHospital}
+                                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition"
+                                title="Cancelar edição"
+                              >
+                                Cancelar
+                              </button>
+                            </div>
 
-                        <div className="text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-                          {h.cidade && <span>📍 {h.cidade}</span>}
-                          {h.cnpj && <span className="font-mono text-slate-500">CNPJ: {h.cnpj}</span>}
-                          {h.activeSheetName && (
-                            <span className="text-slate-400">📄 Planilha: <strong className="text-slate-300">{h.activeSheetName}</strong></span>
-                          )}
-                        </div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <input
+                                type="text"
+                                value={editingHospitalCity}
+                                onChange={(e) => setEditingHospitalCity(e.target.value)}
+                                placeholder="Cidade / UF (opcional)"
+                                className="bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1 text-xs text-slate-300 focus:outline-none focus:border-slate-500 w-36 sm:w-44"
+                              />
+                              <input
+                                type="text"
+                                value={editingHospitalCnpj}
+                                onChange={(e) => setEditingHospitalCnpj(e.target.value)}
+                                placeholder="CNPJ (opcional)"
+                                className="bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1 text-xs text-slate-300 focus:outline-none focus:border-slate-500 w-36 sm:w-44 font-mono"
+                              />
+                            </div>
+                          </form>
+                        ) : (
+                          <>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="font-bold text-white text-base tracking-wide flex items-center gap-1.5">
+                                <span>{h.name}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartEditHospital(h)}
+                                  className="p-1 rounded-lg text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 transition"
+                                  title="Editar nome e dados deste hospital"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                              </h4>
+                              {isActive && (
+                                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-blue-600 text-white shadow-sm flex items-center gap-1">
+                                  <Check className="w-3 h-3" /> Em Operação
+                                </span>
+                              )}
+                              <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                                h.plano === 'enterprise' 
+                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                : h.plano === 'basico'
+                                ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                                : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                              }`}>
+                                Plano {planName}
+                              </span>
+                            </div>
+
+                            <div className="text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                              {h.cidade && <span>📍 {h.cidade}</span>}
+                              {h.cnpj && <span className="font-mono text-slate-500">CNPJ: {h.cnpj}</span>}
+                              {h.activeSheetName && (
+                                <span className="text-slate-400">📄 Planilha: <strong className="text-slate-300">{h.activeSheetName}</strong></span>
+                              )}
+                            </div>
+                          </>
+                        )}
                       </div>
 
                       {/* Header Actions */}

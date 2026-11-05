@@ -631,7 +631,8 @@ app.post('/api/hospitals/update', (req, res) => {
   res.json({
     success: true,
     message: 'Dados do hospital atualizados com sucesso.',
-    hospital: db.hospitals[idx]
+    hospital: db.hospitals[idx],
+    hospitals: db.hospitals
   });
 });
 

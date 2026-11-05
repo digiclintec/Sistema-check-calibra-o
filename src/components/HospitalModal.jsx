@@ -48,7 +48,58 @@ export default function HospitalModal({
   const [editingHospitalId, setEditingHospitalId] = useState(null);
   const [editingUserIds, setEditingUserIds] = useState([]);
 
+  // Inline rename / edit hospital name (Master only)
+  const [renamingHospitalId, setRenamingHospitalId] = useState(null);
+  const [renamingName, setRenamingName] = useState('');
+  const [renamingCity, setRenamingCity] = useState('');
+  const [renamingCnpj, setRenamingCnpj] = useState('');
+
   const isMaster = currentUser?.role === 'master' || currentUser?.email?.toLowerCase() === 'digiclintec@gmail.com';
+
+  const handleStartRename = (h) => {
+    setRenamingHospitalId(h.id);
+    setRenamingName(h.name || '');
+    setRenamingCity(h.cidade || '');
+    setRenamingCnpj(h.cnpj || '');
+    setMessage(null);
+  };
+
+  const handleCancelRename = () => {
+    setRenamingHospitalId(null);
+    setRenamingName('');
+    setRenamingCity('');
+    setRenamingCnpj('');
+  };
+
+  const handleSaveRename = async (hospId) => {
+    if (!renamingName.trim()) {
+      setMessage({ type: 'error', text: 'O nome do hospital é obrigatório.' });
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/hospitals/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: hospId,
+          name: renamingName.trim(),
+          cidade: renamingCity.trim(),
+          cnpj: renamingCnpj.trim()
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessage({ type: 'success', text: `Hospital renomeado com sucesso para "${renamingName.trim()}"!` });
+        setRenamingHospitalId(null);
+        if (onRefreshHospitals) onRefreshHospitals();
+      } else {
+        setMessage({ type: 'error', text: data.message || 'Erro ao renomear hospital.' });
+      }
+    } catch (e) {
+      setMessage({ type: 'error', text: 'Erro de conexão ao renomear hospital.' });
+    }
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -438,26 +489,94 @@ export default function HospitalModal({
                     }`}
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h4 className="font-bold text-white text-base">{h.name}</h4>
-                          {isActive && (
-                            <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-blue-600 text-white flex items-center gap-1">
-                              <Check className="w-3 h-3" /> Ativo Agora
-                            </span>
-                          )}
-                          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
-                            {h.plano?.toUpperCase() || 'PRO'}
-                          </span>
-                        </div>
+                      <div className="flex-1 min-w-0">
+                        {renamingHospitalId === h.id ? (
+                          <form
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              handleSaveRename(h.id);
+                            }}
+                            className="flex flex-col gap-2 pt-1"
+                          >
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <input
+                                type="text"
+                                value={renamingName}
+                                onChange={(e) => setRenamingName(e.target.value)}
+                                placeholder="Nome do Hospital..."
+                                autoFocus
+                                className="bg-slate-900 border border-blue-500 rounded-xl px-3 py-1.5 text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 w-full sm:w-80 shadow-inner"
+                              />
+                              <button
+                                type="submit"
+                                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-md"
+                                title="Salvar nome do hospital"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                                <span>Salvar</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleCancelRename}
+                                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition"
+                                title="Cancelar edição"
+                              >
+                                Cancelar
+                              </button>
+                            </div>
 
-                        <div className="text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-                          {h.cidade && <span className="flex items-center gap-1"><MapPin className="w-3 h-3 text-slate-500" /> {h.cidade}</span>}
-                          {h.cnpj && <span className="font-mono text-slate-500">CNPJ: {h.cnpj}</span>}
-                          <span className="text-blue-400 font-semibold">
-                            📦 {total} equipamentos ({h.checkedCount || 0} conferidos)
-                          </span>
-                        </div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <input
+                                type="text"
+                                value={renamingCity}
+                                onChange={(e) => setRenamingCity(e.target.value)}
+                                placeholder="Cidade / UF (opcional)"
+                                className="bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1 text-xs text-slate-300 focus:outline-none focus:border-slate-500 w-36 sm:w-44"
+                              />
+                              <input
+                                type="text"
+                                value={renamingCnpj}
+                                onChange={(e) => setRenamingCnpj(e.target.value)}
+                                placeholder="CNPJ (opcional)"
+                                className="bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1 text-xs text-slate-300 focus:outline-none focus:border-slate-500 w-36 sm:w-44 font-mono"
+                              />
+                            </div>
+                          </form>
+                        ) : (
+                          <>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="font-bold text-white text-base flex items-center gap-1.5">
+                                <span>{h.name}</span>
+                                {isMaster && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStartRename(h)}
+                                    className="p-1 rounded-lg text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 transition"
+                                    title="Editar nome deste hospital"
+                                  >
+                                    <Edit3 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </h4>
+                              {isActive && (
+                                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-blue-600 text-white flex items-center gap-1">
+                                  <Check className="w-3 h-3" /> Ativo Agora
+                                </span>
+                              )}
+                              <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
+                                {h.plano?.toUpperCase() || 'PRO'}
+                              </span>
+                            </div>
+
+                            <div className="text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                              {h.cidade && <span className="flex items-center gap-1"><MapPin className="w-3 h-3 text-slate-500" /> {h.cidade}</span>}
+                              {h.cnpj && <span className="font-mono text-slate-500">CNPJ: {h.cnpj}</span>}
+                              <span className="text-blue-400 font-semibold">
+                                📦 {total} equipamentos ({h.checkedCount || 0} conferidos)
+                              </span>
+                            </div>
+                          </>
+                        )}
                       </div>
 
                       {/* Action Buttons */}
