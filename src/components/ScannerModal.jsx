@@ -170,15 +170,13 @@ export default function ScannerModal({
 
   // Rótulo da lente ativa exibido no botão flutuante principal
   const currentLensDisplay = useMemo(() => {
-    const backCams = (cameras || []).filter(c => !isFrontCamera(c.label));
-    if (backCams.length > 1) {
-      const idx = backCams.findIndex(c => c.id === selectedCamera);
-      const cam = idx >= 0 ? backCams[idx] : backCams[0];
-      const lensName = getShortLensName(cam, idx >= 0 ? idx : 0);
-      return `${lensName} • ${zoomLevel.toFixed(1)}x`;
+    if (cameras && cameras.length > 1) {
+      const idx = cameras.findIndex(c => c.id === selectedCamera);
+      const cam = idx >= 0 ? cameras[idx] : cameras[0];
+      return getShortLensName(cam, idx >= 0 ? idx : 0);
     }
-    return activeLensLabel;
-  }, [cameras, selectedCamera, activeLensLabel, zoomLevel]);
+    return '📷 Câmera Traseira';
+  }, [cameras, selectedCamera]);
 
   // Modalidades ativas selecionadas para bipar (ex: ['calibracao'], ['preventiva'], ou ['calibracao', 'preventiva'])
   const [selectedModalities, setSelectedModalities] = useState(() => {
@@ -339,56 +337,14 @@ export default function ScannerModal({
     setFocusRing({ x: 0, y: 0, visible: false, status: 'idle' });
     setZoomLevel(1);
 
-    // Descobre as câmeras disponíveis e prioriza a lente principal traseira (1x)
-    Html5Qrcode.getCameras()
-      .then((devices) => {
-        if (!isMounted) return;
-        if (devices && devices.length > 0) {
-          setCameras(devices);
+    // Limpa qualquer chave antiga salva que possa ter ficado presa na câmera frontal
+    try {
+      localStorage.removeItem('calibracheck_preferred_camera');
+    } catch (e) {}
 
-          // 1. Verifica se há uma lente preferida salva pelo técnico anteriormente
-          let preferredId = null;
-          try {
-            preferredId = localStorage.getItem('calibracheck_preferred_camera');
-          } catch (e) {}
-
-          if (preferredId && devices.some(d => d.id === preferredId)) {
-            setSelectedCamera(preferredId);
-            startScanner(preferredId);
-            return;
-          }
-
-          // 2. Procura câmera traseira principal (evitando explicitamente ultrawide ou macro)
-          const backCameras = devices.filter(d => {
-            const label = (d.label || '').toLowerCase();
-            return label.includes('back') || 
-                   label.includes('traseira') ||
-                   label.includes('rear') ||
-                   label.includes('environment') ||
-                   label.includes('0, facing back');
-          });
-
-          // Filtra preferencialmente a principal (sem ultra-wide 0.5x, macro ou depth)
-          // OBS: A câmera 1x padrão chama-se 'wide-angle', NÃO deve ser excluída!
-          const cleanBackCam = backCameras.find(d => {
-            const label = (d.label || '').toLowerCase();
-            return !isUltraWideLens(label) && !label.includes('macro') && !label.includes('depth');
-          }) || backCameras[0] || devices[0];
-
-          if (cleanBackCam) {
-            setSelectedCamera(cleanBackCam.id);
-            startScanner(cleanBackCam.id);
-            return;
-          }
-        }
-        startScanner(null);
-      })
-      .catch((err) => {
-        console.warn('Erro ao listar câmeras, iniciando modo automático:', err);
-        if (isMounted) {
-          startScanner(null);
-        }
-      });
+    // Sempre inicia na CÂMERA TRASEIRA (facingMode: environment)
+    // Isso garante que NUNCA abre a câmera frontal (selfie) por engano!
+    startScanner(null);
 
     return () => {
       isMounted = false;
@@ -448,7 +404,7 @@ export default function ScannerModal({
         }
       } else {
         videoConstraints = {
-          facingMode: { ideal: "environment" },
+          facingMode: "environment",
           width: { ideal: 1920 },
           height: { ideal: 1080 }
         };
@@ -497,13 +453,22 @@ export default function ScannerModal({
             const videoDevices = devices.filter(d => d.kind === 'videoinput');
             if (videoDevices.length > 0) {
               setCameras(videoDevices);
+              setSelectedCamera(prev => {
+                if (prev) return prev;
+                const stream = document.querySelector('#barcode-reader-box video')?.srcObject;
+                const activeTrack = stream?.getVideoTracks()?.[0];
+                const activeId = activeTrack?.getSettings?.()?.deviceId;
+                if (activeId) return activeId;
+                const rear = videoDevices.find(d => !isFrontCamera(d.label)) || videoDevices[0];
+                return rear.id;
+              });
             }
           })
           .catch(() => {});
       }
 
       // ESTRUTURA GOOGLE ML KIT (Android Chrome / Google Play Services Engine):
-      // Utiliza o BarcodeDetector com recorte acelerado por GPU (ROI) da área da mira laser
+      // Leitura automática contínua em tempo real (como no tablet)
       if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
         try {
           const nativeDetector = new window.BarcodeDetector({
@@ -530,25 +495,22 @@ export default function ScannerModal({
               if (videoEl && videoEl.readyState >= 2 && !videoEl.paused) {
                 isNativeDetecting = true;
                 try {
-                  let barcodes = [];
+                  // 1. Detecção nativa ultra-rápida no quadro completo (como no tablet)
+                  let barcodes = await nativeDetector.detect(videoEl);
+
+                  // 2. Se não detectou no quadro todo (ex: código pequeno ou com pouca luz), tenta recorte central ampliado
                   const vw = videoEl.videoWidth;
                   const vh = videoEl.videoHeight;
-
-                  // Recorte Inteligente da Área Central (ROI - 2x magnificado em GPU via createImageBitmap)
-                  if (vw > 400 && vh > 300) {
+                  if ((!barcodes || barcodes.length === 0) && vw > 400 && vh > 300) {
                     try {
-                      const cropW = Math.round(vw * 0.75);
-                      const cropH = Math.round(vh * 0.45);
+                      const cropW = Math.round(vw * 0.80);
+                      const cropH = Math.round(vh * 0.50);
                       const cropX = Math.round((vw - cropW) / 2);
                       const cropY = Math.round((vh - cropH) / 2);
                       const roiBitmap = await createImageBitmap(videoEl, cropX, cropY, cropW, cropH);
                       barcodes = await nativeDetector.detect(roiBitmap);
                       roiBitmap.close();
-                    } catch (cropErr) {
-                      barcodes = await nativeDetector.detect(videoEl);
-                    }
-                  } else {
-                    barcodes = await nativeDetector.detect(videoEl);
+                    } catch (cropErr) {}
                   }
 
                   if (barcodes && barcodes.length > 0) {
@@ -943,23 +905,22 @@ export default function ScannerModal({
     setTimeout(() => setFocusFeedbackText(''), 2500);
   };
 
-  // Troca de lente inteligente: alterna sensor físico (se multi-deviceId) OU alterna lente óptica (se câmera lógica Android)
+  // Troca de câmera real: alterna entre todos os sensores físicos disponíveis (Traseira 1 -> Traseira 2 -> Frontal)
   const handleCycleLensOrCamera = async () => {
-    const backCameras = (cameras || []).filter(c => !isFrontCamera(c.label));
+    if (isStartingRef.current || !cameras || cameras.length === 0) return;
 
-    // Opção A: O aparelho expõe múltiplos sensores físicos traseiros com IDs separados (ex: Xiaomi, Motorola, Samsung multi-ID)
-    if (backCameras.length > 1) {
-      const currentIndex = backCameras.findIndex(c => c.id === selectedCamera);
-      const nextIndex = (currentIndex + 1) % backCameras.length;
-      const nextCam = backCameras[nextIndex];
+    // Se temos mais de 1 câmera física detectada (múltiplas traseiras ou traseira + frontal):
+    if (cameras.length > 1) {
+      const currentIndex = cameras.findIndex(c => c.id === selectedCamera);
+      const nextIndex = (currentIndex + 1) % cameras.length;
+      const nextCam = cameras[nextIndex];
       if (nextCam) {
         await handleCameraChange(nextCam.id);
         return;
       }
     }
 
-    // Opção B: O aparelho agrupa as lentes em uma câmera lógica (ex: Samsung Galaxy, Google Pixel)
-    // Cicla entre os presets ópticos físicos (1.0x Principal -> 1.5x -> 2.0x Telefoto -> 3.0x -> 1.0x)
+    // Se o aparelho expõe apenas 1 sensor, cicla os níveis de zoom
     const currentIndex = opticalPresets.findIndex(p => Math.abs(p.value - zoomLevel) < 0.15);
     const nextIndex = (currentIndex + 1) % opticalPresets.length;
     const nextPreset = opticalPresets[nextIndex];
@@ -1682,16 +1643,6 @@ export default function ScannerModal({
                     🔢 Série
                   </button>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={handleTriggerNativeScanner}
-                  className="px-2.5 py-1 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white border border-emerald-400/60 text-[11px] flex items-center gap-1.5 font-bold shadow-md shadow-emerald-600/25 transition active:scale-95 shrink-0"
-                  title="Abrir o leitor ou câmera oficial do celular (Google Code Scanner / Samsung / Motorola / Xiaomi) com foco nativo"
-                >
-                  <Camera className="w-3.5 h-3.5 text-white" />
-                  <span>📸 Câmera Nativa</span>
-                </button>
               </div>
             </div>
 
@@ -1781,112 +1732,97 @@ export default function ScannerModal({
             </div>
           )}
 
-          {/* Barra Superior de Controles na Câmera: Alternador 1D/2D e Troca Rápida de Lente */}
-          <div className="absolute top-2.5 left-2.5 z-20 flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
-            {/* Alternador 1D/2D */}
-            <button
-              type="button"
-              onClick={() => setReticleType(r => r === '1d' ? '2d' : '1d')}
-              className={`px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 border shadow-lg transition active:scale-95 ${
-                reticleType === '1d'
-                  ? 'bg-red-500/25 text-red-200 border-red-500/50 shadow-red-500/20'
-                  : 'bg-blue-500/25 text-blue-200 border-blue-500/50 shadow-blue-500/20'
-              }`}
-              title="Alternar entre mira para Código de Barras (1D) e mira para QR Code (2D)"
-            >
-              <ScanLine className="w-3 h-3" />
-              <span>{reticleType === '1d' ? '1D Laser' : '2D QR'}</span>
-            </button>
+          {/* Barra Superior Unificada do Viewfinder: NÃO SOBREPÕE */}
+          <div className="absolute top-2.5 left-2.5 right-2.5 z-20 flex items-center justify-between gap-1.5 pointer-events-auto" onClick={e => e.stopPropagation()}>
+            {/* Controles da Esquerda: Alternador 1D/2D e Troca Física de Câmera */}
+            <div className="flex items-center gap-1.5 min-w-0">
+              <button
+                type="button"
+                onClick={() => setReticleType(r => r === '1d' ? '2d' : '1d')}
+                className={`px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 border shadow-lg transition active:scale-95 shrink-0 ${
+                  reticleType === '1d'
+                    ? 'bg-red-500/25 text-red-200 border-red-500/50 shadow-red-500/20'
+                    : 'bg-blue-500/25 text-blue-200 border-blue-500/50 shadow-blue-500/20'
+                }`}
+                title="Alternar entre mira para Código de Barras (1D) e mira para QR Code (2D)"
+              >
+                <ScanLine className="w-3 h-3" />
+                <span>{reticleType === '1d' ? '1D Laser' : '2D QR'}</span>
+              </button>
 
-            {/* Botão de Troca Rápida de Lente Física com estilo Pro */}
-            <button
-              type="button"
-              onClick={handleCycleLensOrCamera}
-              className="px-3 py-1.5 rounded-full text-[11px] font-black flex items-center gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white border border-blue-400/80 shadow-lg shadow-blue-500/30 transition active:scale-95"
-              title="Toque para alternar fisicamente entre a Lente Principal (1x), Telefoto (2x) e Ultra-Wide (0.5x)"
-            >
-              <SwitchCamera className="w-3.5 h-3.5 text-white shrink-0" />
-              <span className="max-w-[130px] truncate">{currentLensDisplay}</span>
-            </button>
+              <button
+                type="button"
+                onClick={handleCycleLensOrCamera}
+                className="px-2.5 py-1 rounded-full text-[11px] font-black flex items-center gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white border border-blue-400/80 shadow-lg shadow-blue-500/30 transition active:scale-95 truncate max-w-[150px]"
+                title="Toque para alternar fisicamente para outra câmera do celular"
+              >
+                <SwitchCamera className="w-3.5 h-3.5 text-white shrink-0" />
+                <span className="truncate">{currentLensDisplay}</span>
+              </button>
+            </div>
+
+            {/* Controles da Direita: Foco e Lanterna */}
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                onClick={handleTriggerCenterFocus}
+                className="p-1.5 rounded-full bg-slate-900/90 hover:bg-slate-800 text-amber-300 font-bold text-xs flex items-center gap-1 border border-amber-500/40 shadow-lg transition active:scale-95"
+                title="Focar câmera agora (Recalibrar foco de hardware)"
+              >
+                <Crosshair className="w-3.5 h-3.5 text-amber-400" />
+              </button>
+
+              {hasTorch && (
+                <button
+                  onClick={toggleTorch}
+                  className={`p-1.5 rounded-full flex items-center justify-center shadow-lg transition border ${
+                    torchOn 
+                      ? 'bg-amber-400 text-slate-950 font-bold border-amber-300 ring-2 ring-amber-400/50 shadow-amber-400/30' 
+                      : 'bg-slate-900/90 text-white hover:bg-slate-800 border-slate-700/80'
+                  }`}
+                  title={torchOn ? "Desligar lanterna" : "Ligar lanterna"}
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
 
-          {/* Botões Flutuantes Rápidos à Direita: Seletor Óptico Direto, Focar e Lanterna */}
-          <div className="absolute top-2.5 right-2.5 z-20 flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
-            {/* Seletor Rápido de Lentes Ópticas (Presets de Hardware) */}
-            <div className="flex items-center bg-slate-900/90 p-0.5 rounded-full border border-slate-700/80 shadow-lg">
+          {/* Barra Flutuante de Zoom Dedicada (Linha 2, Centralizada e sem conflito) */}
+          <div className="absolute top-11 left-1/2 -translate-x-1/2 z-20 pointer-events-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center bg-slate-950/85 backdrop-blur-md p-0.5 rounded-full border border-slate-700/80 shadow-xl">
               {opticalPresets.map((preset) => {
                 const isActive = Math.abs(preset.value - zoomLevel) < 0.15;
                 return (
                   <button
                     key={preset.label}
                     onClick={() => applyOpticalLensZoom(preset.value, preset.fullName)}
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition flex items-center gap-0.5 ${
+                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold transition flex items-center gap-0.5 ${
                       isActive
                         ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-400'
                         : 'text-slate-400 hover:text-white'
                     }`}
-                    title={`Ativar ${preset.fullName} (Sensor de Hardware)`}
+                    title={`Ativar ${preset.fullName}`}
                   >
                     <span>{preset.label}</span>
                   </button>
                 );
               })}
             </div>
-
-            {/* Botão Dedicado de Focar (Dispara Autofoco de Hardware) */}
-            <button
-              onClick={handleTriggerCenterFocus}
-              className="p-1.5 rounded-full bg-slate-900/85 hover:bg-slate-800 text-amber-300 font-bold text-xs flex items-center gap-1 border border-amber-500/40 shadow-lg transition active:scale-95"
-              title="Focar câmera agora (Recalibrar foco de hardware)"
-            >
-              <Crosshair className="w-3.5 h-3.5 text-amber-400" />
-            </button>
-
-            {/* Lanterna */}
-            {hasTorch && (
-              <button
-                onClick={toggleTorch}
-                className={`p-1.5 rounded-full flex items-center justify-center shadow-lg transition border ${
-                  torchOn 
-                    ? 'bg-amber-400 text-slate-950 font-bold border-amber-300 ring-2 ring-amber-400/50 shadow-amber-400/30' 
-                    : 'bg-slate-900/85 text-white hover:bg-slate-800 border-slate-700/80'
-                }`}
-                title={torchOn ? "Desligar lanterna" : "Ligar lanterna"}
-              >
-                <Zap className="w-3.5 h-3.5" />
-              </button>
-            )}
           </div>
 
-          {/* Barra Inferior do Viewfinder: Dica + Indicador Google AI + Botão Câmera Nativa */}
+          {/* Barra Inferior do Viewfinder: Dica + Indicador Google AI */}
           {scanning && !cameraError && (
             <div className="absolute bottom-2.5 left-2.5 right-2.5 z-20 flex items-center justify-between pointer-events-none gap-1.5">
-              <div className="flex items-center gap-1.5 truncate max-w-[65%] xs:max-w-none">
-                <div className="bg-slate-950/85 backdrop-blur-md text-slate-300 border border-slate-800 px-2.5 py-1 rounded-full text-[10px] font-medium shadow-lg flex items-center gap-1.5 truncate">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
-                  <span className="truncate">Afaste a 20-30cm para foco perfeito</span>
-                </div>
-                {typeof window !== 'undefined' && 'BarcodeDetector' in window && (
-                  <div className="hidden xs:flex bg-blue-950/85 backdrop-blur-md text-blue-200 border border-blue-500/60 px-2 py-0.5 rounded-full text-[9px] font-bold shadow-lg items-center gap-1 shrink-0" title="Motor Google ML Kit acelerado por hardware">
-                    <span className="text-[10px]">⚡</span>
-                    <span>Google AI</span>
-                  </div>
-                )}
+              <div className="bg-slate-950/85 backdrop-blur-md text-slate-300 border border-slate-800 px-3 py-1 rounded-full text-[10px] font-medium shadow-lg flex items-center gap-1.5 truncate">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
+                <span className="truncate">Afaste a 20-30cm para foco perfeito</span>
               </div>
-
-              {/* Botão Flutuante de Ação Rápida: Abrir Câmera Oficial do Android */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleTriggerNativeScanner();
-                }}
-                className="pointer-events-auto px-3 py-1 rounded-full bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 text-white font-extrabold text-[11px] shadow-xl shadow-emerald-950/70 border border-emerald-400/80 flex items-center gap-1.5 transition active:scale-95 shrink-0"
-                title="Abrir o leitor ou câmera oficial do celular (Google Code Scanner / Samsung / Motorola / Xiaomi)"
-              >
-                <Camera className="w-3.5 h-3.5 text-white animate-pulse" />
-                <span>📸 Foto HD</span>
-              </button>
+              {typeof window !== 'undefined' && 'BarcodeDetector' in window && (
+                <div className="bg-blue-950/85 backdrop-blur-md text-blue-200 border border-blue-500/60 px-2.5 py-1 rounded-full text-[9px] font-bold shadow-lg flex items-center gap-1 shrink-0" title="Motor Google ML Kit acelerado por hardware">
+                  <span className="text-[10px]">⚡</span>
+                  <span>Google AI</span>
+                </div>
+              )}
             </div>
           )}
 
