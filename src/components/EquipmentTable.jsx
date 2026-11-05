@@ -28,7 +28,8 @@ import {
   Zap,
   LayoutGrid,
   Settings,
-  Palette
+  Palette,
+  Package
 } from 'lucide-react';
 import { extractCleanSerialNumber, parseCompositeBarcode } from '../utils/gs1Parser';
 import { MODALITIES, isEquipmentChecked, getCheckMeta } from '../utils/modalities';
@@ -148,6 +149,43 @@ export default function EquipmentTable({
 
     return result;
   }, [equipments, activeFilter, selectedSector, searchQuery, sortField, sortAsc, activeModality]);
+
+  // Contadores dinâmicos para as abas de seleção do tablet e desktop
+  const filterCounts = useMemo(() => {
+    let checkedCount = 0;
+    let pendingCount = 0;
+    let externaCount = 0;
+    let expiredCount = 0;
+
+    equipments.forEach(e => {
+      const isChk = isEquipmentChecked(e, activeModality);
+      if (isChk) checkedCount++;
+      else pendingCount++;
+
+      if (Boolean(e.check_externa)) externaCount++;
+
+      const s = String(e.statusCalibracao || '').toLowerCase();
+      if (s.includes('vencid') || s.includes('alerta') || s.includes('proximo') || s.includes('a vencer')) {
+        expiredCount++;
+      }
+    });
+
+    return {
+      todos: equipments.length,
+      pendentes: pendingCount,
+      checados: checkedCount,
+      externa: externaCount,
+      vencidos: expiredCount
+    };
+  }, [equipments, activeModality]);
+
+  const filterTabs = [
+    { id: 'todos', label: 'Todos', icon: Layers, count: filterCounts.todos, activeColor: 'bg-blue-600 text-white shadow-blue-500/25' },
+    { id: 'pendentes', label: 'Pendentes', icon: Clock, count: filterCounts.pendentes, activeColor: 'bg-amber-600 text-white shadow-amber-500/25' },
+    { id: 'checados', label: 'Já Bipados', icon: CheckCircle2, count: filterCounts.checados, activeColor: 'bg-emerald-600 text-white shadow-emerald-500/25' },
+    { id: 'externa', label: 'Manut. Externa', icon: Package, count: filterCounts.externa, activeColor: 'bg-purple-600 text-white shadow-purple-500/25' },
+    { id: 'vencidos', label: 'Vencidos', icon: AlertCircle, count: filterCounts.vencidos, activeColor: 'bg-rose-600 text-white shadow-rose-500/25' }
+  ];
 
   const toggleSort = (field) => {
     if (sortField === field) {
