@@ -121,17 +121,47 @@ export default function ScannerModal({
     setCameraError('');
     setLastScannedFeedback(null);
     setFocusRing({ x: 0, y: 0, visible: false, status: 'idle' });
+    setZoomLevel(1);
 
-    // Pequeno intervalo de 150ms para o container DOM estar 100% montado e evitar conflito de hardware
-    const timer = setTimeout(() => {
-      if (isMounted) {
-        startScanner(selectedCamera || null);
-      }
-    }, 150);
+    // Descobre as câmeras disponíveis e prioriza a lente principal traseira (1x)
+    Html5Qrcode.getCameras()
+      .then((devices) => {
+        if (!isMounted) return;
+        if (devices && devices.length > 0) {
+          setCameras(devices);
+          // Procura câmera traseira principal (evitando ultrawide ou macro se possível)
+          const backCameras = devices.filter(d => {
+            const label = (d.label || '').toLowerCase();
+            return label.includes('back') || 
+                   label.includes('traseira') ||
+                   label.includes('rear') ||
+                   label.includes('environment') ||
+                   label.includes('0, facing back');
+          });
+
+          // Filtra preferencialmente a principal (sem 'wide', 'ultra', 'macro', 'depth')
+          const mainBackCam = backCameras.find(d => {
+            const label = (d.label || '').toLowerCase();
+            return !label.includes('wide') && !label.includes('ultra') && !label.includes('macro') && !label.includes('depth');
+          }) || backCameras[0] || devices[0];
+
+          if (mainBackCam) {
+            setSelectedCamera(mainBackCam.id);
+            startScanner(mainBackCam.id);
+            return;
+          }
+        }
+        startScanner(null);
+      })
+      .catch((err) => {
+        console.warn('Erro ao listar câmeras, iniciando modo automático:', err);
+        if (isMounted) {
+          startScanner(null);
+        }
+      });
 
     return () => {
       isMounted = false;
-      clearTimeout(timer);
       stopScanner();
     };
   }, [isOpen]);
@@ -144,11 +174,11 @@ export default function ScannerModal({
 
     await stopScanner(true);
 
-    // Pausa preventiva de 120ms para liberação completa do hardware da câmera no mobile
-    await new Promise(r => setTimeout(r, 120));
+    // Pausa preventiva de 100ms para liberação completa do hardware da câmera no mobile
+    await new Promise(r => setTimeout(r, 100));
 
     // Garante que o elemento DOM do visualizador já está presente
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 8; i++) {
       if (document.getElementById('barcode-reader-box')) break;
       await new Promise(r => setTimeout(r, 50));
     }
@@ -163,44 +193,47 @@ export default function ScannerModal({
       });
       html5QrCodeRef.current = html5QrCode;
 
-      // Tier 1 (retry 0): HD ideal com aspect ratio flexível (evita OverconstrainedError em modo retrato)
-      // Tier 2 (retry 1): facingMode simples sem dimensões rígidas
-      // Tier 3 (retry 2): fallback permissivo
-      let cameraConfig;
+      // Restrições de vídeo Full HD (1080p ideal) sem forçar aspect ratio fixo (suporta modo retrato e paisagem perfeitamente)
       let videoConstraints;
-
-      if (cameraId) {
-        cameraConfig = { deviceId: { exact: cameraId } };
-        videoConstraints = { deviceId: { exact: cameraId } };
-      } else if (retryCount === 0) {
-        cameraConfig = { facingMode: "environment" };
+      if (retryCount === 0) {
         videoConstraints = {
           facingMode: { ideal: "environment" },
-          width: { ideal: 1280 },
-          aspectRatio: { ideal: 1.7777777778 }
+          ...(cameraId ? { deviceId: { exact: cameraId } } : {}),
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          advanced: [{ focusMode: "continuous" }]
         };
       } else if (retryCount === 1) {
-        cameraConfig = { facingMode: "environment" };
-        videoConstraints = { facingMode: "environment" };
+        videoConstraints = {
+          facingMode: { ideal: "environment" },
+          ...(cameraId ? { deviceId: { exact: cameraId } } : {}),
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          advanced: [{ focusMode: "continuous" }]
+        };
       } else {
-        cameraConfig = { facingMode: "environment" };
-        videoConstraints = {};
+        videoConstraints = {
+          facingMode: "environment"
+        };
       }
 
       const config = {
-        fps: 25,
+        fps: 30, // 30 FPS para leitura instantânea e sem lag
         videoConstraints: Object.keys(videoConstraints).length > 0 ? videoConstraints : undefined,
         qrbox: (viewfinderWidth, viewfinderHeight) => {
-          // Ampla área horizontal cobrindo 98% da largura útil sem cortar códigos 1D longos
-          const width = Math.floor(viewfinderWidth * 0.98);
-          const height = Math.floor(Math.min(viewfinderHeight * 0.75, 340));
+          // Ampla área horizontal cobrindo 96% da largura útil sem cortar códigos 1D longos
+          const width = Math.floor(viewfinderWidth * 0.96);
+          const height = Math.floor(Math.min(viewfinderHeight * 0.85, 360));
           return {
-            width: Math.max(width, 260),
-            height: Math.max(height, 130)
+            width: Math.max(width, 280),
+            height: Math.max(height, 150)
           };
         },
         disableFlip: true,
       };
+
+      // html5QrCode.start aceita cameraId como string simples OU objeto de constraints
+      const cameraConfig = cameraId ? cameraId : { facingMode: "environment" };
 
       await html5QrCode.start(
         cameraConfig,
@@ -218,7 +251,7 @@ export default function ScannerModal({
       setCameraError('');
       isStartingRef.current = false;
 
-      // Com o scanner já aberto e permissão concedida, lista os dispositivos de forma segura sem conflito
+      // Atualiza lista de câmeras conectadas caso ainda não carregadas
       if (navigator.mediaDevices?.enumerateDevices) {
         navigator.mediaDevices.enumerateDevices()
           .then((devices) => {
@@ -230,7 +263,7 @@ export default function ScannerModal({
           .catch(() => {});
       }
 
-      // Inicia loop ultra-rápido de detecção nativa por hardware (Android Chrome / Google ML Kit)
+      // Inicia loop ultra-rápido de detecção nativa por hardware (Android Chrome / Google ML Kit) com trava de concorrência
       if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
         try {
           const nativeDetector = new window.BarcodeDetector({
@@ -249,21 +282,28 @@ export default function ScannerModal({
           });
 
           nativeDetectorActiveRef.current = true;
+          let isNativeDetecting = false;
           const runNativeLoop = async () => {
             if (!nativeDetectorActiveRef.current) return;
-            const videoEl = document.querySelector('#barcode-reader-box video');
-            if (videoEl && videoEl.readyState >= 2 && !videoEl.paused) {
-              try {
-                const barcodes = await nativeDetector.detect(videoEl);
-                if (barcodes && barcodes.length > 0) {
-                  for (const b of barcodes) {
-                    if (b.rawValue) {
-                      handleDecoded(b.rawValue);
-                      break;
+            if (!isNativeDetecting) {
+              const videoEl = document.querySelector('#barcode-reader-box video');
+              if (videoEl && videoEl.readyState >= 2 && !videoEl.paused) {
+                isNativeDetecting = true;
+                try {
+                  const barcodes = await nativeDetector.detect(videoEl);
+                  if (barcodes && barcodes.length > 0) {
+                    for (const b of barcodes) {
+                      if (b.rawValue) {
+                        handleDecoded(b.rawValue);
+                        break;
+                      }
                     }
                   }
+                } catch (e) {
+                } finally {
+                  isNativeDetecting = false;
                 }
-              } catch (e) {}
+              }
             }
             if (nativeDetectorActiveRef.current) {
               nativeDetectorRafRef.current = requestAnimationFrame(runNativeLoop);
@@ -276,10 +316,9 @@ export default function ScannerModal({
         }
       }
 
-      // Ativa foco contínuo e zoom 1.5x por padrão para afastar do limite macro
+      // Ativa foco contínuo e calibração no centro da lente (1.0x nativo sem pixelização digital)
       setTimeout(() => {
-        applyHardwareFocus();
-        applySpecificZoom(1.5);
+        applyHardwareFocus(0.5, 0.5);
       }, 400);
 
       // Verifica capacidades de lanterna e zoom óptico/digital
@@ -301,8 +340,8 @@ export default function ScannerModal({
       console.warn(`Tentativa ${retryCount + 1} ao iniciar câmera:`, err);
 
       // Fallback em cascata suave antes de exibir mensagem de erro
-      if (retryCount < 3) {
-        const delay = (retryCount + 1) * 250;
+      if (retryCount < 2) {
+        const delay = (retryCount + 1) * 200;
         console.log(`Tentando fallback de câmera tier ${retryCount + 2} em ${delay}ms...`);
         await new Promise(r => setTimeout(r, delay));
         return startScanner(null, retryCount + 1);

@@ -247,7 +247,7 @@ export default function Navbar({
             {isMaster && (
               <button
                 onClick={onOpenMasterPanel}
-                className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl text-xs font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 transition shadow-sm"
+                className="hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl text-xs font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 transition shadow-sm"
                 title="Painel Master para gerenciar cadastros de hospitais e operadores"
               >
                 <Sparkles className="w-3.5 h-3.5 text-amber-500" />
