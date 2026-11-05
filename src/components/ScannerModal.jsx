@@ -263,8 +263,8 @@ export default function ScannerModal({
   }, [activeModality]);
 
   // Altura customizável e arrastável: Câmera vs Lista de Bombas
-  // cameraHeightPercent: Padrão profissional 58% (visualização ampla do visor igual ao app Barcode Scanner)
-  const [cameraHeightPercent, setCameraHeightPercent] = useState(58);
+  // cameraHeightPercent: Padrão mobile 30% para priorizar a visualização imediata da lista de bombas bipadas
+  const [cameraHeightPercent, setCameraHeightPercent] = useState(30);
   // Layout no Tablet (Tela dividida Lado a Lado ou Empilhada)
   const [isTabletSplit, setIsTabletSplit] = useState(true);
   const [isDraggingDivider, setIsDraggingDivider] = useState(false);
@@ -1490,46 +1490,34 @@ export default function ScannerModal({
         className="bg-slate-900 border border-slate-800 w-full h-full sm:h-[94vh] sm:max-w-3xl md:max-w-5xl lg:max-w-6xl md:h-[92vh] sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col select-none"
       >
         
-        {/* Top Header */}
-        <div className="px-3.5 py-2.5 sm:px-4 sm:py-3 border-b border-slate-800 flex items-center justify-between bg-slate-900/95 shrink-0 safe-area-top">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-blue-600/20 text-blue-400 flex items-center justify-center border border-blue-500/30 shrink-0">
-              <Camera className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400 animate-pulse" />
+        {/* Top Header Compacto */}
+        <div className="px-3 py-2 sm:px-4 sm:py-2.5 border-b border-slate-800 flex items-center justify-between bg-slate-900/95 shrink-0 safe-area-top">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-blue-600/20 text-blue-400 flex items-center justify-center border border-blue-500/30 shrink-0">
+              <Camera className="w-4 h-4 text-blue-400" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-xs sm:text-base font-bold text-white leading-tight">
-                  Leitor de Alta Performance (1080p)
+              <div className="flex items-center gap-1.5">
+                <h3 className="text-xs sm:text-sm font-bold text-white leading-tight">
+                  Leitor 50MP Principal
                 </h3>
-                <span className="text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hidden xs:flex items-center gap-1">
+                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
-                  Ao Vivo 30fps
+                  Ao Vivo
                 </span>
               </div>
-              <p className="text-[10px] sm:text-[11px] text-slate-400">
-                Toque na tela para focar • Fila de bombas bipadas otimizada para tablet
-              </p>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5">
-            {/* Tablet Layout Mode Switcher (Lado a Lado vs Empilhado) */}
+            {/* Tablet Layout Mode Switcher */}
             <button
               onClick={() => setIsTabletSplit(!isTabletSplit)}
-              className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700/80 transition shadow-xs"
-              title={isTabletSplit ? "Mudar para visualização empilhada" : "Mudar para visualização lado a lado (Tablet)"}
+              className="hidden md:flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700/80 transition"
+              title={isTabletSplit ? "Mudar para empilhado" : "Mudar para lado a lado"}
             >
-              {isTabletSplit ? (
-                <>
-                  <Columns2 className="w-3.5 h-3.5 text-blue-400" />
-                  <span>Lado a Lado</span>
-                </>
-              ) : (
-                <>
-                  <Rows2 className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Empilhado</span>
-                </>
-              )}
+              {isTabletSplit ? <Columns2 className="w-3.5 h-3.5 text-blue-400" /> : <Rows2 className="w-3.5 h-3.5 text-slate-400" />}
+              <span>{isTabletSplit ? "Lado a Lado" : "Empilhado"}</span>
             </button>
 
             {/* View Mode Toggle */}
@@ -1537,21 +1525,21 @@ export default function ScannerModal({
               onClick={() => {
                 if (viewMode === 'full_camera') {
                   setViewMode('split');
-                  setCameraHeightPercent(38);
+                  setCameraHeightPercent(28);
                 } else {
                   setViewMode('full_camera');
-                  setCameraHeightPercent(70);
+                  setCameraHeightPercent(60);
                 }
               }}
-              className="p-1.5 sm:p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition"
-              title={viewMode === 'full_camera' ? "Dividir tela com a lista" : "Expandir câmera"}
+              className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition"
+              title={viewMode === 'full_camera' ? "Dividir tela com lista" : "Expandir câmera"}
             >
               {viewMode === 'full_camera' ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
             </button>
 
             <button
               onClick={onClose}
-              className="p-1.5 sm:p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition"
+              className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition"
               title="Fechar leitor"
             >
               <X className="w-5 h-5" />
@@ -1560,239 +1548,125 @@ export default function ScannerModal({
         </div>
 
         {/* ============================================================
-            SELETOR EXATO DE TIPOS A BIPAR (Calibração, Preventiva, TSE ou Ambos)
+            BARRA DE CONTROLE COMPACTA: MODALIDADE + ALVO + FILA
         ============================================================ */}
-        <div className="px-3 py-2 bg-slate-950 border-b border-slate-800/80 flex flex-col gap-1.5 shrink-0">
-          <div className="flex items-center justify-between text-xs flex-wrap gap-1">
-            <span className="text-[10px] sm:text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
-              <SlidersHorizontal className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-              <span>Bipar para:</span>
-            </span>
-
-            {/* Presets Rápidos */}
-            <div className="flex items-center gap-1 flex-wrap">
-              <button
-                type="button"
-                onClick={() => handleSetExactModalities(['calibracao'])}
-                className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition flex items-center gap-1 ${
-                  selectedModalities.length === 1 && selectedModalities.includes('calibracao')
-                    ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-400'
-                    : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-                }`}
-                title="Bipar exclusivamente Calibração Metrológica"
-              >
-                <span>🎯 Somente Calibração</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleSetExactModalities(['preventiva'])}
-                className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition flex items-center gap-1 ${
-                  selectedModalities.length === 1 && selectedModalities.includes('preventiva')
-                    ? 'bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-400'
-                    : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-                }`}
-                title="Bipar exclusivamente Manutenção Preventiva"
-              >
-                <span>🔧 Somente Preventiva</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleSetExactModalities(['calibracao', 'preventiva'])}
-                className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition flex items-center gap-1 ${
-                  selectedModalities.length === 2 && selectedModalities.includes('calibracao') && selectedModalities.includes('preventiva')
-                    ? 'bg-gradient-to-r from-blue-600 to-emerald-600 text-white shadow-sm ring-1 ring-teal-400'
-                    : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-                }`}
-                title="Bipar Calibração + Preventiva juntas no mesmo bip"
-              >
-                <span>🎯+🔧 Calibração + Prev</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleSetExactModalities(['calibracao', 'preventiva', 'seguranca'])}
-                className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition flex items-center gap-1 ${
-                  selectedModalities.length === 3 && !selectedModalities.includes('externa')
-                    ? 'bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-400'
-                    : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-                }`}
-                title="Bipar todos os 3 serviços de uma vez só"
-              >
-                <span>📋 Todos (3)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleSetExactModalities(['externa'])}
-                className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition flex items-center gap-1 ${
-                  selectedModalities.length === 1 && selectedModalities.includes('externa')
-                    ? 'bg-purple-600 text-white shadow-sm ring-1 ring-purple-400'
-                    : 'bg-purple-950/40 text-purple-300 hover:text-white border border-purple-800/80'
-                }`}
-                title="Bipar como Manutenção Externa (calibração e conserto por equipe terceirizada)"
-              >
-                <span>📦 Manutenção Externa</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Chips / Toggles Individuais */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+        <div className="px-2.5 py-1.5 bg-slate-950 border-b border-slate-800/80 flex items-center justify-between gap-1.5 shrink-0 overflow-x-auto scrollbar-none">
+          {/* Seletor de Modalidade a Bipar */}
+          <div className="flex items-center gap-1 overflow-x-auto scrollbar-none shrink-0">
+            <span className="text-[10px] font-bold text-slate-400 hidden sm:inline">Bipar:</span>
             <button
               type="button"
-              onClick={() => handleToggleModality('calibracao')}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold transition border shrink-0 ${
-                selectedModalities.includes('calibracao')
-                  ? 'bg-blue-600/20 text-blue-300 border-blue-500/50 shadow-xs'
-                  : 'bg-slate-900/60 text-slate-500 border-slate-800 hover:text-slate-400'
+              onClick={() => handleSetExactModalities(['calibracao'])}
+              className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition flex items-center gap-1 shrink-0 ${
+                selectedModalities.length === 1 && selectedModalities.includes('calibracao')
+                  ? 'bg-blue-600 text-white shadow-xs ring-1 ring-blue-400'
+                  : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
               }`}
+              title="Calibração Metrológica"
             >
-              <div className={`w-3.5 h-3.5 rounded flex items-center justify-center border text-[9px] font-black ${
-                selectedModalities.includes('calibracao') ? 'bg-blue-600 border-blue-400 text-white' : 'border-slate-700 bg-slate-950'
-              }`}>
-                {selectedModalities.includes('calibracao') ? '✓' : ''}
-              </div>
               <span>🎯 Calibração</span>
             </button>
 
             <button
               type="button"
-              onClick={() => handleToggleModality('preventiva')}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold transition border shrink-0 ${
-                selectedModalities.includes('preventiva')
-                  ? 'bg-emerald-600/20 text-emerald-300 border-emerald-500/50 shadow-xs'
-                  : 'bg-slate-900/60 text-slate-500 border-slate-800 hover:text-slate-400'
+              onClick={() => handleSetExactModalities(['preventiva'])}
+              className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition flex items-center gap-1 shrink-0 ${
+                selectedModalities.length === 1 && selectedModalities.includes('preventiva')
+                  ? 'bg-emerald-600 text-white shadow-xs ring-1 ring-emerald-400'
+                  : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
               }`}
+              title="Manutenção Preventiva"
             >
-              <div className={`w-3.5 h-3.5 rounded flex items-center justify-center border text-[9px] font-black ${
-                selectedModalities.includes('preventiva') ? 'bg-emerald-600 border-emerald-400 text-white' : 'border-slate-700 bg-slate-950'
-              }`}>
-                {selectedModalities.includes('preventiva') ? '✓' : ''}
-              </div>
               <span>🔧 Preventiva</span>
             </button>
 
             <button
               type="button"
-              onClick={() => handleToggleModality('seguranca')}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold transition border shrink-0 ${
-                selectedModalities.includes('seguranca')
-                  ? 'bg-amber-600/20 text-amber-300 border-amber-500/50 shadow-xs'
-                  : 'bg-slate-900/60 text-slate-500 border-slate-800 hover:text-slate-400'
+              onClick={() => handleSetExactModalities(['calibracao', 'preventiva'])}
+              className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition flex items-center gap-1 shrink-0 ${
+                selectedModalities.length === 2 && selectedModalities.includes('calibracao') && selectedModalities.includes('preventiva')
+                  ? 'bg-gradient-to-r from-blue-600 to-emerald-600 text-white shadow-xs ring-1 ring-teal-400'
+                  : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
               }`}
+              title="Calibração + Preventiva"
             >
-              <div className={`w-3.5 h-3.5 rounded flex items-center justify-center border text-[9px] font-black ${
-                selectedModalities.includes('seguranca') ? 'bg-amber-600 border-amber-400 text-white' : 'border-slate-700 bg-slate-950'
-              }`}>
-                {selectedModalities.includes('seguranca') ? '✓' : ''}
-              </div>
-              <span>⚡ Seg. Elétrica</span>
+              <span>🎯+🔧 Ambos</span>
             </button>
 
             <button
               type="button"
-              onClick={() => handleToggleModality('externa')}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold transition border shrink-0 ${
-                selectedModalities.includes('externa')
-                  ? 'bg-purple-600/25 text-purple-300 border-purple-500/60 shadow-xs ring-1 ring-purple-500/40'
-                  : 'bg-slate-900/60 text-slate-500 border-slate-800 hover:text-purple-300'
+              onClick={() => handleSetExactModalities(['externa'])}
+              className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition flex items-center gap-1 shrink-0 ${
+                selectedModalities.length === 1 && selectedModalities.includes('externa')
+                  ? 'bg-purple-600 text-white shadow-xs ring-1 ring-purple-400'
+                  : 'bg-slate-900 text-purple-300 hover:text-white border border-slate-800'
               }`}
-              title="Equipamento para envio à manutenção externa terceirizada"
+              title="Manutenção Externa"
             >
-              <div className={`w-3.5 h-3.5 rounded flex items-center justify-center border text-[9px] font-black ${
-                selectedModalities.includes('externa') ? 'bg-purple-600 border-purple-400 text-white' : 'border-slate-700 bg-slate-950'
-              }`}>
-                {selectedModalities.includes('externa') ? '✓' : ''}
-              </div>
-              <span>📦 Manut. Externa</span>
+              <span>📦 Externa</span>
             </button>
+          </div>
+
+          {/* Alvo e Modo */}
+          <div className="flex items-center gap-1 shrink-0">
+            <div className="flex items-center bg-slate-900 p-0.5 rounded-lg border border-slate-800 text-[10px]">
+              <button
+                onClick={() => setSearchTarget(t => t === 'all' ? 'idec' : t === 'idec' ? 'serie' : 'all')}
+                className={`px-2 py-0.5 rounded font-bold transition ${
+                  searchTarget === 'all' ? 'text-blue-400' : searchTarget === 'idec' ? 'text-amber-400' : 'text-purple-400'
+                }`}
+                title="Alternar alvo de busca: Auto / IDEC / Série"
+              >
+                <span>🔍 {searchTarget === 'all' ? 'Auto' : searchTarget === 'idec' ? 'IDEC' : 'Série'}</span>
+              </button>
+            </div>
+
+            <div className="flex items-center bg-slate-900 p-0.5 rounded-lg border border-slate-800 text-[10px]">
+              <button
+                onClick={() => setMode('batch')}
+                className={`px-2 py-0.5 rounded font-bold transition flex items-center gap-1 ${
+                  mode === 'batch' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                }`}
+                title="Fila contínua de conferência em lote"
+              >
+                <ListChecks className="w-3 h-3" />
+                <span>Fila ({stagedItems.length})</span>
+              </button>
+              <button
+                onClick={() => setMode('instant')}
+                className={`px-2 py-0.5 rounded font-bold transition flex items-center gap-1 ${
+                  mode === 'instant' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                }`}
+                title="Check instantâneo 1 a 1"
+              >
+                <Zap className="w-3 h-3" />
+                <span className="hidden xs:inline">1a1</span>
+              </button>
+            </div>
           </div>
         </div>
 
         {/* ============================================================
-            CORPO DO LEITOR: LAYOUT OTIMIZADO PARA TABLET & MOBILE
-            Mobile (< 768px): Câmera em cima + Divisor arrastável + Fila embaixo
-            Tablet / Desktop (>= 768px): Suporte ao Modo Lado a Lado ou Empilhado
+            CORPO DO LEITOR: LAYOUT OTIMIZADO PARA MOBILE & TABLET
+            Mobile (< 768px): Câmera em cima (~28% altura) + Fila de bombas embaixo (~72% altura)
+            Tablet / Desktop (>= 768px): Modo Lado a Lado (40% câmera / 60% fila)
         ============================================================ */}
         <div className={`flex-1 flex min-h-0 overflow-hidden ${isTabletSplit ? 'flex-col md:flex-row' : 'flex-col'}`}>
           
-          {/* PAINEL DA ESQUERDA: CÂMERA, MIRA E CONTROLES */}
-          <div className={`flex flex-col bg-black min-h-0 overflow-hidden shrink-0 ${
-            isTabletSplit ? 'w-full md:w-5/12 lg:w-5/12 md:border-r border-slate-800' : 'w-full'
-          }`}>
-            {/* Mode Selector Tab (Fila em Lote vs Check Imediato) + Comparar */}
-            <div className="px-3 py-1.5 bg-slate-950/60 border-b border-slate-800 flex items-center justify-between text-xs shrink-0 flex-wrap gap-1.5">
-              <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded-xl border border-slate-800">
-                <button
-                  onClick={() => setMode('batch')}
-                  className={`px-2.5 py-1 rounded-lg font-bold flex items-center gap-1.5 transition text-[11px] ${
-                    mode === 'batch' 
-                      ? 'bg-blue-600 text-white shadow-sm' 
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  <ListChecks className="w-3.5 h-3.5" />
-                  <span>Fila em Lote ({stagedItems.length})</span>
-                </button>
-                <button
-                  onClick={() => setMode('instant')}
-                  className={`px-2.5 py-1 rounded-lg font-bold flex items-center gap-1.5 transition text-[11px] ${
-                    mode === 'instant' 
-                      ? 'bg-indigo-600 text-white shadow-sm' 
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  <Zap className="w-3.5 h-3.5" />
-                  <span>Check 1 a 1</span>
-                </button>
-              </div>
-
-              <div className="flex items-center gap-1">
-                <div className="flex items-center gap-0.5 bg-slate-900 p-0.5 rounded-xl border border-slate-800 text-[10px]">
-                  <button
-                    onClick={() => setSearchTarget('all')}
-                    className={`px-2 py-0.5 rounded font-bold transition ${
-                      searchTarget === 'all' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
-                    }`}
-                    title="Lê todo o código composto (IDEC ou Série)"
-                  >
-                    🔍 Auto
-                  </button>
-                  <button
-                    onClick={() => setSearchTarget('idec')}
-                    className={`px-2 py-0.5 rounded font-bold transition ${
-                      searchTarget === 'idec' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-white'
-                    }`}
-                    title="Compara somente IDEC / Tag"
-                  >
-                    🏷️ IDEC
-                  </button>
-                  <button
-                    onClick={() => setSearchTarget('serie')}
-                    className={`px-2 py-0.5 rounded font-bold transition ${
-                      searchTarget === 'serie' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-white'
-                    }`}
-                    title="Compara somente Nº de Série"
-                  >
-                    🔢 Série
-                  </button>
-                </div>
-              </div>
-            </div>
-
+          {/* PAINEL DA ESQUERDA: CÂMERA 50MP */}
+          <div 
+            style={{
+              height: `${cameraHeightPercent}%`,
+              minHeight: '130px',
+              maxHeight: '44%'
+            }}
+            className="w-full shrink-0 flex flex-col bg-black min-h-0 overflow-hidden transition-[height] duration-150 md:!h-full md:!max-h-full md:w-5/12 lg:w-5/12 md:border-r border-slate-800"
+          >
             {/* Camera Viewport Area com CLIQUE PARA FOCAR (Tap to Focus) */}
             <div 
               ref={viewfinderRef}
               onClick={handleViewfinderClick}
-              style={{
-                height: isTabletSplit ? undefined : (viewMode === 'full_camera' ? '70%' : `${cameraHeightPercent}%`),
-                minHeight: '180px'
-              }}
-              className={`relative bg-black flex flex-col items-center justify-center transition-[height] duration-150 overflow-hidden cursor-crosshair select-none ${
-                isTabletSplit ? 'md:flex-1' : ''
-              } shrink-0`}
+              className="relative flex-1 bg-black flex flex-col items-center justify-center overflow-hidden cursor-crosshair select-none min-h-0 w-full"
               title="Toque em qualquer ponto da imagem para focar"
             >
           
@@ -1977,24 +1851,18 @@ export default function ScannerModal({
             <div
               onMouseDown={handleDividerMouseDown}
               onTouchStart={handleDividerTouchStart}
-              className={`w-full py-2 px-3 bg-slate-950 border-y border-slate-800 cursor-row-resize flex items-center justify-between select-none touch-none shrink-0 transition-colors ${
-                isTabletSplit ? 'md:hidden' : ''
-              } ${
-                isDraggingDivider 
-                  ? 'bg-blue-950/80 border-blue-500 ring-2 ring-blue-500/30' 
-                  : 'hover:bg-slate-900'
-              }`}
-              title="Arraste para cima ou para baixo para aumentar/diminuir o tamanho da lista de bombas"
+              className="w-full py-1.5 px-3 bg-slate-950 border-y border-slate-800 cursor-row-resize flex items-center justify-between select-none touch-none shrink-0 transition-colors md:hidden hover:bg-slate-900"
+              title="Arraste para cima ou para baixo para ajustar o tamanho da lista"
             >
               {/* Alça tátil de puxar */}
               <div className="flex items-center gap-2">
                 <div className="flex flex-col items-center justify-center gap-0.5 cursor-row-resize">
-                  <div className="w-10 h-1 bg-slate-500 hover:bg-slate-300 rounded-full transition" />
-                  <div className="w-6 h-0.5 bg-slate-600 rounded-full" />
+                  <div className="w-8 h-1 bg-slate-500 hover:bg-slate-300 rounded-full transition" />
+                  <div className="w-5 h-0.5 bg-slate-600 rounded-full" />
                 </div>
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
                   <GripHorizontal className="w-3.5 h-3.5 text-blue-400" />
-                  <span>Arraste para redimensionar lista</span>
+                  <span>Ajustar visor</span>
                 </span>
               </div>
 
@@ -2004,37 +1872,37 @@ export default function ScannerModal({
                   type="button"
                   onClick={() => setCameraHeightPercent(22)}
                   className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
-                    cameraHeightPercent <= 26 
+                    cameraHeightPercent <= 25 
                       ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-400' 
                       : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
                   }`}
-                  title="Expandir lista para quase tela cheia (75% da altura)"
+                  title="Expandir lista para quase tela cheia"
                 >
-                  📋 Lista 75%
+                  📋 Fila 75%
                 </button>
                 <button
                   type="button"
-                  onClick={() => setCameraHeightPercent(38)}
+                  onClick={() => setCameraHeightPercent(30)}
                   className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
-                    cameraHeightPercent > 26 && cameraHeightPercent < 55 
+                    cameraHeightPercent > 25 && cameraHeightPercent < 42 
                       ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-400' 
                       : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
                   }`}
-                  title="Dividir meio a meio (50% câmera / 50% lista)"
+                  title="Equilibrado (30% câmera / 70% lista)"
                 >
-                  ⚖️ 50/50
+                  ⚖️ Padrão
                 </button>
                 <button
                   type="button"
-                  onClick={() => setCameraHeightPercent(60)}
+                  onClick={() => setCameraHeightPercent(48)}
                   className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
-                    cameraHeightPercent >= 55 
+                    cameraHeightPercent >= 42 
                       ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-400' 
                       : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
                   }`}
-                  title="Câmera grande (60% câmera / 40% lista)"
+                  title="Câmera maior (48% câmera / 52% lista)"
                 >
-                  📷 Câmera 60%
+                  📷 Câmera 50%
                 </button>
               </div>
             </div>
@@ -2042,12 +1910,9 @@ export default function ScannerModal({
           </div> {/* Fim do PAINEL DA ESQUERDA (CÂMERA) */}
 
           {/* ============================================================
-              PAINEL DA DIREITA: ABA DE SELEÇÃO E FILA DE BOMBAS BIPADAS
-              No tablet (md+): coluna dedicada com 100% da altura e scroll fluído
+              PAINEL DA DIREITA: FILA DE BOMBAS BIPADAS (TOTALMENTE VISÍVEL E COM SCROLL)
           ============================================================ */}
-          <div className={`flex-1 flex flex-col bg-slate-950/60 min-h-0 overflow-hidden ${
-            isTabletSplit ? 'w-full md:w-7/12 lg:w-7/12' : 'w-full'
-          }`}>
+          <div className="flex-1 flex flex-col bg-slate-950/60 min-h-0 overflow-hidden w-full md:w-7/12 lg:w-7/12 md:h-full">
 
             {/* Banner do Último Item Bipado com Indicador de Similaridade e Alerta de Já Conferido */}
             {lastScannedFeedback && (
@@ -2138,15 +2003,15 @@ export default function ScannerModal({
             SEÇÃO DA FILA DE EQUIPAMENTOS BIPADOS (STAGED LIST)
             Altura flexível e garantida com scroll suave
         ============================================================ */}
-        <div className="flex-1 overflow-y-auto bg-slate-950/50 p-3 sm:p-4 min-h-[140px] flex flex-col">
+        <div className="flex-1 overflow-y-auto bg-slate-950/50 p-2.5 sm:p-3 min-h-0 flex flex-col">
           
-          <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-800/80 shrink-0">
-            <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-800/80 shrink-0">
+            <div className="flex items-center gap-1.5">
               <ListChecks className="w-4 h-4 text-blue-400" />
-              <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-                Fila de Conferência ({stagedItems.length} {stagedItems.length === 1 ? 'bomba' : 'bombas'})
+              <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                Fila Bipada ({stagedItems.length} {stagedItems.length === 1 ? 'bomba' : 'bombas'})
               </h4>
-              <span className="text-[10px] font-semibold text-slate-400 bg-slate-800/80 px-2 py-0.5 rounded-full">
+              <span className="text-[10px] font-bold text-blue-300 bg-blue-900/50 border border-blue-700/60 px-2 py-0.5 rounded-full">
                 {selectedModalities.map(m => MODALITIES[m]?.shortName || m).join(' + ')}
               </span>
             </div>
@@ -2154,7 +2019,7 @@ export default function ScannerModal({
             {stagedItems.length > 0 && (
               <button
                 onClick={handleClearStaged}
-                className="text-xs text-red-400 hover:text-red-300 font-semibold flex items-center gap-1 transition"
+                className="text-xs text-red-400 hover:text-red-300 font-semibold flex items-center gap-1 transition px-2 py-0.5 rounded-lg hover:bg-red-500/10"
                 title="Remover todos da lista"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -2163,21 +2028,21 @@ export default function ScannerModal({
             )}
           </div>
 
-          {/* Barra de Seleção / Alteração do Setor de Retirada do Lote */}
-          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-2.5 mb-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 shrink-0 shadow-sm">
-            <div className="flex items-center gap-1.5 shrink-0 text-slate-300 font-bold text-xs">
+          {/* Barra de Seleção / Alteração do Setor de Retirada do Lote (Compacta) */}
+          <div className="bg-slate-900/90 border border-slate-800 rounded-xl px-2.5 py-1.5 mb-2 flex items-center justify-between gap-2 shrink-0 shadow-xs">
+            <div className="flex items-center gap-1 shrink-0 text-slate-300 font-bold text-[11px]">
               <MapPin className="w-3.5 h-3.5 text-teal-400 shrink-0" />
-              <span>Setor de Retirada do Lote:</span>
+              <span>Setor do Lote:</span>
             </div>
 
-            <div className="flex items-center gap-1.5 flex-1 min-w-[200px]">
+            <div className="flex items-center gap-1.5 flex-1 min-w-[140px]">
               <input
                 type="text"
                 list="scanner-sector-suggestions"
                 value={batchSector}
                 onChange={(e) => setBatchSector(e.target.value)}
                 placeholder="Ex: UTIN, Centro Cirúrgico, UTI..."
-                className="bg-slate-950 border border-slate-700 focus:border-teal-400 rounded-xl px-2.5 py-1 text-xs text-white placeholder-slate-500 flex-1 focus:outline-none"
+                className="bg-slate-950 border border-slate-700 focus:border-teal-400 rounded-lg px-2 py-0.5 text-xs text-white placeholder-slate-500 flex-1 focus:outline-none"
               />
               <datalist id="scanner-sector-suggestions">
                 {availableSectors.map(s => (
@@ -2189,8 +2054,8 @@ export default function ScannerModal({
                 <button
                   type="button"
                   onClick={() => handleApplySectorToAllStaged(batchSector)}
-                  className="px-2.5 py-1 bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/40 rounded-xl text-[11px] font-bold shrink-0 transition"
-                  title="Aplicar este setor a todas as bombas que já foram bipadas na fila"
+                  className="px-2 py-0.5 bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/40 rounded-lg text-[10px] font-bold shrink-0 transition"
+                  title="Aplicar este setor a todas as bombas da fila"
                 >
                   Aplicar a todas
                 </button>
@@ -2198,116 +2063,106 @@ export default function ScannerModal({
             </div>
           </div>
 
+          {/* Lista Vazia ou Cards das Bombas */}
           {stagedItems.length === 0 ? (
-            <div className="flex-1 min-h-[140px] flex flex-col items-center justify-center text-center p-6 text-slate-500">
-              <Layers className="w-8 h-8 mb-2 opacity-40 text-blue-400" />
-              <p className="text-xs font-semibold text-slate-400">Nenhum equipamento na fila ainda</p>
-              <p className="text-[11px] text-slate-500 mt-0.5 max-w-md">
-                Aponte a câmera para os códigos de barras das bombas. Cada bomba bipada aparecerá aqui nesta lista. Quando terminar o lote, basta clicar em <strong>Confirmar Check</strong> abaixo!
+            <div className="flex-1 min-h-[90px] flex flex-col items-center justify-center text-center p-4 text-slate-500 border border-dashed border-slate-800/80 rounded-2xl bg-slate-900/20 my-auto">
+              <Layers className="w-6 h-6 mb-1 opacity-40 text-blue-400" />
+              <p className="text-xs font-semibold text-slate-300">Nenhuma bomba na fila ainda</p>
+              <p className="text-[11px] text-slate-500 mt-0.5 max-w-sm">
+                Aponte o laser vermelho da câmera para o código da bomba. Cada bomba bipada aparecerá aqui nesta lista instantaneamente!
               </p>
             </div>
           ) : (
-            <div className="space-y-2.5 pt-1 pb-2">
+            <div className="space-y-2 pb-2">
               {stagedItems.map((item, idx) => {
                 const eq = item.equipment;
                 const match = item.match;
+                const isTopNewest = idx === 0;
 
                 return (
                   <div
                     key={`${eq.id}-${idx}`}
-                    className="p-3 bg-slate-800/80 hover:bg-slate-800 border border-slate-700/70 rounded-2xl flex flex-col gap-2 transition shadow-sm"
+                    className={`p-2.5 rounded-2xl flex flex-col gap-1.5 transition shadow-sm ${
+                      isTopNewest 
+                        ? 'bg-slate-800/95 border-2 border-emerald-500/70 ring-2 ring-emerald-500/20 shadow-emerald-950/50' 
+                        : 'bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800'
+                    }`}
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-7 h-7 rounded-xl bg-blue-600/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0 border border-blue-500/30">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {/* Número da bomba na fila */}
+                        <div className={`w-6 h-6 rounded-lg flex items-center justify-center font-extrabold text-xs shrink-0 border ${
+                          isTopNewest 
+                            ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black' 
+                            : 'bg-blue-600/20 text-blue-400 border-blue-500/30'
+                        }`}>
                           {stagedItems.length - idx}
                         </div>
 
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-bold text-white text-xs sm:text-sm truncate">
+                            <span className="font-extrabold text-white text-xs sm:text-sm truncate">
                               {eq.equipamento || 'Bomba de Infusão'}
                             </span>
-                            
-                            {/* Tag ou Identificação */}
-                            {eq.tag && (
-                              <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-300 border border-blue-500/30 font-bold">
-                                {eq.tag}
+
+                            {isTopNewest && (
+                              <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse">
+                                ⚡ Recém Bipada
                               </span>
-                            )}
-
-                            {/* Badge de Similaridade */}
-                            {match && (
-                              <span className={`text-[10px] font-semibold px-2 py-0.2 rounded-full ${
-                                match.isExact 
-                                  ? 'bg-emerald-500/20 text-emerald-300' 
-                                  : 'bg-amber-500/20 text-amber-300'
-                              }`}>
-                                {match.isExact ? '100% Exato' : `${match.matchingDigits} dígitos (${match.confidence}%)`}
-                              </span>
-                            )}
-
-                            {/* Badges de Serviços que serão aplicados */}
-                            {selectedModalities.map(m => {
-                              const isAlready = isEquipmentChecked(eq, m, serviceConfig);
-                              return (
-                                <span
-                                  key={m}
-                                  className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded-full border ${
-                                    isAlready 
-                                      ? 'bg-emerald-950/60 text-emerald-400 border-emerald-800'
-                                      : m === 'calibracao'
-                                      ? 'bg-blue-900/60 text-blue-300 border-blue-700'
-                                      : m === 'preventiva'
-                                      ? 'bg-emerald-900/60 text-emerald-300 border-emerald-700'
-                                      : m === 'externa'
-                                      ? 'bg-purple-900/60 text-purple-300 border-purple-700'
-                                      : 'bg-amber-900/60 text-amber-300 border-amber-700'
-                                  }`}
-                                >
-                                  {isAlready ? `✓ ${MODALITIES[m]?.shortName || m} OK` : `+ ${MODALITIES[m]?.shortName || m}`}
-                                </span>
-                              );
-                            })}
-                          </div>
-
-                          <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-1 flex-wrap">
-                            {eq.serie && (
-                              <span>Série: <span className="font-mono text-slate-300">{eq.serie}</span></span>
-                            )}
-                            {eq.setor && (
-                              <span>• Setor Original: <span className="text-slate-300">{eq.setor}</span></span>
                             )}
                           </div>
                         </div>
                       </div>
 
-                      {/* Botão de Remover da Fila */}
+                      {/* Botão de Remover */}
                       <button
                         onClick={() => handleRemoveStagedItem(eq.id)}
-                        className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition shrink-0"
+                        className="p-1 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition shrink-0"
                         title="Remover desta lista"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
 
-                    {/* Setor de Retirada Individual desta Bomba dentro do Lote */}
-                    <div className="pt-2 border-t border-slate-700/50 flex items-center justify-between gap-2 text-xs flex-wrap">
-                      <div className="flex items-center gap-1 text-[11px] text-teal-300 font-semibold shrink-0">
-                        <MapPin className="w-3 h-3 text-teal-400 shrink-0" />
-                        <span>Retirado de:</span>
-                      </div>
-                      <div className="flex-1 min-w-[170px] max-w-[260px]">
-                        <input
-                          type="text"
-                          list="scanner-sector-suggestions"
-                          value={item.setorRetirada || ''}
-                          onChange={(e) => handleUpdateItemSector(eq.id, e.target.value)}
-                          placeholder={eq.setor || "Informar setor..."}
-                          className="w-full bg-slate-950/90 border border-teal-500/40 focus:border-teal-400 rounded-lg px-2 py-0.5 text-xs text-teal-200 font-bold focus:outline-none placeholder-slate-500"
-                        />
-                      </div>
+                    {/* Informações detalhadas da bomba: Tag, Série, Setor e Modalidades */}
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-300 flex-wrap">
+                      {eq.tag && (
+                        <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/30 text-[10px]">
+                          🏷️ {eq.tag}
+                        </span>
+                      )}
+                      {eq.serie && (
+                        <span className="font-mono text-slate-300 text-[10px] bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700/60">
+                          S/N: {eq.serie}
+                        </span>
+                      )}
+                      {(item.setorRetirada || eq.setor) && (
+                        <span className="text-[10px] text-teal-300 bg-teal-950/40 px-1.5 py-0.5 rounded border border-teal-800/60 flex items-center gap-1">
+                          <MapPin className="w-2.5 h-2.5 text-teal-400" />
+                          <span>{item.setorRetirada || eq.setor}</span>
+                        </span>
+                      )}
+
+                      {/* Modalidades que serão aplicadas */}
+                      {selectedModalities.map(m => {
+                        const isAlready = isEquipmentChecked(eq, m, serviceConfig);
+                        return (
+                          <span
+                            key={m}
+                            className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded-full border ${
+                              isAlready 
+                                ? 'bg-emerald-950/60 text-emerald-400 border-emerald-800'
+                                : m === 'calibracao'
+                                ? 'bg-blue-900/60 text-blue-300 border-blue-700'
+                                : m === 'preventiva'
+                                ? 'bg-emerald-900/60 text-emerald-300 border-emerald-700'
+                                : 'bg-purple-900/60 text-purple-300 border-purple-700'
+                            }`}
+                          >
+                            {isAlready ? `✓ ${MODALITIES[m]?.shortName || m} OK` : `+ ${MODALITIES[m]?.shortName || m}`}
+                          </span>
+                        );
+                      })}
                     </div>
                   </div>
                 );
@@ -2317,35 +2172,30 @@ export default function ScannerModal({
 
         </div>
 
-        {/* Bottom Actions Bar (Botão Principal de Confirmação em Lote) */}
-        <div className="p-3 sm:p-4 border-t border-slate-800 bg-slate-900/95 flex flex-col gap-2 shrink-0 safe-area-bottom">
-          
+        {/* Bottom Actions Bar (Linha Única Compacta e Eficiente) */}
+        <div className="p-2.5 sm:p-3 border-t border-slate-800 bg-slate-900/95 flex items-center justify-between gap-2 shrink-0 safe-area-bottom">
+          <button
+            onClick={onClose}
+            className="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition border border-slate-700/80 active:scale-95 shrink-0"
+          >
+            Fechar
+          </button>
+
           {stagedItems.length > 0 ? (
             <button
               onClick={handleConfirmBatchCheck}
-              className="w-full py-3.5 px-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 text-white rounded-2xl text-xs sm:text-sm font-extrabold shadow-lg shadow-emerald-600/30 transition active:scale-[0.98] flex items-center justify-center gap-2"
+              className="flex-1 py-2.5 px-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 text-white rounded-xl text-xs sm:text-sm font-extrabold shadow-lg shadow-emerald-600/30 transition active:scale-[0.98] flex items-center justify-center gap-2 truncate"
             >
-              <CheckCircle className="w-5 h-5 stroke-[2.5]" />
-              <span>
-                Confirmar [{selectedModalities.map(m => MODALITIES[m]?.shortName || m).join(' + ')}] em Todas ({stagedItems.length} {stagedItems.length === 1 ? 'bomba' : 'bombas'})
+              <CheckCircle className="w-4 h-4 stroke-[2.5] shrink-0" />
+              <span className="truncate">
+                Confirmar {selectedModalities.map(m => MODALITIES[m]?.shortName || m).join('+')} ({stagedItems.length} {stagedItems.length === 1 ? 'bomba' : 'bombas'})
               </span>
             </button>
           ) : (
-            <div className="flex items-center justify-between text-xs text-slate-400 px-1">
-              <span>Bipe as bombas para montar a lista de conferência</span>
-              <span className="font-mono">{equipments.length} no cadastro</span>
+            <div className="text-[11px] text-slate-400 font-medium truncate text-right pr-1">
+              {equipments.length} cadastradas • Bipe para listar
             </div>
           )}
-
-          <div className="flex items-center justify-end">
-            <button
-              onClick={onClose}
-              className="py-2.5 px-6 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition border border-slate-700/80 active:scale-95"
-            >
-              Fechar
-            </button>
-          </div>
-
         </div>
 
           </div> {/* Fim do PAINEL DA DIREITA */}
