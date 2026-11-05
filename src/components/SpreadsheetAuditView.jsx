@@ -17,7 +17,8 @@ import {
   CheckCheck,
   RefreshCw,
   Sparkles,
-  Maximize2
+  Maximize2,
+  Settings
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -26,7 +27,9 @@ export default function SpreadsheetAuditView({
   hospitalName = '',
   planTitle = '',
   onRefresh,
-  isRefreshing = false
+  isRefreshing = false,
+  serviceConfig = null,
+  onOpenServiceConfig = null
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [sectorFilter, setSectorFilter] = useState('ALL');
@@ -66,7 +69,13 @@ export default function SpreadsheetAuditView({
       if (e.check_preventiva) prevOk++;
       if (e.check_seguranca) segOk++;
 
-      if (e.check_calibracao && e.check_preventiva && e.check_seguranca) {
+      const isComplete = (
+        (!serviceConfig || !serviceConfig.enableCalibracao || e.check_calibracao) &&
+        (!serviceConfig || !serviceConfig.enablePreventiva || e.check_preventiva) &&
+        (!serviceConfig || !serviceConfig.enableSeguranca || e.check_seguranca)
+      );
+
+      if (isComplete) {
         complete100++;
       }
 
@@ -140,11 +149,17 @@ export default function SpreadsheetAuditView({
       }
 
       // Filtro de Status
+      const isCompleteItem = (
+        (!serviceConfig || !serviceConfig.enableCalibracao || item.check_calibracao) &&
+        (!serviceConfig || !serviceConfig.enablePreventiva || item.check_preventiva) &&
+        (!serviceConfig || !serviceConfig.enableSeguranca || item.check_seguranca)
+      );
+
       if (statusFilter === '100_COMPLETE') {
-        return item.check_calibracao && item.check_preventiva && item.check_seguranca;
+        return isCompleteItem;
       }
       if (statusFilter === 'ANY_PENDING') {
-        return !(item.check_calibracao && item.check_preventiva && item.check_seguranca);
+        return !isCompleteItem;
       }
       if (statusFilter === 'PENDING_CAL') {
         return !item.check_calibracao;

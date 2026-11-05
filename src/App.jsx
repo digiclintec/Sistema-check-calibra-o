@@ -32,6 +32,7 @@ import SerialScanModal from './components/SerialScanModal';
 import MassActionPasswordModal from './components/MassActionPasswordModal';
 import SmartBatchModal from './components/SmartBatchModal';
 import SpreadsheetAuditView from './components/SpreadsheetAuditView';
+import SheetServicesConfigModal from './components/SheetServicesConfigModal';
 import ManualCheckPasswordModal from './components/ManualCheckPasswordModal';
 import ModalityBar from './components/ModalityBar';
 
@@ -39,7 +40,7 @@ import { parseSpreadsheetFile, exportToExcel } from './utils/sheetParser';
 import { SAMPLE_EQUIPMENT } from './utils/sampleData';
 import { playSuccessSound, playWarningSound, playErrorSound } from './utils/audio';
 import { findBestEquipmentMatches } from './utils/fuzzyMatch';
-import { MODALITIES, normalizeEquipmentModalities, isEquipmentChecked } from './utils/modalities';
+import { MODALITIES, normalizeEquipmentModalities, isEquipmentChecked, isEquipmentFullyChecked } from './utils/modalities';
 
 export default function App() {
   // LocalStorage keys
@@ -113,6 +114,32 @@ export default function App() {
   const [isMasterPanelOpen, setIsMasterPanelOpen] = useState(false);
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
   const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
+  const [serviceConfig, setServiceConfig] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`calibracheck_service_config_${activeHospitalId}`);
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return {
+      enableCalibracao: true,
+      enablePreventiva: true,
+      enableSeguranca: true,
+      executionMode: 'separated' // 'all_at_once' | 'separated'
+    };
+  });
+  const [serviceConfigModal, setServiceConfigModal] = useState({ isOpen: false, isInitialSetup: false });
+
+  const handleSaveServiceConfig = async (newConfig) => {
+    setServiceConfig(newConfig);
+    try {
+      localStorage.setItem(`calibracheck_service_config_${activeHospitalId}`, JSON.stringify(newConfig));
+      await fetch('/api/service-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hospitalId: activeHospitalId, serviceConfig: newConfig })
+      });
+    } catch (e) {}
+    showToast('success', `Opções atualizadas: ${newConfig.executionMode === 'all_at_once' ? '⚡ Bipar Tudo de Uma Vez' : '🎯 Bipar Separado'}`);
+  };
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [lastScannedId, setLastScannedId] = useState(null);
   const [toast, setToast] = useState(null);
@@ -387,6 +414,9 @@ export default function App() {
             setActiveSheetName(data.activeSheetName);
           }
         }
+        if (data.serviceConfig) {
+          setServiceConfig(data.serviceConfig);
+        }
       }
     } catch (err) {
       // Offline fallback silent
@@ -472,10 +502,10 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [equipments, soundEnabled, currentUser, activeHospitalId]);
 
-  // Statistics calculation baseada na modalidade / equipe ativa
+  // Statistics calculation baseada na modalidade / equipe ativa e configuração de serviços
   const stats = useMemo(() => {
     const total = equipments.length;
-    const checked = equipments.filter(e => isEquipmentChecked(e, activeModality)).length;
+    const checked = equipments.filter(e => isEquipmentChecked(e, activeModality, serviceConfig)).length;
     const pending = total - checked;
     
     let expired = 0;
@@ -492,7 +522,7 @@ export default function App() {
 
     const percent = total > 0 ? Math.round((checked / total) * 100) : 0;
     return { total, checked, pending, expired, expiringSoon, percent };
-  }, [equipments, activeModality]);
+  }, [equipments, activeModality, serviceConfig]);
 
   // Confetti when 100% checked
   const prevCheckedRef = useRef(stats.checked);
@@ -509,36 +539,46 @@ export default function App() {
     prevCheckedRef.current = stats.checked;
   }, [stats.checked, stats.total, activeHospital?.name, activeModality]);
 
-  // Executa alternância de status de check (interno / autorizado)
+  // Executa alternância de status de check (interno / autorizado) com suporte ao modo combo
   const executeToggleCheck = async (id, targetModality = activeModality) => {
-    const mod = targetModality === 'geral' ? 'calibracao' : targetModality;
     const target = equipments.find(e => e.id === id || e.codigoBarras === id);
     if (!target) return;
 
-    const currentChecked = isEquipmentChecked(target, mod);
-    const nextState = !currentChecked;
+    let targetMods = [];
+    if (serviceConfig?.executionMode === 'all_at_once' && (targetModality === 'geral' || !targetModality)) {
+      if (serviceConfig.enableCalibracao) targetMods.push('calibracao');
+      if (serviceConfig.enablePreventiva) targetMods.push('preventiva');
+      if (serviceConfig.enableSeguranca) targetMods.push('seguranca');
+      if (targetMods.length === 0) targetMods = ['calibracao'];
+    } else {
+      const mod = targetModality === 'geral' ? 'calibracao' : targetModality;
+      targetMods = [mod];
+    }
+
+    const allChecked = targetMods.every(m => isEquipmentChecked(target, m));
+    const nextState = !allChecked;
     const inspector = currentUser?.name ? `${currentUser.name} (${currentUser.email})` : (currentUser?.email || 'Operador');
     const nowIso = new Date().toISOString();
 
     const updatedList = equipments.map(item => {
       if (item.id === id || item.codigoBarras === id) {
         const copy = { ...item };
-        if (mod === 'preventiva') {
-          copy.check_preventiva = nextState;
-          copy.data_preventiva = nextState ? nowIso : null;
-          copy.usuario_preventiva = nextState ? inspector : null;
-        } else if (mod === 'seguranca') {
-          copy.check_seguranca = nextState;
-          copy.data_seguranca = nextState ? nowIso : null;
-          copy.usuario_seguranca = nextState ? inspector : null;
-        } else {
-          // calibracao
-          copy.check_calibracao = nextState;
-          copy.data_calibracao = nextState ? nowIso : null;
-          copy.usuario_calibracao = nextState ? inspector : null;
-        }
+        targetMods.forEach(m => {
+          if (m === 'calibracao') {
+            copy.check_calibracao = nextState;
+            copy.data_calibracao = nextState ? nowIso : null;
+            copy.usuario_calibracao = nextState ? inspector : null;
+          } else if (m === 'preventiva') {
+            copy.check_preventiva = nextState;
+            copy.data_preventiva = nextState ? nowIso : null;
+            copy.usuario_preventiva = nextState ? inspector : null;
+          } else if (m === 'seguranca') {
+            copy.check_seguranca = nextState;
+            copy.data_seguranca = nextState ? nowIso : null;
+            copy.usuario_seguranca = nextState ? inspector : null;
+          }
+        });
 
-        // Mantém compatibilidade
         copy.checado = Boolean(copy.check_calibracao || copy.check_preventiva || copy.check_seguranca);
         copy.dataCheck = copy.data_calibracao || copy.data_preventiva || copy.data_seguranca || null;
         copy.conferidoPor = copy.usuario_calibracao || copy.usuario_preventiva || copy.usuario_seguranca || null;
@@ -549,36 +589,36 @@ export default function App() {
 
     setEquipments(updatedList);
 
-    // Som de feedback
     if (soundEnabled) {
       if (nextState) playSuccessSound();
       else playWarningSound();
     }
 
-    // Notifica backend com a modalidade correspondente
     try {
-      fetch('/api/toggle-check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id,
-          modality: mod,
-          hospitalId: activeHospitalId,
-          userEmail: currentUser?.email,
-          userName: currentUser?.name
-        })
-      }).then(res => res.json()).then(data => {
-        if (data.success && data.lastUpdated) {
-          lastUpdatedServerRef.current = data.lastUpdated;
-        }
-      }).catch(() => {});
+      targetMods.forEach(m => {
+        fetch('/api/toggle-check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id,
+            modality: m,
+            hospitalId: activeHospitalId,
+            userEmail: currentUser?.email,
+            userName: currentUser?.name
+          })
+        }).then(res => res.json()).then(data => {
+          if (data.success && data.lastUpdated) {
+            lastUpdatedServerRef.current = data.lastUpdated;
+          }
+        }).catch(() => {});
+      });
     } catch (e) {}
 
-    const modName = MODALITIES[mod]?.shortName || mod;
+    const modLabels = targetMods.map(m => MODALITIES[m]?.shortName || m).join(' + ');
     await pushServerUpdate(
       updatedList, 
       activeSheetName, 
-      `${target.equipamento} teve ${modName} ${nextState ? 'confirmada' : 'desmarcada'}`
+      `${target.equipamento} teve [${modLabels}] ${nextState ? 'confirmada' : 'desmarcada'}`
     );
   };
 
@@ -829,8 +869,19 @@ export default function App() {
       return { status: 'not_found', message: 'Nenhuma planilha carregada' };
     }
 
-    const mod = activeModality === 'geral' ? 'calibracao' : activeModality;
-    const currentMod = MODALITIES[mod] || MODALITIES.calibracao;
+    // Modalidades que o bip vai validar
+    let targetMods = [];
+    if (serviceConfig?.executionMode === 'all_at_once') {
+      if (serviceConfig.enableCalibracao) targetMods.push('calibracao');
+      if (serviceConfig.enablePreventiva) targetMods.push('preventiva');
+      if (serviceConfig.enableSeguranca) targetMods.push('seguranca');
+      if (targetMods.length === 0) targetMods = ['calibracao'];
+    } else {
+      const mod = activeModality === 'geral' ? 'calibracao' : activeModality;
+      targetMods = [mod];
+    }
+
+    const appliedLabels = targetMods.map(m => MODALITIES[m]?.shortName || m).join(' + ');
 
     // Busca inteligente com algoritmo de similaridade de dígitos e caracteres
     const matches = findBestEquipmentMatches(code, equipments);
@@ -855,21 +906,21 @@ export default function App() {
 
     setLastScannedId(targetItem.id);
 
-    // Verifica se já está conferido especificamente para a modalidade ativa
-    const isAlreadyCheckedForMod = isEquipmentChecked(targetItem, mod);
+    // Verifica se já está conferido para todas as modalidades alvo
+    const allAlreadyChecked = targetMods.every(m => isEquipmentChecked(targetItem, m));
 
-    if (isAlreadyCheckedForMod) {
+    if (allAlreadyChecked) {
       if (soundEnabled) playWarningSound();
-      showToast('warning', `Equipamento já possui [${currentMod.shortName}] conferida: ${targetItem.equipamento} (${targetItem.tag || targetItem.serie})`);
+      showToast('warning', `Equipamento já possui [${appliedLabels}] conferido: ${targetItem.equipamento} (${targetItem.tag || targetItem.serie})`);
       return {
         status: 'already_checked',
         equipment: targetItem,
         match: bestMatch,
-        message: `Já conferido para ${currentMod.shortName}: ${targetItem.equipamento}`
+        message: `Já conferido para ${appliedLabels}: ${targetItem.equipamento}`
       };
     }
 
-    // Mark as checked para a modalidade ativa
+    // Mark as checked para as modalidades alvo
     if (soundEnabled) playSuccessSound();
 
     const inspector = currentUser?.name ? `${currentUser.name} (${currentUser.email})` : (currentUser?.email || 'Operador');
@@ -877,19 +928,21 @@ export default function App() {
     const updated = [...equipments];
     const copy = { ...updated[targetIndex] };
 
-    if (mod === 'preventiva') {
-      copy.check_preventiva = true;
-      copy.data_preventiva = nowIso;
-      copy.usuario_preventiva = inspector;
-    } else if (mod === 'seguranca') {
-      copy.check_seguranca = true;
-      copy.data_seguranca = nowIso;
-      copy.usuario_seguranca = inspector;
-    } else {
-      copy.check_calibracao = true;
-      copy.data_calibracao = nowIso;
-      copy.usuario_calibracao = inspector;
-    }
+    targetMods.forEach(m => {
+      if (m === 'calibracao') {
+        copy.check_calibracao = true;
+        copy.data_calibracao = copy.data_calibracao || nowIso;
+        copy.usuario_calibracao = copy.usuario_calibracao || inspector;
+      } else if (m === 'preventiva') {
+        copy.check_preventiva = true;
+        copy.data_preventiva = copy.data_preventiva || nowIso;
+        copy.usuario_preventiva = copy.usuario_preventiva || inspector;
+      } else if (m === 'seguranca') {
+        copy.check_seguranca = true;
+        copy.data_seguranca = copy.data_seguranca || nowIso;
+        copy.usuario_seguranca = copy.usuario_seguranca || inspector;
+      }
+    });
 
     copy.checado = true;
     copy.dataCheck = nowIso;
@@ -898,25 +951,27 @@ export default function App() {
 
     setEquipments(updated);
     const reasonLabel = bestMatch.isExact ? '100% Exato' : `${bestMatch.matchingDigits} dígitos iguais`;
-    showToast('success', `Check [${currentMod.shortName}] confirmado: ${targetItem.equipamento} (${targetItem.tag || targetItem.serie}) [${reasonLabel}]`);
+    showToast('success', `Check [${appliedLabels}] confirmado: ${targetItem.equipamento} (${targetItem.tag || targetItem.serie}) [${reasonLabel}]`);
 
     // Notifica backend
     try {
-      fetch('/api/toggle-check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: targetItem.id,
-          modality: mod,
-          hospitalId: activeHospitalId,
-          userEmail: currentUser?.email,
-          userName: currentUser?.name
-        })
-      }).then(res => res.json()).then(data => {
-        if (data.success && data.lastUpdated) {
-          lastUpdatedServerRef.current = data.lastUpdated;
-        }
-      }).catch(() => {});
+      targetMods.forEach(m => {
+        fetch('/api/toggle-check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: targetItem.id,
+            modality: m,
+            hospitalId: activeHospitalId,
+            userEmail: currentUser?.email,
+            userName: currentUser?.name
+          })
+        }).then(res => res.json()).then(data => {
+          if (data.success && data.lastUpdated) {
+            lastUpdatedServerRef.current = data.lastUpdated;
+          }
+        }).catch(() => {});
+      });
     } catch (e) {}
 
     await pushServerUpdate(updated, activeSheetName, `Check [${currentMod.shortName}]: ${targetItem.equipamento}`);
@@ -948,6 +1003,8 @@ export default function App() {
         showToast('success', `Planilha "${result.fileName}" carregada no ${activeHospital?.name || 'hospital'} com ${result.total} itens!`);
       }
       loadHospitals();
+      // Solicita configuração do serviço (somente calibração ou todos os parâmetros, tudo de uma vez ou separado)
+      setServiceConfigModal({ isOpen: true, isInitialSetup: true });
     } catch (err) {
       console.error(err);
       showToast('error', `Erro ao ler planilha: ${err.message}`);
@@ -983,6 +1040,7 @@ export default function App() {
       showToast('success', `Planilha importada com ${data.total} equipamentos!`);
     }
     loadHospitals();
+    setServiceConfigModal({ isOpen: true, isInitialSetup: true });
   };
 
   // Load sample data
@@ -990,6 +1048,7 @@ export default function App() {
     await pushServerUpdate(SAMPLE_EQUIPMENT, 'Exemplo_Calibracao_Padrao.xlsx', 'Exemplo carregado');
     showToast('success', '10 equipamentos de exemplo carregados para teste imediato!');
     loadHospitals();
+    setServiceConfigModal({ isOpen: true, isInitialSetup: true });
   };
 
   // Reset / Clear hospital data
@@ -1133,6 +1192,8 @@ export default function App() {
             hospitalName={activeHospital?.name}
             planTitle={activeSheetName}
             onRefresh={fetchHospitalData}
+            serviceConfig={serviceConfig}
+            onOpenServiceConfig={() => setServiceConfigModal({ isOpen: true, isInitialSetup: false })}
           />
         ) : activeMainTab === 'planejamento' ? (
           <MonthlyPlanningTab
@@ -1210,6 +1271,8 @@ export default function App() {
               activeModality={activeModality}
               onChangeModality={setActiveModality}
               equipments={equipments}
+              serviceConfig={serviceConfig}
+              onOpenServiceConfig={() => setServiceConfigModal({ isOpen: true, isInitialSetup: false })}
             />
 
             {/* Stats Cards & Progress */}
@@ -1232,6 +1295,8 @@ export default function App() {
               onTriggerMassAction={(action) => setMassActionModal({ isOpen: true, action })}
               activeModality={activeModality}
               onChangeModality={setActiveModality}
+              serviceConfig={serviceConfig}
+              onOpenServiceConfig={() => setServiceConfigModal({ isOpen: true, isInitialSetup: false })}
             />
 
           </div>
@@ -1290,6 +1355,18 @@ export default function App() {
         isOpen={isGoogleModalOpen}
         onClose={() => setIsGoogleModalOpen(false)}
         onImportData={handleGoogleDataImport}
+      />
+
+      {/* Modal de Configuração de Serviços e Modo de Bipagem da Planilha */}
+      <SheetServicesConfigModal
+        isOpen={serviceConfigModal.isOpen}
+        onClose={() => setServiceConfigModal(prev => ({ ...prev, isOpen: false }))}
+        serviceConfig={serviceConfig}
+        onSaveConfig={handleSaveServiceConfig}
+        hospitalName={activeHospital?.name}
+        planTitle={activeSheetName}
+        totalEquipments={equipments.length}
+        isInitialSetup={serviceConfigModal.isInitialSetup}
       />
 
       {/* Master User & Hospital Management Panel */}
