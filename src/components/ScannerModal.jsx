@@ -25,7 +25,9 @@ import {
   ScanLine,
   MapPin,
   GripHorizontal,
-  SlidersHorizontal
+  SlidersHorizontal,
+  ChevronDown,
+  SwitchCamera
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { playSuccessSound, playWarningSound, playErrorSound } from '../utils/audio';
@@ -62,6 +64,7 @@ export default function ScannerModal({
 }) {
   const [cameras, setCameras] = useState([]);
   const [selectedCamera, setSelectedCamera] = useState('');
+  const [showLensPicker, setShowLensPicker] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [isCameraStarting, setIsCameraStarting] = useState(false);
   const [cameraError, setCameraError] = useState('');
@@ -72,6 +75,45 @@ export default function ScannerModal({
   const [viewMode, setViewMode] = useState('split'); // 'split' | 'full_camera'
   const [reticleType, setReticleType] = useState('1d'); // '1d' (Linha Laser) | '2d' (Caixa QR)
   
+  // Rótulos inteligentes e amigáveis para cada lente de hardware do aparelho
+  const getFriendlyCameraLabel = (camera, index, total) => {
+    if (!camera) return `Lente ${index + 1}`;
+    const raw = (camera.label || '').toLowerCase();
+    
+    if (raw.includes('front') || raw.includes('user') || raw.includes('frontal') || raw.includes('selfie') || raw.includes('facing front')) {
+      return `🤳 Lente Frontal (${index + 1})`;
+    }
+    if (raw.includes('ultra') || raw.includes('super') || raw.includes('0.5') || raw.includes('0,5') || raw.includes('wide-angle')) {
+      return `📐 Ultra-Wide 0.5x (${index + 1}) [Embaça de perto]`;
+    }
+    if (raw.includes('tele') || raw.includes('zoom') || raw.includes('2x') || raw.includes('3x') || raw.includes('5x')) {
+      return `🔭 Teleobjetiva Zoom (${index + 1})`;
+    }
+    if (raw.includes('macro') || raw.includes('depth')) {
+      return `🔍 Macro (${index + 1})`;
+    }
+    if (index === 0) {
+      return `📷 Lente 1 (Principal 1x - Nítida)`;
+    }
+    return `📷 Lente ${index + 1} (Traseira)`;
+  };
+
+  const getShortLensName = (camera, index) => {
+    if (!camera) return `Lente ${index + 1}`;
+    const raw = (camera.label || '').toLowerCase();
+    if (raw.includes('front') || raw.includes('user') || raw.includes('frontal')) return 'Frontal';
+    if (raw.includes('ultra') || raw.includes('0.5') || raw.includes('super')) return '0.5x Wide';
+    if (index === 0) return 'Lente 1 (1x)';
+    return `Lente ${index + 1}`;
+  };
+
+  const currentLensShortLabel = useMemo(() => {
+    if (!cameras || cameras.length === 0) return 'Lente Traseira';
+    const idx = cameras.findIndex(c => c.id === selectedCamera);
+    if (idx < 0) return 'Lente 1 (1x)';
+    return getShortLensName(cameras[idx], idx);
+  }, [cameras, selectedCamera]);
+
   // Modalidades ativas selecionadas para bipar (ex: ['calibracao'], ['preventiva'], ou ['calibracao', 'preventiva'])
   const [selectedModalities, setSelectedModalities] = useState(() => {
     if (activeModality && activeModality !== 'geral') {
@@ -236,7 +278,20 @@ export default function ScannerModal({
         if (!isMounted) return;
         if (devices && devices.length > 0) {
           setCameras(devices);
-          // Procura câmera traseira principal (evitando ultrawide ou macro se possível)
+
+          // 1. Verifica se há uma lente preferida salva pelo técnico anteriormente
+          let preferredId = null;
+          try {
+            preferredId = localStorage.getItem('calibracheck_preferred_camera');
+          } catch (e) {}
+
+          if (preferredId && devices.some(d => d.id === preferredId)) {
+            setSelectedCamera(preferredId);
+            startScanner(preferredId);
+            return;
+          }
+
+          // 2. Procura câmera traseira principal (evitando explicitamente ultrawide ou macro)
           const backCameras = devices.filter(d => {
             const label = (d.label || '').toLowerCase();
             return label.includes('back') || 
@@ -246,15 +301,15 @@ export default function ScannerModal({
                    label.includes('0, facing back');
           });
 
-          // Filtra preferencialmente a principal (sem 'wide', 'ultra', 'macro', 'depth')
-          const mainBackCam = backCameras.find(d => {
+          // Filtra preferencialmente a principal (sem 'wide', 'ultra', '0.5', 'macro', 'depth')
+          const cleanBackCam = backCameras.find(d => {
             const label = (d.label || '').toLowerCase();
-            return !label.includes('wide') && !label.includes('ultra') && !label.includes('macro') && !label.includes('depth');
+            return !label.includes('wide') && !label.includes('ultra') && !label.includes('0.5') && !label.includes('macro') && !label.includes('depth');
           }) || backCameras[0] || devices[0];
 
-          if (mainBackCam) {
-            setSelectedCamera(mainBackCam.id);
-            startScanner(mainBackCam.id);
+          if (cleanBackCam) {
+            setSelectedCamera(cleanBackCam.id);
+            startScanner(cleanBackCam.id);
             return;
           }
         }
@@ -300,28 +355,50 @@ export default function ScannerModal({
       });
       html5QrCodeRef.current = html5QrCode;
 
-      // Restrições de vídeo Full HD (1080p ideal) sem forçar aspect ratio fixo (suporta modo retrato e paisagem perfeitamente)
+      // Restrições de vídeo Full HD (1080p ideal) sem forçar aspect ratio fixo
       let videoConstraints;
-      if (retryCount === 0) {
-        videoConstraints = {
-          facingMode: { ideal: "environment" },
-          ...(cameraId ? { deviceId: { exact: cameraId } } : {}),
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-          advanced: [{ focusMode: "continuous" }]
-        };
-      } else if (retryCount === 1) {
-        videoConstraints = {
-          facingMode: { ideal: "environment" },
-          ...(cameraId ? { deviceId: { exact: cameraId } } : {}),
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          advanced: [{ focusMode: "continuous" }]
-        };
+      if (cameraId) {
+        // ATENÇÃO: NUNCA passe facingMode quando cameraId estiver definido!
+        // No Android Chrome, a presença de facingMode faz o navegador ignorar o deviceId e cair na super wide!
+        if (retryCount === 0) {
+          videoConstraints = {
+            deviceId: { exact: cameraId },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            advanced: [{ focusMode: "continuous" }]
+          };
+        } else if (retryCount === 1) {
+          videoConstraints = {
+            deviceId: { exact: cameraId },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            advanced: [{ focusMode: "continuous" }]
+          };
+        } else {
+          videoConstraints = {
+            deviceId: { exact: cameraId }
+          };
+        }
       } else {
-        videoConstraints = {
-          facingMode: "environment"
-        };
+        if (retryCount === 0) {
+          videoConstraints = {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            advanced: [{ focusMode: "continuous" }]
+          };
+        } else if (retryCount === 1) {
+          videoConstraints = {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            advanced: [{ focusMode: "continuous" }]
+          };
+        } else {
+          videoConstraints = {
+            facingMode: "environment"
+          };
+        }
       }
 
       const config = {
@@ -649,7 +726,26 @@ export default function ScannerModal({
 
   const handleCameraChange = (camId) => {
     setSelectedCamera(camId);
+    if (camId) {
+      try {
+        localStorage.setItem('calibracheck_preferred_camera', camId);
+      } catch (e) {}
+    }
+    const idx = cameras.findIndex(c => c.id === camId);
+    const friendly = idx >= 0 ? getFriendlyCameraLabel(cameras[idx], idx, cameras.length) : 'Lente Selecionada';
+    setFocusFeedbackText(`✓ ${friendly}`);
+    setTimeout(() => setFocusFeedbackText(''), 2500);
     startScanner(camId);
+  };
+
+  const handleCycleCamera = () => {
+    if (!cameras || cameras.length <= 1) return;
+    const currentIndex = cameras.findIndex(c => c.id === selectedCamera);
+    const nextIndex = (currentIndex + 1) % cameras.length;
+    const nextCam = cameras[nextIndex];
+    if (nextCam) {
+      handleCameraChange(nextCam.id);
+    }
   };
 
   // Processamento inteligente do código lido
@@ -1327,9 +1423,11 @@ export default function ScannerModal({
             </div>
           )}
 
-          {/* Barra Superior de Controles na Câmera: Alternador 1D/2D à Esquerda */}
-          <div className="absolute top-2.5 left-2.5 z-20" onClick={e => e.stopPropagation()}>
+          {/* Barra Superior de Controles na Câmera: Alternador 1D/2D e Troca Real de Lentes */}
+          <div className="absolute top-2.5 left-2.5 z-20 flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+            {/* Alternador 1D/2D */}
             <button
+              type="button"
               onClick={() => setReticleType(r => r === '1d' ? '2d' : '1d')}
               className={`px-2 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 border shadow-lg transition active:scale-95 ${
                 reticleType === '1d'
@@ -1341,6 +1439,68 @@ export default function ScannerModal({
               <ScanLine className="w-3 h-3" />
               <span>{reticleType === '1d' ? '1D Laser' : '2D QR'}</span>
             </button>
+
+            {/* Botão de Troca Real de Lente (HUD) - Evita a Super-Wide 0.5x que embaça */}
+            {cameras.length > 0 && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (cameras.length > 2) {
+                      setShowLensPicker(prev => !prev);
+                    } else {
+                      handleCycleCamera();
+                    }
+                  }}
+                  className="px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center gap-1.5 bg-slate-900/90 hover:bg-slate-800 text-white border border-slate-700/80 shadow-lg transition active:scale-95"
+                  title="Toque para trocar de lente (seleciona a lente principal 1x e evita a lente ultra-wide)"
+                >
+                  <SwitchCamera className="w-3 h-3 text-blue-400" />
+                  <span>{currentLensShortLabel}</span>
+                  <ChevronDown className="w-2.5 h-2.5 text-slate-400" />
+                </button>
+
+                {/* Popover com Lista Completa de Lentes Detectadas */}
+                {showLensPicker && (
+                  <div className="absolute left-0 mt-1.5 w-64 bg-slate-900/95 backdrop-blur-md rounded-2xl border border-slate-700/90 p-1.5 shadow-2xl z-40 animate-in fade-in zoom-in-95 duration-150">
+                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1 flex items-center justify-between border-b border-slate-800 pb-1 mb-1">
+                      <span>Lentes Detectadas</span>
+                      <span className="text-blue-400 font-mono">{cameras.length} disponíveis</span>
+                    </div>
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {cameras.map((c, idx) => {
+                        const isSelected = c.id === selectedCamera;
+                        const friendly = getFriendlyCameraLabel(c, idx, cameras.length);
+                        const isUltra = (c.label || '').toLowerCase().includes('ultra') || (c.label || '').toLowerCase().includes('0.5') || (c.label || '').toLowerCase().includes('wide-angle');
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => {
+                              handleCameraChange(c.id);
+                              setShowLensPicker(false);
+                            }}
+                            className={`w-full text-left px-2.5 py-1.5 rounded-xl text-[11px] transition flex items-center justify-between ${
+                              isSelected 
+                                ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-500/25' 
+                                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                            }`}
+                          >
+                            <div className="truncate flex-1 pr-1">
+                              <div>{friendly}</div>
+                              {isUltra && (
+                                <span className="text-[9px] text-amber-300/90 block font-normal">⚠️ Super-wide (pode embaçar no escuro)</span>
+                              )}
+                            </div>
+                            {isSelected && <CheckCircle className="w-3.5 h-3.5 text-white shrink-0" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Botões Flutuantes Rápidos à Direita (Focar, Seletor de Zoom 1x/1.5x/2x e Lanterna) */}
@@ -1782,8 +1942,8 @@ export default function ScannerModal({
                 className="flex-1 bg-slate-800 border border-slate-700 text-slate-300 text-xs rounded-xl px-2.5 py-2 focus:outline-none"
               >
                 <option value="">Lente Traseira Automática</option>
-                {cameras.map((c) => (
-                  <option key={c.id} value={c.id}>{c.label || `Câmera ${c.id}`}</option>
+                {cameras.map((c, idx) => (
+                  <option key={c.id} value={c.id}>{getFriendlyCameraLabel(c, idx, cameras.length)}</option>
                 ))}
               </select>
             )}

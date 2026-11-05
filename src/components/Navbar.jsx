@@ -64,43 +64,43 @@ export default function Navbar({
   }, [showMoreMenu]);
 
   return (
-    <header className="sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 w-full transition-colors">
-      <div className="max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-14 sm:h-18 gap-2">
+    <header className="sticky top-0 z-40 bg-white/90 dark:bg-[#0c1322]/90 backdrop-blur-xl border-b border-slate-200/80 dark:border-slate-800/80 w-full transition-colors select-none">
+      <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
+        <div className="flex items-center justify-between h-14 sm:h-16 gap-1.5 sm:gap-3">
           
           {/* ============================================================
               ZONA 1 (ESQUERDA): Logo + Seletor Firme de Hospital
           ============================================================ */}
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0 shrink">
             {/* Brand Logo */}
-            <div className="flex items-center gap-1.5 sm:gap-2.5">
-              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-blue-500 flex items-center justify-center text-white shadow-md shadow-blue-500/25 shrink-0">
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-blue-500 flex items-center justify-center text-white shadow-md shadow-blue-500/20 shrink-0">
                 <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.5]" />
               </div>
-              <div>
+              <div className="shrink-0">
                 <div className="flex items-center gap-1.5">
-                  <h1 className="text-sm sm:text-lg font-black text-slate-900 dark:text-white tracking-tight leading-none">
+                  <h1 className="text-xs sm:text-base font-black text-slate-900 dark:text-white tracking-tight leading-none">
                     Calibra<span className="text-blue-600 dark:text-blue-400">Check</span>
                   </h1>
-                  <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/60 hidden sm:inline-flex items-center gap-1">
+                  <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-950/80 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60 hidden sm:inline-flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
                     Online
                   </span>
                 </div>
-                <p className="text-[9px] sm:text-[10px] text-slate-400 dark:text-slate-500 font-semibold tracking-wide hidden xs:block">
+                <p className="text-[9px] text-slate-400 dark:text-slate-500 font-semibold tracking-wide hidden xs:block">
                   Digiclintec
                 </p>
               </div>
             </div>
 
             {/* Separador vertical sutil */}
-            <div className="h-6 w-px bg-slate-200 dark:bg-slate-800 hidden sm:block"></div>
+            <div className="h-5 w-px bg-slate-200 dark:bg-slate-800 hidden md:block shrink-0"></div>
 
-            {/* Hospital Selector Pill (Com largura protegida e sem sobreposição) */}
-            <div className="flex items-center bg-slate-100 dark:bg-slate-800/90 hover:bg-slate-200/70 dark:hover:bg-slate-700/60 pl-2 pr-1 py-1 rounded-xl sm:rounded-2xl border border-slate-200/90 dark:border-slate-700/80 transition shadow-sm w-36 xs:w-44 sm:w-52 lg:w-56 shrink-0">
+            {/* Hospital Selector Pill (Com largura fluida e sem estourar layout) */}
+            <div className="flex items-center bg-slate-100/90 dark:bg-slate-800/80 hover:bg-slate-200/70 dark:hover:bg-slate-700/60 pl-2 pr-1 py-1 rounded-xl border border-slate-200/90 dark:border-slate-700/80 transition shadow-sm min-w-[110px] max-w-[170px] sm:max-w-[210px] lg:max-w-[230px] shrink">
               <Building2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
               
-              <div className="flex-1 min-w-0 mx-1.5">
+              <div className="flex-1 min-w-0 mx-1">
                 <select
                   value={activeHospitalId || ''}
                   onChange={(e) => {
@@ -137,7 +137,7 @@ export default function Navbar({
                 className="p-1 hover:bg-white dark:hover:bg-slate-700 rounded-lg text-emerald-600 dark:text-emerald-400 transition shrink-0"
                 title="Cadastrar Novo Hospital ou Clínica"
               >
-                <PlusCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <PlusCircle className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
@@ -146,10 +146,10 @@ export default function Navbar({
               ZONA 2 (CENTRO): Abas de Navegação (Conferência / Espelho / Planejamento)
           ============================================================ */}
           {onChangeMainTab && (
-            <div className="hidden md:flex items-center gap-1 bg-slate-100/90 dark:bg-slate-800/90 p-1 rounded-2xl border border-slate-200/90 dark:border-slate-700/70 shadow-inner shrink-0">
+            <div className="hidden md:flex items-center gap-1 bg-slate-100/90 dark:bg-slate-800/70 p-1 rounded-2xl border border-slate-200/90 dark:border-slate-700/70 shadow-inner shrink-0">
               <button
                 onClick={() => onChangeMainTab('conferencia')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                className={`px-2.5 xl:px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
                   activeMainTab === 'conferencia'
                     ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25 ring-1 ring-blue-500'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-slate-700/40'
@@ -157,13 +157,13 @@ export default function Navbar({
                 title="Conferência de Equipamentos e Bipagem"
               >
                 <FileCheck className="w-3.5 h-3.5" />
-                <span className="hidden lg:inline">Conferência</span>
-                <span className="lg:hidden">Conf.</span>
+                <span className="hidden xl:inline">Conferência</span>
+                <span className="xl:hidden">Conf.</span>
               </button>
 
               <button
                 onClick={() => onChangeMainTab('auditoria')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                className={`px-2.5 xl:px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
                   activeMainTab === 'auditoria'
                     ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/25 ring-1 ring-emerald-500'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-slate-700/40'
@@ -171,13 +171,13 @@ export default function Navbar({
                 title="Espelho Seguro da planilha e Espelho de Ponto da Equipe"
               >
                 <ShieldCheck className="w-3.5 h-3.5" />
-                <span className="hidden lg:inline">Espelho Seguro</span>
-                <span className="lg:hidden">Espelho</span>
+                <span className="hidden xl:inline">Espelho Seguro</span>
+                <span className="xl:hidden">Espelho</span>
               </button>
 
               <button
                 onClick={() => onChangeMainTab('planejamento')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                className={`px-2.5 xl:px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
                   activeMainTab === 'planejamento'
                     ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/25 ring-1 ring-indigo-500'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-slate-700/40'
@@ -185,8 +185,8 @@ export default function Navbar({
                 title="Planejamento de Cronogramas e Metas Mensais"
               >
                 <Calendar className="w-3.5 h-3.5" />
-                <span className="hidden lg:inline">Planejamento</span>
-                <span className="lg:hidden">Planos</span>
+                <span className="hidden xl:inline">Planejamento</span>
+                <span className="xl:hidden">Planos</span>
                 {monthlyPlans.length > 0 && (
                   <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
                     activeMainTab === 'planejamento' ? 'bg-white/25 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
@@ -201,7 +201,7 @@ export default function Navbar({
           {/* ============================================================
               ZONA 3 (DIREITA): Ações Rápidas, Menu e Perfil
           ============================================================ */}
-          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
             
             {/* Mobile Navigation Toggles (< 768px) */}
             {onChangeMainTab && (
@@ -235,19 +235,19 @@ export default function Navbar({
             {/* Equipe & Trabalhos (Audit & Users) */}
             <button
               onClick={onOpenTeamModal}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl text-xs font-bold bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/25 transition shadow-sm"
+              className="flex items-center gap-1 px-2 py-1.5 sm:px-2.5 sm:py-2 rounded-xl text-xs font-bold bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/25 transition shadow-sm"
               title="Gerenciar usuários da equipe e auditar todos os trabalhos e pontos realizados"
             >
               <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-500 shrink-0" />
-              <span className="hidden xl:inline">Equipe & Trabalhos</span>
-              <span className="hidden md:inline xl:hidden">Equipe</span>
+              <span className="hidden 2xl:inline">Equipe & Trabalhos</span>
+              <span className="hidden md:inline 2xl:hidden">Equipe</span>
             </button>
 
-            {/* Painel Master (visível direto em telas maiores) */}
+            {/* Painel Master (visível direto em telas muito largas 2xl+) */}
             {isMaster && (
               <button
                 onClick={onOpenMasterPanel}
-                className="hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl text-xs font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 transition shadow-sm"
+                className="hidden 2xl:flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl text-xs font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 transition shadow-sm"
                 title="Painel Master para gerenciar cadastros de hospitais e operadores"
               >
                 <Sparkles className="w-3.5 h-3.5 text-amber-500" />
@@ -255,10 +255,10 @@ export default function Navbar({
               </button>
             )}
 
-            {/* Baixar APK (visível direto em telas xl+) */}
+            {/* Baixar APK (visível direto em telas 2xl+) */}
             <button
               onClick={onOpenInstall}
-              className="hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl text-xs font-bold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 transition shadow-sm"
+              className="hidden 2xl:flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl text-xs font-bold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 transition shadow-sm"
               title="Baixar instalador APK para Android ou instalar aplicativo"
             >
               <Smartphone className="w-3.5 h-3.5 text-emerald-500" />
@@ -290,21 +290,22 @@ export default function Navbar({
               )}
             </button>
 
-            {/* Botão Principal: Ler Código (Desktop) */}
+            {/* Botão Principal: Ler Código (Desktop / Tablet) */}
             <button
               onClick={onOpenScanner}
-              className="hidden sm:flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2 rounded-xl text-xs sm:text-sm font-bold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-md shadow-blue-500/25 transition active:scale-95 shrink-0"
+              className="hidden sm:flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-bold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-md shadow-blue-500/25 transition active:scale-95 shrink-0"
               title="Abrir leitor de código de barras ou QR Code"
             >
               <Camera className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
-              <span>Ler Código</span>
+              <span className="hidden md:inline">Ler Código</span>
+              <span className="md:hidden">Ler</span>
             </button>
 
-            {/* Menu "Mais Opções" (Dropdown para telas menores ou secundárias) */}
+            {/* Menu "Mais Opções" (Dropdown unificado para telas < 2xl) */}
             <div className="relative" ref={moreMenuRef}>
               <button
                 onClick={() => setShowMoreMenu(!showMoreMenu)}
-                className="xl:hidden p-1.5 sm:p-2 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition"
+                className="2xl:hidden p-1.5 sm:p-2 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition"
                 title="Mais opções e ferramentas"
               >
                 <MoreVertical className="w-4 h-4" />
