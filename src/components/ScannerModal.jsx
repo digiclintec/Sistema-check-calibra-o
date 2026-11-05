@@ -30,7 +30,7 @@ import { playSuccessSound, playWarningSound, playErrorSound } from '../utils/aud
 import { findBestEquipmentMatches } from '../utils/fuzzyMatch';
 import { parseCompositeBarcode } from '../utils/gs1Parser';
 import { processPhotoTextWithAgent } from '../utils/serialAgent';
-import { MODALITIES, isEquipmentChecked } from '../utils/modalities';
+import { MODALITIES, isEquipmentChecked, getCheckMeta } from '../utils/modalities';
 
 // Suporte a todos os formatos padrão industriais e hospitalares
 const SUPPORTED_FORMATS = [
@@ -54,7 +54,8 @@ export default function ScannerModal({
   onBatchCheck, 
   equipments = [], 
   soundEnabled = true,
-  activeModality = 'calibracao'
+  activeModality = 'calibracao',
+  serviceConfig = null
 }) {
   const [cameras, setCameras] = useState([]);
   const [selectedCamera, setSelectedCamera] = useState('');
@@ -544,15 +545,52 @@ export default function ScannerModal({
     const bestMatch = matches[0];
     const targetEq = bestMatch.equipment;
 
+    // SEGURANÇA INTELIGENTE: Bloqueia bipar equipamento já conferido para a modalidade ativa!
+    const isAlreadyChecked = isEquipmentChecked(targetEq, activeModality, serviceConfig);
+    const meta = getCheckMeta(targetEq, activeModality);
+    const modConfig = MODALITIES[activeModality] || MODALITIES.calibracao;
+    const modName = modConfig.shortName || 'Calibração';
+
+    if (isAlreadyChecked) {
+      if (soundEnabled) {
+        playWarningSound();
+      }
+      if (navigator.vibrate) {
+        navigator.vibrate([100, 50, 100]);
+      }
+
+      const whoChecked = meta.user ? `por ${meta.user}` : '';
+      const whenChecked = meta.date ? ` em ${new Date(meta.date).toLocaleDateString('pt-BR')}` : '';
+
+      setLastScannedFeedback({
+        status: 'already_checked',
+        code: cleanCode,
+        match: bestMatch,
+        equipment: targetEq,
+        meta,
+        modality: activeModality,
+        message: `⚠️ ATENÇÃO: Esta bomba já possui [${modName}] realizada anteriormente ${whoChecked}${whenChecked}! Bip bloqueado para evitar duplicação.`,
+        timestamp: new Date().toLocaleTimeString('pt-BR')
+      });
+      return;
+    }
+
     if (soundEnabled) {
       playSuccessSound();
     }
 
     // Modo 1: Checagem Imediata (1 a 1)
     const gs1Info = parseCompositeBarcode(cleanCode);
-    const detailMsg = gs1Info.serialNumber && gs1Info.serialNumber !== cleanCode
-      ? `Série ${gs1Info.serialNumber} isolado do código GS1 • ${targetEq.equipamento} (${targetEq.tag || targetEq.serie})`
-      : `${bestMatch.reason} • ${targetEq.equipamento} (IDEC: ${targetEq.tag || 'N/A'} | Série: ${targetEq.serie || 'N/A'})`;
+    const baseIdentification = gs1Info.serialNumber && gs1Info.serialNumber !== cleanCode
+      ? `Série ${gs1Info.serialNumber} isolado do GS1`
+      : `${bestMatch.reason}`;
+
+    let detailMsg = `${baseIdentification} • ${targetEq.equipamento} (IDEC: ${targetEq.tag || 'N/A'} | Série: ${targetEq.serie || 'N/A'})`;
+    if (activeModality === 'preventiva' && targetEq.check_calibracao) {
+      detailMsg = `🎯 Calibração já OK • Adicionada para Preventiva: ${targetEq.equipamento} (${targetEq.tag || targetEq.serie})`;
+    } else if (activeModality === 'seguranca' && targetEq.check_calibracao) {
+      detailMsg = `🎯 Calibração já OK • Adicionada para Seg. Elétrica: ${targetEq.equipamento} (${targetEq.tag || targetEq.serie})`;
+    }
 
     if (mode === 'instant') {
       if (onScan) {
@@ -1108,11 +1146,13 @@ export default function ScannerModal({
           )}
         </div>
 
-        {/* Banner do Último Item Bipado com Indicador de Similaridade */}
+        {/* Banner do Último Item Bipado com Indicador de Similaridade e Alerta de Já Conferido */}
         {lastScannedFeedback && (
           <div className={`px-4 py-2.5 border-t shrink-0 text-xs transition-all ${
             lastScannedFeedback.status === 'not_found'
               ? 'bg-red-500/15 border-red-500/30 text-red-200'
+              : lastScannedFeedback.status === 'already_checked'
+              ? 'bg-amber-500/20 border-amber-500/40 text-amber-100 ring-1 ring-amber-500/30'
               : lastScannedFeedback.status === 'already_staged'
               ? 'bg-amber-500/15 border-amber-500/30 text-amber-200'
               : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-200'
@@ -1121,6 +1161,8 @@ export default function ScannerModal({
               <div className="flex items-center gap-2 truncate">
                 {lastScannedFeedback.status === 'not_found' ? (
                   <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                ) : lastScannedFeedback.status === 'already_checked' ? (
+                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 animate-pulse" />
                 ) : (
                   <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                 )}
@@ -1130,7 +1172,11 @@ export default function ScannerModal({
                     <span className="truncate">
                       {lastScannedFeedback.equipment ? lastScannedFeedback.equipment.equipamento : 'Código Lido'}
                     </span>
-                    {lastScannedFeedback.match && (
+                    {lastScannedFeedback.status === 'already_checked' ? (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-extrabold bg-amber-500/30 text-amber-200 border border-amber-500/40 shrink-0">
+                        JÁ CONFERIDA
+                      </span>
+                    ) : lastScannedFeedback.match ? (
                       <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-semibold shrink-0 ${
                         lastScannedFeedback.match.isExact 
                           ? 'bg-emerald-500/20 text-emerald-300' 
@@ -1138,7 +1184,7 @@ export default function ScannerModal({
                       }`}>
                         {lastScannedFeedback.match.confidence}% Similar
                       </span>
-                    )}
+                    ) : null}
                   </div>
                   <p className="text-[11px] opacity-90 truncate">
                     {lastScannedFeedback.message}
@@ -1146,9 +1192,40 @@ export default function ScannerModal({
                 </div>
               </div>
 
-              <span className="text-[10px] font-mono opacity-70 shrink-0">
-                {lastScannedFeedback.timestamp}
-              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                {lastScannedFeedback.status === 'already_checked' && lastScannedFeedback.equipment && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const eq = lastScannedFeedback.equipment;
+                      setStagedItems(prev => [
+                        {
+                          equipment: eq,
+                          match: lastScannedFeedback.match,
+                          scannedCode: lastScannedFeedback.code,
+                          setorRetirada: batchSector || eq.setor_retirada || eq.setor || '',
+                          isForced: true,
+                          timestamp: new Date().toLocaleTimeString('pt-BR')
+                        },
+                        ...prev.filter(item => item.equipment.id !== eq.id)
+                      ]);
+                      setLastScannedFeedback(prev => ({
+                        ...prev,
+                        status: 'staged',
+                        message: `Forçada inclusão na fila: ${eq.equipamento} (${eq.tag || eq.serie})`
+                      }));
+                    }}
+                    className="px-2 py-1 rounded-lg bg-amber-600/30 hover:bg-amber-600 text-amber-200 hover:text-white border border-amber-500/40 text-[10px] font-bold transition"
+                    title="Forçar recalibração mesmo já conferida"
+                  >
+                    Forçar Inclusão
+                  </button>
+                )}
+
+                <span className="text-[10px] font-mono opacity-70">
+                  {lastScannedFeedback.timestamp}
+                </span>
+              </div>
             </div>
           </div>
         )}

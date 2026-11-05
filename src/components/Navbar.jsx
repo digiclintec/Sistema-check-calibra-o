@@ -196,26 +196,26 @@ export default function Navbar({
                   onClick={() => onChangeMainTab(activeMainTab === 'auditoria' ? 'conferencia' : 'auditoria')}
                   className={`flex items-center gap-1 px-2 py-1 rounded-xl text-[11px] font-bold border transition ${
                     activeMainTab === 'auditoria'
-                      ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
+                      ? 'bg-emerald-600 text-white border-emerald-500 shadow-md ring-1 ring-emerald-400/40'
                       : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                   }`}
-                  title="Alternar para o Espelho Seguro da Planilha"
+                  title="Alternar para o Espelho Seguro da Planilha e Ponto da Equipe"
                 >
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  <span className="hidden xs:inline">Espelho</span>
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>Espelho</span>
                 </button>
 
                 <button
                   onClick={() => onChangeMainTab(activeMainTab === 'planejamento' ? 'conferencia' : 'planejamento')}
                   className={`flex items-center gap-1 px-2 py-1 rounded-xl text-[11px] font-bold border transition ${
                     activeMainTab === 'planejamento'
-                      ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                      ? 'bg-blue-600 text-white border-blue-500 shadow-md'
                       : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                   }`}
                   title="Alternar para aba de Planejamento do Mês"
                 >
-                  <Calendar className="w-3.5 h-3.5" />
-                  <span className="hidden xs:inline">Planos</span>
+                  <Calendar className="w-3.5 h-3.5 text-blue-500" />
+                  <span>Planos</span>
                 </button>
               </div>
             )}

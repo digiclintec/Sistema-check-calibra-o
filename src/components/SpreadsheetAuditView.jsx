@@ -18,7 +18,13 @@ import {
   RefreshCw,
   Sparkles,
   Maximize2,
-  Settings
+  Settings,
+  Users,
+  Target,
+  Wrench,
+  Zap,
+  MapPin,
+  Clock3
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -31,6 +37,7 @@ export default function SpreadsheetAuditView({
   serviceConfig = null,
   onOpenServiceConfig = null
 }) {
+  const [viewMode, setViewMode] = useState('equipments'); // 'equipments' | 'ponto'
   const [searchQuery, setSearchQuery] = useState('');
   const [sectorFilter, setSectorFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
@@ -97,14 +104,118 @@ export default function SpreadsheetAuditView({
       pendingTotal: total - complete100,
       withSectorDiff
     };
+  }, [equipments, serviceConfig]);
+
+  // ---------------- ENTRADAS DO ESPELHO DE PONTO & TRABALHOS ---------------- //
+  const pontoEntries = useMemo(() => {
+    const list = [];
+
+    equipments.forEach(eq => {
+      // 1. Calibração
+      if (eq.check_calibracao) {
+        list.push({
+          id: `${eq.id}-cal`,
+          equipmentName: eq.equipamento || eq.nome || 'Bomba de Infusão',
+          tag: eq.tag || 'N/A',
+          serie: eq.serie || 'N/A',
+          modality: 'calibracao',
+          modalityLabel: 'Calibração',
+          user: eq.usuario_calibracao || eq.conferidoPor || 'Técnico',
+          date: eq.data_calibracao || eq.dataCheck || null,
+          setorOriginal: eq.setor || 'Geral',
+          setorRetirada: eq.setor_retirada || eq.setor || 'Geral',
+          obs: eq.observacao || ''
+        });
+      }
+
+      // 2. Preventiva
+      if (eq.check_preventiva) {
+        list.push({
+          id: `${eq.id}-prev`,
+          equipmentName: eq.equipamento || eq.nome || 'Bomba de Infusão',
+          tag: eq.tag || 'N/A',
+          serie: eq.serie || 'N/A',
+          modality: 'preventiva',
+          modalityLabel: 'Preventiva',
+          user: eq.usuario_preventiva || eq.conferidoPor || 'Técnico',
+          date: eq.data_preventiva || eq.dataCheck || null,
+          setorOriginal: eq.setor || 'Geral',
+          setorRetirada: eq.setor_retirada || eq.setor || 'Geral',
+          obs: eq.observacao || ''
+        });
+      }
+
+      // 3. Segurança Elétrica
+      if (eq.check_seguranca) {
+        list.push({
+          id: `${eq.id}-seg`,
+          equipmentName: eq.equipamento || eq.nome || 'Bomba de Infusão',
+          tag: eq.tag || 'N/A',
+          serie: eq.serie || 'N/A',
+          modality: 'seguranca',
+          modalityLabel: 'Segurança Elétrica',
+          user: eq.usuario_seguranca || eq.conferidoPor || 'Técnico',
+          date: eq.data_seguranca || eq.dataCheck || null,
+          setorOriginal: eq.setor || 'Geral',
+          setorRetirada: eq.setor_retirada || eq.setor || 'Geral',
+          obs: eq.observacao || ''
+        });
+      }
+    });
+
+    // Ordena do mais recente para o mais antigo
+    return list.sort((a, b) => {
+      const dateA = a.date ? new Date(a.date).getTime() : 0;
+      const dateB = b.date ? new Date(b.date).getTime() : 0;
+      return dateB - dateA;
+    });
   }, [equipments]);
 
-  // Filtragem da Lista
+  // Estatísticas agrupadas por técnico (Resumo do Espelho de Ponto)
+  const technicianPontoStats = useMemo(() => {
+    const statsMap = {};
+
+    pontoEntries.forEach(entry => {
+      const user = entry.user || 'Técnico';
+      if (!statsMap[user]) {
+        statsMap[user] = {
+          name: user,
+          total: 0,
+          calibracao: 0,
+          preventiva: 0,
+          seguranca: 0,
+          sectors: new Set(),
+          firstAction: entry.date,
+          lastAction: entry.date
+        };
+      }
+
+      statsMap[user].total += 1;
+      if (entry.modality === 'calibracao') statsMap[user].calibracao += 1;
+      if (entry.modality === 'preventiva') statsMap[user].preventiva += 1;
+      if (entry.modality === 'seguranca') statsMap[user].seguranca += 1;
+      if (entry.setorRetirada) statsMap[user].sectors.add(entry.setorRetirada);
+
+      // Atualiza primeira e última data
+      if (entry.date) {
+        const time = new Date(entry.date).getTime();
+        if (!statsMap[user].firstAction || time < new Date(statsMap[user].firstAction).getTime()) {
+          statsMap[user].firstAction = entry.date;
+        }
+        if (!statsMap[user].lastAction || time > new Date(statsMap[user].lastAction).getTime()) {
+          statsMap[user].lastAction = entry.date;
+        }
+      }
+    });
+
+    return Object.values(statsMap).sort((a, b) => b.total - a.total);
+  }, [pontoEntries]);
+
+  // Filtragem da Lista de Equipamentos
   const filteredEquipments = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
 
     return equipments.filter(item => {
-      // Filtro de Busca Texto
       if (query) {
         const tag = String(item.tag || '').toLowerCase();
         const serie = String(item.serie || '').toLowerCase();
@@ -129,7 +240,6 @@ export default function SpreadsheetAuditView({
         if (!match) return false;
       }
 
-      // Filtro de Setor
       if (sectorFilter !== 'ALL') {
         const s1 = String(item.setor || '').trim().toLowerCase();
         const s2 = String(item.setor_retirada || '').trim().toLowerCase();
@@ -137,7 +247,6 @@ export default function SpreadsheetAuditView({
         if (s1 !== target && s2 !== target) return false;
       }
 
-      // Filtro de Técnico
       if (technicianFilter !== 'ALL') {
         const t1 = item.usuario_calibracao;
         const t2 = item.usuario_preventiva;
@@ -148,28 +257,17 @@ export default function SpreadsheetAuditView({
         }
       }
 
-      // Filtro de Status
       const isCompleteItem = (
         (!serviceConfig || !serviceConfig.enableCalibracao || item.check_calibracao) &&
         (!serviceConfig || !serviceConfig.enablePreventiva || item.check_preventiva) &&
         (!serviceConfig || !serviceConfig.enableSeguranca || item.check_seguranca)
       );
 
-      if (statusFilter === '100_COMPLETE') {
-        return isCompleteItem;
-      }
-      if (statusFilter === 'ANY_PENDING') {
-        return !isCompleteItem;
-      }
-      if (statusFilter === 'PENDING_CAL') {
-        return !item.check_calibracao;
-      }
-      if (statusFilter === 'PENDING_PREV') {
-        return !item.check_preventiva;
-      }
-      if (statusFilter === 'PENDING_SEG') {
-        return !item.check_seguranca;
-      }
+      if (statusFilter === '100_COMPLETE') return isCompleteItem;
+      if (statusFilter === 'ANY_PENDING') return !isCompleteItem;
+      if (statusFilter === 'PENDING_CAL') return !item.check_calibracao;
+      if (statusFilter === 'PENDING_PREV') return !item.check_preventiva;
+      if (statusFilter === 'PENDING_SEG') return !item.check_seguranca;
       if (statusFilter === 'SECTOR_DIFF') {
         return item.setor_retirada && item.setor && 
           item.setor_retirada.trim().toLowerCase() !== item.setor.trim().toLowerCase();
@@ -177,9 +275,29 @@ export default function SpreadsheetAuditView({
 
       return true;
     });
-  }, [equipments, searchQuery, sectorFilter, statusFilter, technicianFilter]);
+  }, [equipments, searchQuery, sectorFilter, statusFilter, technicianFilter, serviceConfig]);
 
-  // Exportação Direta para Excel da Visão de Auditoria
+  // Filtragem da Lista de Ponto
+  const filteredPontoEntries = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+
+    return pontoEntries.filter(entry => {
+      if (technicianFilter !== 'ALL' && entry.user !== technicianFilter) return false;
+      if (sectorFilter !== 'ALL' && entry.setorRetirada !== sectorFilter && entry.setorOriginal !== sectorFilter) return false;
+      if (query) {
+        const name = entry.equipmentName.toLowerCase();
+        const tag = entry.tag.toLowerCase();
+        const serie = entry.serie.toLowerCase();
+        const user = entry.user.toLowerCase();
+        const mod = entry.modalityLabel.toLowerCase();
+        const sec = entry.setorRetirada.toLowerCase();
+        return name.includes(query) || tag.includes(query) || serie.includes(query) || user.includes(query) || mod.includes(query) || sec.includes(query);
+      }
+      return true;
+    });
+  }, [pontoEntries, searchQuery, technicianFilter, sectorFilter]);
+
+  // Exportação 1: Espelho da Planilha Completa de Equipamentos
   const handleExportAuditExcel = () => {
     if (equipments.length === 0) return;
 
@@ -212,6 +330,49 @@ export default function SpreadsheetAuditView({
     XLSX.writeFile(workbook, `Espelho_Planilha_${cleanHosp}_${dateStr}.xlsx`);
   };
 
+  // Exportação 2: Espelho de Ponto & Trabalhos dos Técnicos
+  const handleExportPontoExcel = () => {
+    if (pontoEntries.length === 0) return;
+
+    const exportRows = filteredPontoEntries.map((item, idx) => {
+      const d = item.date ? new Date(item.date) : null;
+      return {
+        'Item': idx + 1,
+        '👤 Técnico / Inspetor': item.user,
+        '📅 Data': d ? d.toLocaleDateString('pt-BR') : 'N/A',
+        '⏰ Horário': d ? d.toLocaleTimeString('pt-BR') : 'N/A',
+        '🛠️ Serviço Realizado': item.modalityLabel,
+        '📦 Equipamento': item.equipmentName,
+        '🏷️ Tag / IDEC': item.tag,
+        '🔢 Nº de Série': item.serie,
+        '📍 Setor de Retirada (Coleta)': item.setorRetirada,
+        '🏢 Setor Original': item.setorOriginal,
+        '📝 Observações': item.obs
+      };
+    });
+
+    const ws = XLSX.utils.json_to_sheet(exportRows);
+    ws['!cols'] = [
+      { wch: 8 },  // Item
+      { wch: 28 }, // Técnico
+      { wch: 14 }, // Data
+      { wch: 12 }, // Horário
+      { wch: 22 }, // Serviço
+      { wch: 32 }, // Equipamento
+      { wch: 16 }, // Tag
+      { wch: 18 }, // Série
+      { wch: 24 }, // Setor Retirada
+      { wch: 20 }, // Setor Original
+      { wch: 25 }  // Obs
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Espelho de Ponto');
+    const cleanHosp = (hospitalName || 'Auditoria').replace(/[^a-zA-Z0-9]/g, '_');
+    const dateStr = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, `Espelho_de_Ponto_Tecnicos_${cleanHosp}_${dateStr}.xlsx`);
+  };
+
   const formatDate = (isoString) => {
     if (!isoString) return '';
     try {
@@ -234,20 +395,20 @@ export default function SpreadsheetAuditView({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="font-extrabold text-base sm:text-xl tracking-tight">
-                Espelho Seguro da Planilha
+                Espelho Seguro da Planilha & Ponto
               </h2>
               <span className="bg-emerald-400/20 text-emerald-200 text-[10px] sm:text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border border-emerald-300/30">
                 100% Protegido
               </span>
             </div>
             <p className="text-xs sm:text-sm text-emerald-100/80 mt-0.5">
-              Auditoria em tempo real de todas as equipes sem risco de cliques acidentais ou perda de dados.
+              Auditoria dos equipamentos e espelho de ponto/jornada dos técnicos sem risco de alterações acidentais.
             </p>
           </div>
         </div>
 
         {/* Botões de Exportação e Atualização */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
           {onRefresh && (
             <button
               onClick={onRefresh}
@@ -256,32 +417,71 @@ export default function SpreadsheetAuditView({
               title="Atualizar dados em tempo real"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">Sincronizar</span>
+              <span>Sincronizar</span>
+            </button>
+          )}
+
+          {viewMode === 'equipments' ? (
+            <button
+              onClick={handleExportAuditExcel}
+              className="py-2 px-3.5 bg-white text-slate-900 hover:bg-emerald-50 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-md active:scale-95"
+              title="Exportar espelho completo da planilha para Excel"
+            >
+              <Download className="w-4 h-4 text-emerald-600" />
+              <span>Baixar Espelho Excel</span>
+            </button>
+          ) : (
+            <button
+              onClick={handleExportPontoExcel}
+              className="py-2 px-3.5 bg-white text-slate-900 hover:bg-blue-50 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-md active:scale-95"
+              title="Exportar espelho de ponto dos técnicos para Excel"
+            >
+              <Download className="w-4 h-4 text-blue-600" />
+              <span>Baixar Espelho de Ponto (Excel)</span>
             </button>
           )}
 
           <button
-            onClick={handleExportAuditExcel}
-            className="py-2 px-3.5 bg-white text-slate-900 hover:bg-emerald-50 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-md active:scale-95"
-            title="Exportar espelho completo da planilha para Excel"
-          >
-            <Download className="w-4 h-4 text-emerald-600" />
-            <span>Baixar Espelho Excel</span>
-          </button>
-
-          <button
             onClick={() => window.print()}
             className="p-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition border border-white/15 hidden sm:flex items-center justify-center"
-            title="Imprimir visualização de auditoria"
+            title="Imprimir relatório"
           >
             <Printer className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {/* Cards de Métricas e Desempenho das Equipes */}
+      {/* Sub-Aba Seletora: Espelho de Equipamentos vs Espelho de Ponto dos Técnicos */}
+      <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800/90 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-700/80">
+        <button
+          type="button"
+          onClick={() => setViewMode('equipments')}
+          className={`flex-1 py-2.5 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
+            viewMode === 'equipments'
+              ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm ring-1 ring-slate-200 dark:ring-slate-700'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Layers className="w-4 h-4 text-emerald-500" />
+          <span>📋 Espelho da Planilha ({equipments.length} Equipamentos)</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setViewMode('ponto')}
+          className={`flex-1 py-2.5 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
+            viewMode === 'ponto'
+              ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm ring-1 ring-slate-200 dark:ring-slate-700'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Clock3 className="w-4 h-4 text-blue-500" />
+          <span>⏱️ Espelho de Ponto & Jornada da Equipe ({pontoEntries.length} Ações)</span>
+        </button>
+      </div>
+
+      {/* Cards de Métricas e Desempenho Global */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-3">
-        
         {/* Total Equipamentos */}
         <div className="bg-white dark:bg-slate-900 p-3.5 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between">
           <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
@@ -358,7 +558,7 @@ export default function SpreadsheetAuditView({
           </div>
         </div>
 
-        {/* 🏆 100% Concluídos em Todas as Frentes */}
+        {/* 🏆 100% Concluídos */}
         <div className="col-span-2 lg:col-span-1 bg-gradient-to-br from-emerald-500/10 to-teal-500/10 dark:from-emerald-950/30 dark:to-teal-950/30 p-3.5 sm:p-4 rounded-2xl border border-emerald-500/30 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider flex items-center gap-1">
@@ -378,56 +578,36 @@ export default function SpreadsheetAuditView({
             <div className="bg-emerald-500 h-full rounded-full transition-all duration-500" style={{ width: `${stats.complete100Pct}%` }} />
           </div>
         </div>
-
       </div>
 
       {/* Barra de Filtros e Busca Rápida */}
       <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
         <div className="flex flex-col md:flex-row gap-2.5 items-stretch md:items-center justify-between">
-          
-          {/* Campo de Busca Texto */}
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Buscar por tag, número de série, equipamento, setor ou nome do técnico..."
+              placeholder={viewMode === 'equipments' ? "Buscar por tag, número de série, equipamento, setor ou técnico..." : "Buscar técnico, tag, serviço ou setor de retirada..."}
               className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 rounded-xl text-xs sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
-          {/* Filtros Dropdown */}
           <div className="flex items-center gap-2 flex-wrap">
-            
             {/* Filtro Setor */}
             <select
               value={sectorFilter}
               onChange={(e) => setSectorFilter(e.target.value)}
               className="px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <option value="ALL">🏢 Setores: Todos ({equipments.length})</option>
+              <option value="ALL">🏢 Setores: Todos</option>
               {sectors.map(sec => (
                 <option key={sec} value={sec}>📍 {sec}</option>
               ))}
             </select>
 
-            {/* Filtro Status Técnico */}
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="ALL">📋 Status: Todos</option>
-              <option value="100_COMPLETE">🏆 100% Concluídos</option>
-              <option value="ANY_PENDING">⏳ Pendência em alguma modalidade</option>
-              <option value="PENDING_CAL">🎯 Pendente em Calibração</option>
-              <option value="PENDING_PREV">🔧 Pendente em Preventiva</option>
-              <option value="PENDING_SEG">⚡ Pendente em Seg. Elétrica</option>
-              <option value="SECTOR_DIFF">📦 Divergência de Setor (Retirado de outro local)</option>
-            </select>
-
-            {/* Filtro de Técnico Executor */}
+            {/* Filtro Técnico */}
             {technicians.length > 0 && (
               <select
                 value={technicianFilter}
@@ -441,220 +621,339 @@ export default function SpreadsheetAuditView({
               </select>
             )}
 
+            {/* Filtro Status (somente no modo equipamentos) */}
+            {viewMode === 'equipments' && (
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="ALL">📋 Status: Todos</option>
+                <option value="100_COMPLETE">🏆 100% Concluídos</option>
+                <option value="ANY_PENDING">⏳ Pendência em alguma modalidade</option>
+                <option value="PENDING_CAL">🎯 Pendente em Calibração</option>
+                <option value="PENDING_PREV">🔧 Pendente em Preventiva</option>
+                <option value="PENDING_SEG">⚡ Pendente em Seg. Elétrica</option>
+                <option value="SECTOR_DIFF">📦 Divergência de Setor</option>
+              </select>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ================= VIEW 1: ESPELHO DA PLANILHA (EQUIPAMENTOS) ================= */}
+      {viewMode === 'equipments' && (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto max-h-[70vh]">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead className="sticky top-0 z-20 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-extrabold uppercase text-[10px] tracking-wider border-b border-slate-200 dark:border-slate-700 shadow-xs">
+                <tr>
+                  <th className="py-3 px-3 w-12 text-center">#</th>
+                  <th className="py-3 px-3 min-w-[120px]">Tag / Patrimônio</th>
+                  <th className="py-3 px-3 min-w-[130px]">Nº de Série</th>
+                  <th className="py-3 px-3 min-w-[200px]">Equipamento</th>
+                  <th className="py-3 px-3 min-w-[140px]">Setor Cadastrado</th>
+                  <th className="py-3 px-3 min-w-[140px]">Setor Retirada</th>
+                  <th className="py-3 px-3 min-w-[160px] text-center bg-blue-500/10 dark:bg-blue-950/40">Calibração</th>
+                  <th className="py-3 px-3 min-w-[160px] text-center bg-amber-500/10 dark:bg-amber-950/40">Preventiva</th>
+                  <th className="py-3 px-3 min-w-[160px] text-center bg-purple-500/10 dark:bg-purple-950/40">Seg. Elétrica</th>
+                  <th className="py-3 px-3 min-w-[110px] text-center">Status Geral</th>
+                  <th className="py-3 px-3 min-w-[180px]">Observações</th>
+                </tr>
+              </thead>
+
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-normal">
+                {filteredEquipments.length === 0 ? (
+                  <tr>
+                    <td colSpan="11" className="py-12 text-center text-slate-400">
+                      Nenhum equipamento corresponde aos filtros aplicados.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredEquipments.map((item, idx) => {
+                    const isComplete = item.check_calibracao && item.check_preventiva && item.check_seguranca;
+                    const isDiffSector = item.setor_retirada && item.setor && 
+                      item.setor_retirada.trim().toLowerCase() !== item.setor.trim().toLowerCase();
+
+                    return (
+                      <tr 
+                        key={item.id || item.tag || idx}
+                        className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors ${
+                          isComplete ? 'bg-emerald-500/[0.02]' : ''
+                        }`}
+                      >
+                        <td className="py-2.5 px-3 text-center text-slate-400 font-mono text-[11px]">{idx + 1}</td>
+                        <td className="py-2.5 px-3 font-bold text-slate-900 dark:text-white font-mono text-[11px]">{item.tag || '—'}</td>
+                        <td className="py-2.5 px-3 font-mono text-slate-700 dark:text-slate-300 text-[11px]">{item.serie || '—'}</td>
+                        <td className="py-2.5 px-3 text-slate-800 dark:text-slate-200 font-medium">{item.nome || item.equipamento || '—'}</td>
+                        <td className="py-2.5 px-3 text-slate-600 dark:text-slate-400">
+                          <span className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md font-medium text-[11px]">
+                            {item.setor || 'Geral'}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          {item.setor_retirada ? (
+                            isDiffSector ? (
+                              <span className="inline-flex items-center gap-1 bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded-md font-bold text-[11px]">
+                                <ArrowRight className="w-3 h-3 text-amber-500" />
+                                <span>{item.setor_retirada}</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-2 py-0.5 rounded-md font-medium text-[11px]">
+                                {item.setor_retirada}
+                              </span>
+                            )
+                          ) : (
+                            <span className="text-slate-400 text-[11px]">—</span>
+                          )}
+                        </td>
+
+                        {/* Calibração */}
+                        <td className="py-2 px-3 text-center bg-blue-500/[0.03] dark:bg-blue-950/10">
+                          {item.check_calibracao ? (
+                            <div className="inline-flex flex-col items-center">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold text-[11px] border border-emerald-500/30">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                                <span>OK</span>
+                              </span>
+                              {item.usuario_calibracao && (
+                                <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate max-w-[130px] mt-0.5 font-medium">
+                                  {item.usuario_calibracao}
+                                </span>
+                              )}
+                              {item.data_calibracao && (
+                                <span className="text-[9px] text-slate-400 font-mono">
+                                  {formatDate(item.data_calibracao)}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-400 text-[10px] font-semibold">
+                              <Clock className="w-3 h-3" />
+                              <span>Pendente</span>
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Preventiva */}
+                        <td className="py-2 px-3 text-center bg-amber-500/[0.03] dark:bg-amber-950/10">
+                          {item.check_preventiva ? (
+                            <div className="inline-flex flex-col items-center">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold text-[11px] border border-emerald-500/30">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                                <span>OK</span>
+                              </span>
+                              {item.usuario_preventiva && (
+                                <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate max-w-[130px] mt-0.5 font-medium">
+                                  {item.usuario_preventiva}
+                                </span>
+                              )}
+                              {item.data_preventiva && (
+                                <span className="text-[9px] text-slate-400 font-mono">
+                                  {formatDate(item.data_preventiva)}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-400 text-[10px] font-semibold">
+                              <Clock className="w-3 h-3" />
+                              <span>Pendente</span>
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Seg. Elétrica */}
+                        <td className="py-2 px-3 text-center bg-purple-500/[0.03] dark:bg-purple-950/10">
+                          {item.check_seguranca ? (
+                            <div className="inline-flex flex-col items-center">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold text-[11px] border border-emerald-500/30">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                                <span>OK</span>
+                              </span>
+                              {item.usuario_seguranca && (
+                                <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate max-w-[130px] mt-0.5 font-medium">
+                                  {item.usuario_seguranca}
+                                </span>
+                              )}
+                              {item.data_seguranca && (
+                                <span className="text-[9px] text-slate-400 font-mono">
+                                  {formatDate(item.data_seguranca)}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-400 text-[10px] font-semibold">
+                              <Clock className="w-3 h-3" />
+                              <span>Pendente</span>
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Status Geral */}
+                        <td className="py-2.5 px-3 text-center">
+                          {isComplete ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-extrabold text-[10px] uppercase tracking-wide border border-emerald-500/40">
+                              <Sparkles className="w-3 h-3 text-emerald-500" />
+                              <span>100% OK</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-bold text-[10px]">
+                              Parcial
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Observações */}
+                        <td className="py-2.5 px-3 text-slate-500 dark:text-slate-400 text-[11px] truncate max-w-[200px]" title={item.observacao || ''}>
+                          {item.observacao || '—'}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ================= VIEW 2: ESPELHO DE PONTO & JORNADA DA EQUIPE ================= */}
+      {viewMode === 'ponto' && (
+        <div className="space-y-4">
+          
+          {/* Cards de Produtividade & Horários por Técnico */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {technicianPontoStats.map((tech) => (
+              <div 
+                key={tech.name}
+                className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3"
+              >
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center font-bold text-xs">
+                      {tech.name.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-slate-900 dark:text-white text-sm">{tech.name}</h4>
+                      <p className="text-[11px] text-slate-500">Técnico em Campo</p>
+                    </div>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-extrabold text-xs font-mono">
+                    {tech.total} {tech.total === 1 ? 'Ação' : 'Ações'}
+                  </span>
+                </div>
+
+                {/* Métricas por Modalidade */}
+                <div className="grid grid-cols-3 gap-1.5 text-center text-xs">
+                  <div className="p-1.5 rounded-lg bg-blue-50/50 dark:bg-blue-950/30">
+                    <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold block">🎯 Calibração</span>
+                    <span className="font-extrabold text-slate-900 dark:text-white font-mono">{tech.calibracao}</span>
+                  </div>
+                  <div className="p-1.5 rounded-lg bg-emerald-50/50 dark:bg-emerald-950/30">
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold block">🔧 Preventiva</span>
+                    <span className="font-extrabold text-slate-900 dark:text-white font-mono">{tech.preventiva}</span>
+                  </div>
+                  <div className="p-1.5 rounded-lg bg-purple-50/50 dark:bg-purple-950/30">
+                    <span className="text-[10px] text-purple-600 dark:text-purple-400 font-bold block">⚡ Seg. Elétr.</span>
+                    <span className="font-extrabold text-slate-900 dark:text-white font-mono">{tech.seguranca}</span>
+                  </div>
+                </div>
+
+                {/* Horários de Início e Fim da Jornada (Registro de Ponto) */}
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 pt-1 border-t border-slate-100 dark:border-slate-800 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span>🟢 Início da Jornada:</span>
+                    <strong className="text-slate-700 dark:text-slate-300 font-mono">{formatDate(tech.firstAction) || 'N/A'}</strong>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>🔴 Último Registro:</span>
+                    <strong className="text-slate-700 dark:text-slate-300 font-mono">{formatDate(tech.lastAction) || 'N/A'}</strong>
+                  </div>
+                  {tech.sectors.size > 0 && (
+                    <div className="pt-1 text-[10px] text-slate-400 flex items-center gap-1 truncate">
+                      <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                      <span className="truncate">Setores: {Array.from(tech.sectors).join(', ')}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Tabela Cronológica de Ações (O Espelho de Ponto Detalhado) */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+            <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Clock3 className="w-4 h-4 text-blue-500" />
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                  Registro Cronológico de Atividades ({filteredPontoEntries.length})
+                </h4>
+              </div>
+              <span className="text-[11px] text-slate-500">Ordenado por horário mais recente</span>
+            </div>
+
+            <div className="overflow-x-auto max-h-[60vh]">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead className="sticky top-0 z-20 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-extrabold uppercase text-[10px] tracking-wider border-b border-slate-200 dark:border-slate-700 shadow-xs">
+                  <tr>
+                    <th className="py-2.5 px-3 w-10 text-center">#</th>
+                    <th className="py-2.5 px-3 min-w-[140px]">⏰ Data & Hora</th>
+                    <th className="py-2.5 px-3 min-w-[150px]">👤 Técnico</th>
+                    <th className="py-2.5 px-3 min-w-[130px]">🛠️ Serviço</th>
+                    <th className="py-2.5 px-3 min-w-[180px]">📦 Equipamento</th>
+                    <th className="py-2.5 px-3 min-w-[110px]">Tag / IDEC</th>
+                    <th className="py-2.5 px-3 min-w-[120px]">Nº de Série</th>
+                    <th className="py-2.5 px-3 min-w-[140px]">📍 Setor Coleta</th>
+                    <th className="py-2.5 px-3 min-w-[140px]">🏢 Setor Cadastro</th>
+                  </tr>
+                </thead>
+
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-normal">
+                  {filteredPontoEntries.length === 0 ? (
+                    <tr>
+                      <td colSpan="9" className="py-10 text-center text-slate-400">
+                        Nenhuma ação de conferência registrada para os filtros selecionados.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredPontoEntries.map((entry, idx) => (
+                      <tr key={entry.id || idx} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
+                        <td className="py-2 px-3 text-center text-slate-400 font-mono text-[11px]">{idx + 1}</td>
+                        <td className="py-2 px-3 font-mono font-medium text-slate-700 dark:text-slate-300 text-[11px]">
+                          {formatDate(entry.date) || '—'}
+                        </td>
+                        <td className="py-2 px-3 font-bold text-slate-900 dark:text-white">{entry.user}</td>
+                        <td className="py-2 px-3">
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                            entry.modality === 'calibracao' 
+                              ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300' 
+                              : entry.modality === 'preventiva'
+                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                              : 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300'
+                          }`}>
+                            {entry.modalityLabel}
+                          </span>
+                        </td>
+                        <td className="py-2 px-3 text-slate-800 dark:text-slate-200 font-medium truncate max-w-[200px]">{entry.equipmentName}</td>
+                        <td className="py-2 px-3 font-mono font-bold text-slate-900 dark:text-white">{entry.tag}</td>
+                        <td className="py-2 px-3 font-mono text-slate-600 dark:text-slate-400">{entry.serie}</td>
+                        <td className="py-2 px-3">
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[11px] font-medium text-slate-700 dark:text-slate-300">
+                            📍 {entry.setorRetirada}
+                          </span>
+                        </td>
+                        <td className="py-2 px-3 text-slate-500 text-[11px]">{entry.setorOriginal}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
 
         </div>
-
-        {/* Contador de Itens Filtrados */}
-        <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 pt-1 border-t border-slate-100 dark:border-slate-800/60">
-          <span>
-            Exibindo <strong className="text-slate-800 dark:text-slate-200 font-mono">{filteredEquipments.length}</strong> de <span className="font-mono">{equipments.length}</span> equipamentos
-          </span>
-          {stats.withSectorDiff > 0 && (
-            <span className="text-amber-600 dark:text-amber-400 font-medium">
-              💡 {stats.withSectorDiff} equipamentos retirados de setor diferente do cadastro original
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Tabela de Alta Densidade (Espelho da Planilha Sem Edição Acidental) */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto max-h-[70vh]">
-          <table className="w-full text-left border-collapse text-xs">
-            
-            {/* Cabeçalho Fixo (Sticky) */}
-            <thead className="sticky top-0 z-20 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-extrabold uppercase text-[10px] tracking-wider border-b border-slate-200 dark:border-slate-700 shadow-xs">
-              <tr>
-                <th className="py-3 px-3 w-12 text-center">#</th>
-                <th className="py-3 px-3 min-w-[120px]">Tag / Patrimônio</th>
-                <th className="py-3 px-3 min-w-[130px]">Nº de Série</th>
-                <th className="py-3 px-3 min-w-[200px]">Equipamento</th>
-                <th className="py-3 px-3 min-w-[140px]">Setor Cadastrado</th>
-                <th className="py-3 px-3 min-w-[140px]">Setor Retirada</th>
-                <th className="py-3 px-3 min-w-[160px] text-center bg-blue-500/10 dark:bg-blue-950/40">Calibração</th>
-                <th className="py-3 px-3 min-w-[160px] text-center bg-amber-500/10 dark:bg-amber-950/40">Preventiva</th>
-                <th className="py-3 px-3 min-w-[160px] text-center bg-purple-500/10 dark:bg-purple-950/40">Seg. Elétrica</th>
-                <th className="py-3 px-3 min-w-[110px] text-center">Status Geral</th>
-                <th className="py-3 px-3 min-w-[180px]">Observações</th>
-              </tr>
-            </thead>
-
-            {/* Linhas de Dados */}
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-normal">
-              {filteredEquipments.length === 0 ? (
-                <tr>
-                  <td colSpan="11" className="py-12 text-center text-slate-400">
-                    Nenhum equipamento corresponde aos filtros aplicados.
-                  </td>
-                </tr>
-              ) : (
-                filteredEquipments.map((item, idx) => {
-                  const isComplete = item.check_calibracao && item.check_preventiva && item.check_seguranca;
-                  const isDiffSector = item.setor_retirada && item.setor && 
-                    item.setor_retirada.trim().toLowerCase() !== item.setor.trim().toLowerCase();
-
-                  return (
-                    <tr 
-                      key={item.id || item.tag || idx}
-                      className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors ${
-                        isComplete ? 'bg-emerald-500/[0.02]' : ''
-                      }`}
-                    >
-                      {/* Índice */}
-                      <td className="py-2.5 px-3 text-center text-slate-400 font-mono text-[11px]">
-                        {idx + 1}
-                      </td>
-
-                      {/* Tag */}
-                      <td className="py-2.5 px-3 font-bold text-slate-900 dark:text-white font-mono text-[11px]">
-                        {item.tag || '—'}
-                      </td>
-
-                      {/* Série */}
-                      <td className="py-2.5 px-3 font-mono text-slate-700 dark:text-slate-300 text-[11px]">
-                        {item.serie || '—'}
-                      </td>
-
-                      {/* Nome do Equipamento */}
-                      <td className="py-2.5 px-3 text-slate-800 dark:text-slate-200 font-medium">
-                        {item.nome || item.equipamento || '—'}
-                      </td>
-
-                      {/* Setor Cadastrado */}
-                      <td className="py-2.5 px-3 text-slate-600 dark:text-slate-400">
-                        <span className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md font-medium text-[11px]">
-                          {item.setor || 'Geral'}
-                        </span>
-                      </td>
-
-                      {/* Setor de Retirada (Bipado em campo) */}
-                      <td className="py-2.5 px-3">
-                        {item.setor_retirada ? (
-                          isDiffSector ? (
-                            <span className="inline-flex items-center gap-1 bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded-md font-bold text-[11px]" title={`Retirado de: ${item.setor_retirada} (Setor cadastrado: ${item.setor})`}>
-                              <ArrowRight className="w-3 h-3 text-amber-500" />
-                              <span>{item.setor_retirada}</span>
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-2 py-0.5 rounded-md font-medium text-[11px]">
-                              {item.setor_retirada}
-                            </span>
-                          )
-                        ) : (
-                          <span className="text-slate-400 text-[11px]">—</span>
-                        )}
-                      </td>
-
-                      {/* Calibração (Badge Seguro Somente Leitura) */}
-                      <td className="py-2 px-3 text-center bg-blue-500/[0.03] dark:bg-blue-950/10">
-                        {item.check_calibracao ? (
-                          <div className="inline-flex flex-col items-center">
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold text-[11px] border border-emerald-500/30">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                              <span>OK</span>
-                            </span>
-                            {item.usuario_calibracao && (
-                              <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate max-w-[130px] mt-0.5 font-medium" title={item.usuario_calibracao}>
-                                {item.usuario_calibracao}
-                              </span>
-                            )}
-                            {item.data_calibracao && (
-                              <span className="text-[9px] text-slate-400 font-mono">
-                                {formatDate(item.data_calibracao)}
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-400 text-[10px] font-semibold">
-                            <Clock className="w-3 h-3" />
-                            <span>Pendente</span>
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Preventiva (Badge Seguro Somente Leitura) */}
-                      <td className="py-2 px-3 text-center bg-amber-500/[0.03] dark:bg-amber-950/10">
-                        {item.check_preventiva ? (
-                          <div className="inline-flex flex-col items-center">
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold text-[11px] border border-emerald-500/30">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                              <span>OK</span>
-                            </span>
-                            {item.usuario_preventiva && (
-                              <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate max-w-[130px] mt-0.5 font-medium" title={item.usuario_preventiva}>
-                                {item.usuario_preventiva}
-                              </span>
-                            )}
-                            {item.data_preventiva && (
-                              <span className="text-[9px] text-slate-400 font-mono">
-                                {formatDate(item.data_preventiva)}
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-400 text-[10px] font-semibold">
-                            <Clock className="w-3 h-3" />
-                            <span>Pendente</span>
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Seg. Elétrica (Badge Seguro Somente Leitura) */}
-                      <td className="py-2 px-3 text-center bg-purple-500/[0.03] dark:bg-purple-950/10">
-                        {item.check_seguranca ? (
-                          <div className="inline-flex flex-col items-center">
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold text-[11px] border border-emerald-500/30">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                              <span>OK</span>
-                            </span>
-                            {item.usuario_seguranca && (
-                              <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate max-w-[130px] mt-0.5 font-medium" title={item.usuario_seguranca}>
-                                {item.usuario_seguranca}
-                              </span>
-                            )}
-                            {item.data_seguranca && (
-                              <span className="text-[9px] text-slate-400 font-mono">
-                                {formatDate(item.data_seguranca)}
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-400 text-[10px] font-semibold">
-                            <Clock className="w-3 h-3" />
-                            <span>Pendente</span>
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Status Geral */}
-                      <td className="py-2.5 px-3 text-center">
-                        {isComplete ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-extrabold text-[10px] uppercase tracking-wide border border-emerald-500/40">
-                            <Sparkles className="w-3 h-3 text-emerald-500" />
-                            <span>100% OK</span>
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-bold text-[10px]">
-                            Parcial
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Observações */}
-                      <td className="py-2.5 px-3 text-slate-500 dark:text-slate-400 text-[11px] truncate max-w-[200px]" title={item.observacao || ''}>
-                        {item.observacao || '—'}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      )}
 
     </div>
   );
 }
-

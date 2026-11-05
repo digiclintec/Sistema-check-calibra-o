@@ -1221,7 +1221,7 @@ export default function App() {
             equipments={equipments}
             hospitalName={activeHospital?.name}
             planTitle={activeSheetName}
-            onRefresh={fetchHospitalData}
+            onRefresh={syncWithServer}
             serviceConfig={serviceConfig}
             onOpenServiceConfig={() => setServiceConfigModal({ isOpen: true, isInitialSetup: false })}
           />
@@ -1343,6 +1343,7 @@ export default function App() {
         equipments={equipments}
         soundEnabled={soundEnabled}
         activeModality={activeModality}
+        serviceConfig={serviceConfig}
       />
 
       {/* Agente Digitalizador de Número de Série por Foto / OCR */}
@@ -1355,6 +1356,7 @@ export default function App() {
         hospitalName={activeHospital?.name}
         planTitle={activeSheetName}
         activeModality={activeModality}
+        serviceConfig={serviceConfig}
       />
 
       {/* Modal Inteligente de Confirmação com Senha para Ações em Lote */}
