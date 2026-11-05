@@ -1149,8 +1149,8 @@ export default function App() {
     const baseName = activeSheetName ? activeSheetName.replace(/\.[^/.]+$/, "") : hospSlug;
     const currentMod = MODALITIES[activeModality] || MODALITIES.calibracao;
     const fileName = `${baseName}_multiequipes_${dateStr}.xlsx`;
-    exportToExcel(equipments, fileName, activeModality);
-    showToast('success', `Planilha completa multiequipes baixada com sucesso!`);
+    exportToExcel(equipments, fileName, activeModality, sectorColors, activeHospital?.name);
+    showToast('success', `Planilha completa multiequipes baixada com cores e formatação!`);
   };
 
   // Login handler

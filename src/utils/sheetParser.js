@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { exportStyledEquipmentsExcel } from './excelExporter.js';
 
 /**
  * Normaliza strings para comparação flexível (remove acentos, espaços extras e lowercase)
@@ -859,95 +860,15 @@ export function parseCsvText(csvText, sourceName = 'Google Sheets') {
 }
 
 /**
- * Exporta os dados atuais para um arquivo .xlsx baixável com suporte completo a multiequipes
+ * Exporta os dados atuais para um arquivo .xlsx baixável com suporte completo a multiequipes,
+ * cabeçalhos executivos e cores dinâmicas dos setores e status.
  */
-export function exportToExcel(equipments, fileName = 'conferencia_multiequipes.xlsx', modality = 'geral') {
-  const exportData = equipments.map((item, idx) => {
-    const isCalOk = Boolean(item.check_calibracao !== undefined ? item.check_calibracao : item.checado);
-    const isPrevOk = Boolean(item.check_preventiva);
-    const isSegOk = Boolean(item.check_seguranca);
-
-    let statusGeral = 'PENDENTE';
-    if (isCalOk && isPrevOk && isSegOk) {
-      statusGeral = '100% CONCLUÍDO (3 Frentes)';
-    } else if (isCalOk || isPrevOk || isSegOk) {
-      const feitas = [];
-      if (isCalOk) feitas.push('Calibração');
-      if (isPrevOk) feitas.push('Preventiva');
-      if (isSegOk) feitas.push('Segurança');
-      statusGeral = `PARCIAL (${feitas.join(' + ')})`;
-    }
-
-    return {
-      'Ordem': idx + 1,
-      'Código de Barras': item.codigoBarras,
-      'Tag / IDEC': item.tag,
-      'Equipamento': item.equipamento,
-      'Fabricante': item.fabricante || '',
-      'Modelo': item.modelo || '',
-      'Nº de Série': item.serie || '',
-      'Setor Efetivo (Cor)': item.setor_retirada || item.setor || 'Geral',
-      'Setor Cadastrado': item.setor || '',
-      'Setor de Retirada (Coleta)': item.setor_retirada || item.setor || '',
-      'Movimentado de Setor?': (item.setor_retirada && item.setor && item.setor_retirada.trim().toLowerCase() !== item.setor.trim().toLowerCase()) ? 'SIM (Retirado em outro setor)' : 'NÃO',
-      'Data da Retirada': item.data_retirada ? new Date(item.data_retirada).toLocaleString('pt-BR') : '',
-      'Técnico Coleta': item.usuario_retirada || '',
-      'Validade Calibração': item.validadeCalibracao || '',
-      'Status Calibração': item.statusCalibracao || '',
-      
-      // FRENTE 1: CALIBRAÇÃO
-      'CALIBRAÇÃO - Status': isCalOk ? 'CONFERIDO / OK' : 'PENDENTE',
-      'CALIBRAÇÃO - Data/Hora': item.data_calibracao ? new Date(item.data_calibracao).toLocaleString('pt-BR') : (isCalOk && item.dataCheck ? new Date(item.dataCheck).toLocaleString('pt-BR') : ''),
-      'CALIBRAÇÃO - Responsável': item.usuario_calibracao || (isCalOk ? item.conferidoPor : '') || '',
-
-      // FRENTE 2: MANUTENÇÃO PREVENTIVA
-      'PREVENTIVA - Status': isPrevOk ? 'CONFERIDO / OK' : 'PENDENTE',
-      'PREVENTIVA - Data/Hora': item.data_preventiva ? new Date(item.data_preventiva).toLocaleString('pt-BR') : '',
-      'PREVENTIVA - Responsável': item.usuario_preventiva || '',
-
-      // FRENTE 3: TESTE DE SEGURANÇA ELÉTRICA (TSE)
-      'SEG. ELÉTRICA - Status': isSegOk ? 'CONFERIDO / OK' : 'PENDENTE',
-      'SEG. ELÉTRICA - Data/Hora': item.data_seguranca ? new Date(item.data_seguranca).toLocaleString('pt-BR') : '',
-      'SEG. ELÉTRICA - Responsável': item.usuario_seguranca || '',
-
-      // STATUS GERAL UNIFICADO
-      'STATUS GERAL': statusGeral,
-      'Observações': item.observacao || ''
-    };
+export function exportToExcel(equipments, fileName = 'conferencia_multiequipes.xlsx', modality = 'geral', sectorColors = {}, hospitalName = 'Hospital') {
+  exportStyledEquipmentsExcel(equipments, {
+    fileName,
+    modality,
+    sectorColors,
+    hospitalName,
+    planTitle: fileName
   });
-
-  const worksheet = XLSX.utils.json_to_sheet(exportData);
-  
-  const colWidths = [
-    { wch: 8 },  // Ordem
-    { wch: 18 }, // Código de Barras
-    { wch: 16 }, // Tag
-    { wch: 32 }, // Equipamento
-    { wch: 16 }, // Fabricante
-    { wch: 16 }, // Modelo
-    { wch: 18 }, // Série
-    { wch: 20 }, // Setor Cadastrado
-    { wch: 24 }, // Setor Retirada
-    { wch: 20 }, // Data Retirada
-    { wch: 22 }, // Técnico Coleta
-    { wch: 16 }, // Validade
-    { wch: 16 }, // Status
-    { wch: 20 }, // Calibração Status
-    { wch: 22 }, // Calibração Data
-    { wch: 26 }, // Calibração Resp
-    { wch: 20 }, // Preventiva Status
-    { wch: 22 }, // Preventiva Data
-    { wch: 26 }, // Preventiva Resp
-    { wch: 20 }, // Seg Status
-    { wch: 22 }, // Seg Data
-    { wch: 26 }, // Seg Resp
-    { wch: 26 }, // Status Geral
-    { wch: 30 }  // Observações
-  ];
-  worksheet['!cols'] = colWidths;
-
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'Conferência Hospitalar');
-
-  XLSX.writeFile(workbook, fileName);
 }

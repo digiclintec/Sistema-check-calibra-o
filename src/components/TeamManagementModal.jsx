@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { MODALITIES } from '../utils/modalities';
+import { exportStyledPontoExcel } from '../utils/excelExporter';
 
 export default function TeamManagementModal({ 
   isOpen, 
@@ -373,40 +374,13 @@ export default function TeamManagementModal({
     });
   }, [auditEntries, selectedUserFilter, selectedModalityFilter, searchAuditQuery]);
 
-  // Exportar relatório de auditoria e produtividade em Excel
+  // Exportar relatório de auditoria e produtividade em Excel com cores e resumo
   const handleExportAuditExcel = () => {
-    const exportRows = filteredAuditEntries.map((item, idx) => ({
-      'Item': idx + 1,
-      'Equipamento': item.equipmentName,
-      'Tag / IDEC': item.tag,
-      'Nº de Série': item.serie,
-      'Código de Barras': item.barcode,
-      'Serviço Realizado': item.modalityLabel,
-      '📍 Setor de Retirada (Coleta)': item.setorRetirada,
-      'Setor Original Cadastrado': item.setorOriginal,
-      '👤 Técnico / Responsável': item.user,
-      'Data e Hora': item.date ? new Date(item.date).toLocaleString('pt-BR') : '',
-      'Observações': item.obs
-    }));
-
-    const ws = XLSX.utils.json_to_sheet(exportRows);
-    ws['!cols'] = [
-      { wch: 8 },  // Item
-      { wch: 32 }, // Equipamento
-      { wch: 16 }, // Tag
-      { wch: 18 }, // Série
-      { wch: 18 }, // Código de Barras
-      { wch: 24 }, // Serviço
-      { wch: 26 }, // Setor Retirada
-      { wch: 22 }, // Setor Original
-      { wch: 26 }, // Responsável
-      { wch: 22 }, // Data
-      { wch: 30 }  // Obs
-    ];
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Auditoria de Trabalhos');
-    XLSX.writeFile(wb, `relatorio_trabalhos_equipe_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    if (filteredAuditEntries.length === 0) return;
+    exportStyledPontoExcel(filteredAuditEntries, {
+      hospitalName: hospitalName || 'Hospital',
+      fileName: `relatorio_trabalhos_equipe_${new Date().toISOString().slice(0, 10)}.xlsx`
+    });
   };
 
   if (!isOpen) return null;

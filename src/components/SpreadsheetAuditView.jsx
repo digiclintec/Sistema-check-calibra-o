@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { getSectorColor, getEffectiveSector, getSectorBadgeStyles } from '../utils/sectorColors';
+import { exportStyledEquipmentsExcel, exportStyledPontoExcel } from '../utils/excelExporter';
 
 export default function SpreadsheetAuditView({
   equipments = [],
@@ -304,88 +305,33 @@ export default function SpreadsheetAuditView({
     });
   }, [pontoEntries, searchQuery, technicianFilter, sectorFilter]);
 
-  // Exportação 1: Espelho da Planilha Completa de Equipamentos
+  // Exportação 1: Espelho da Planilha Completa de Equipamentos com Cores
   const handleExportAuditExcel = () => {
     if (equipments.length === 0) return;
-
-    const dataToExport = equipments.map((item, idx) => {
-      const effectiveSector = getEffectiveSector(item);
-      const isDiff = item.setor_retirada && item.setor && 
-        item.setor_retirada.trim().toLowerCase() !== item.setor.trim().toLowerCase();
-
-      return {
-        'Item': idx + 1,
-        'Tag / Patrimônio': item.tag || '',
-        'Número de Série': item.serie || '',
-        'Equipamento / Modelo': item.nome || item.equipamento || '',
-        'Setor Efetivo (Cor)': effectiveSector,
-        'Setor Cadastrado': item.setor || '',
-        'Setor de Retirada (Coleta)': item.setor_retirada || item.setor || '',
-        'Movimentado de Setor?': isDiff ? 'SIM (Retirado em outro setor)' : 'NÃO',
-        'Status Calibração': item.check_calibracao ? 'CONFERIDO' : 'PENDENTE',
-        'Técnico Calibração': item.usuario_calibracao || '',
-        'Data Calibração': item.data_calibracao ? new Date(item.data_calibracao).toLocaleDateString('pt-BR') : '',
-        'Status Preventiva': item.check_preventiva ? 'CONFERIDO' : 'PENDENTE',
-        'Técnico Preventiva': item.usuario_preventiva || '',
-        'Data Preventiva': item.data_preventiva ? new Date(item.data_preventiva).toLocaleDateString('pt-BR') : '',
-        'Status Seg. Elétrica': item.check_seguranca ? 'CONFERIDO' : 'PENDENTE',
-        'Técnico Seg. Elétrica': item.usuario_seguranca || '',
-        'Data Seg. Elétrica': item.data_seguranca ? new Date(item.data_seguranca).toLocaleDateString('pt-BR') : '',
-        '100% Concluído': (item.check_calibracao && item.check_preventiva && item.check_seguranca) ? 'SIM' : 'NÃO',
-        'Observação': item.observacao || ''
-      };
-    });
-
-    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Espelho_Auditoria');
-
     const cleanHosp = (hospitalName || 'Auditoria').replace(/[^a-zA-Z0-9]/g, '_');
     const dateStr = new Date().toISOString().split('T')[0];
-    XLSX.writeFile(workbook, `Espelho_Planilha_${cleanHosp}_${dateStr}.xlsx`);
+    const fileName = `Espelho_Planilha_${cleanHosp}_${dateStr}.xlsx`;
+
+    exportStyledEquipmentsExcel(equipments, {
+      hospitalName,
+      planTitle: planTitle || 'Espelho da Planilha',
+      fileName,
+      sectorColors
+    });
   };
 
-  // Exportação 2: Espelho de Ponto & Trabalhos dos Técnicos
+  // Exportação 2: Espelho de Ponto & Trabalhos dos Técnicos com Cores e Resumo
   const handleExportPontoExcel = () => {
     if (pontoEntries.length === 0) return;
-
-    const exportRows = filteredPontoEntries.map((item, idx) => {
-      const d = item.date ? new Date(item.date) : null;
-      return {
-        'Item': idx + 1,
-        '👤 Técnico / Inspetor': item.user,
-        '📅 Data': d ? d.toLocaleDateString('pt-BR') : 'N/A',
-        '⏰ Horário': d ? d.toLocaleTimeString('pt-BR') : 'N/A',
-        '🛠️ Serviço Realizado': item.modalityLabel,
-        '📦 Equipamento': item.equipmentName,
-        '🏷️ Tag / IDEC': item.tag,
-        '🔢 Nº de Série': item.serie,
-        '📍 Setor de Retirada (Coleta)': item.setorRetirada,
-        '🏢 Setor Original': item.setorOriginal,
-        '📝 Observações': item.obs
-      };
-    });
-
-    const ws = XLSX.utils.json_to_sheet(exportRows);
-    ws['!cols'] = [
-      { wch: 8 },  // Item
-      { wch: 28 }, // Técnico
-      { wch: 14 }, // Data
-      { wch: 12 }, // Horário
-      { wch: 22 }, // Serviço
-      { wch: 32 }, // Equipamento
-      { wch: 16 }, // Tag
-      { wch: 18 }, // Série
-      { wch: 24 }, // Setor Retirada
-      { wch: 20 }, // Setor Original
-      { wch: 25 }  // Obs
-    ];
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Espelho de Ponto');
     const cleanHosp = (hospitalName || 'Auditoria').replace(/[^a-zA-Z0-9]/g, '_');
     const dateStr = new Date().toISOString().split('T')[0];
-    XLSX.writeFile(wb, `Espelho_de_Ponto_Tecnicos_${cleanHosp}_${dateStr}.xlsx`);
+    const fileName = `Espelho_de_Ponto_Tecnicos_${cleanHosp}_${dateStr}.xlsx`;
+
+    exportStyledPontoExcel(filteredPontoEntries, {
+      hospitalName,
+      fileName,
+      sectorColors
+    });
   };
 
   const formatDate = (isoString) => {
