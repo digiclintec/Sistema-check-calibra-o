@@ -767,16 +767,16 @@ app.post('/api/hospitals/delete', (req, res) => {
 
 // Switch Active Hospital
 app.post('/api/hospitals/switch', (req, res) => {
-  const { hospitalId } = req.body || {};
+  const { hospitalId, id } = req.body || {};
+  const targetHospId = hospitalId || id;
   const db = readDb();
   
-  if (hospitalId) {
-    db.activeHospitalId = hospitalId;
-    db.lastUpdated = Date.now();
+  if (targetHospId) {
+    db.activeHospitalId = targetHospId;
     saveDb(db);
   }
 
-  res.json({ success: true, activeHospitalId: db.activeHospitalId });
+  res.json({ success: true, activeHospitalId: targetHospId || db.activeHospitalId });
 });
 
 // ---------------- MONTHLY CALIBRATION PLANS ROUTES ---------------- //
@@ -945,7 +945,7 @@ app.get('/api/data', (req, res) => {
 
   const equipments = targetPlan ? (targetPlan.equipments || []) : (hospital.equipments || []);
   const activeSheetName = targetPlan ? (targetPlan.fileName || targetPlan.title || hospital.activeSheetName || '') : (hospital.activeSheetName || '');
-  const planLastUpdated = targetPlan?.lastUpdated || hospital.lastUpdated || db.lastUpdated || Date.now();
+  const planLastUpdated = targetPlan ? (targetPlan.lastUpdated || targetPlan.createdAt || hospital.lastUpdated || 1) : (hospital.lastUpdated || db.lastUpdated || Date.now());
 
   res.json({
     success: true,
@@ -1500,7 +1500,7 @@ setInterval(async () => {
 
 // Check or Uncheck an equipment inside active hospital with multi-modality support
 app.post('/api/toggle-check', (req, res) => {
-  const { id, modality = 'calibracao', userEmail, userName, hospitalId, setorRetirada } = req.body || {};
+  const { id, modality = 'calibracao', userEmail, userName, hospitalId, planId, setorRetirada } = req.body || {};
   if (!id) {
     return res.status(400).json({ success: false, message: 'ID do equipamento não informado.' });
   }
@@ -1513,16 +1513,29 @@ app.post('/api/toggle-check', (req, res) => {
     return res.status(404).json({ success: false, message: 'Hospital não encontrado.' });
   }
 
-  const list = db.hospitals[hospIdx].equipments || [];
-  const idx = list.findIndex(e => e.id === id || e.codigoBarras === id);
-
-  if (idx === -1) {
-    return res.status(404).json({ success: false, message: 'Equipamento não encontrado na lista do hospital.' });
+  const hospital = db.hospitals[hospIdx];
+  let targetPlan = null;
+  if (planId && Array.isArray(hospital.plans)) {
+    targetPlan = hospital.plans.find(p => p.id === planId);
   }
 
-  const item = list[idx];
+  const list = targetPlan ? (targetPlan.equipments || []) : (hospital.equipments || []);
+  let idx = list.findIndex(e => e.id === id || e.codigoBarras === id || e.tag === id || e.serie === id);
+
+  if (idx === -1) {
+    // Tenta fallback na lista global se não achou no plano
+    const fallbackIdx = (hospital.equipments || []).findIndex(e => e.id === id || e.codigoBarras === id || e.tag === id || e.serie === id);
+    if (fallbackIdx === -1) {
+      return res.status(404).json({ success: false, message: 'Equipamento não encontrado.' });
+    }
+    // Se achou no fallback, usa
+    idx = fallbackIdx;
+  }
+
+  const item = list[idx] || hospital.equipments[idx];
   const inspectorLabel = userName ? `${userName} (${userEmail || ''})` : (userEmail || 'Usuário');
   const nowIso = new Date().toISOString();
+  const nowTimestamp = Date.now();
 
   let nextChecked = false;
   if (modality === 'externa' || modality === 'manutencao_externa') {
@@ -1574,32 +1587,39 @@ app.post('/api/toggle-check', (req, res) => {
   item.dataCheck = item.data_calibracao || item.data_preventiva || item.data_seguranca || item.data_externa || null;
   item.conferidoPor = item.usuario_calibracao || item.usuario_preventiva || item.usuario_seguranca || item.usuario_externa || null;
 
-  list[idx] = { ...item };
-
-  db.hospitals[hospIdx].equipments = list;
-  db.hospitals[hospIdx].lastUpdated = Date.now();
-  db.hospitals[hospIdx].lastUpdatedBy = inspectorLabel;
-
-  // Sincroniza tanto no plano específico do técnico quanto no plano ativo do hospital
-  if (Array.isArray(db.hospitals[hospIdx].plans)) {
-    const targetPlanId = planId || db.hospitals[hospIdx].activePlanId;
-    const pIdx = db.hospitals[hospIdx].plans.findIndex(p => p.id === targetPlanId);
-    if (pIdx !== -1) {
-      db.hospitals[hospIdx].plans[pIdx].equipments = list;
-      db.hospitals[hospIdx].plans[pIdx].lastUpdated = Date.now();
-    }
+  if (list[idx]) {
+    list[idx] = { ...item };
   }
 
-  db.lastUpdated = Date.now();
+  if (targetPlan) {
+    targetPlan.equipments = list;
+    targetPlan.lastUpdated = nowTimestamp;
+    targetPlan.lastUpdatedBy = inspectorLabel;
+
+    // Sincroniza o item em hospital.equipments sem sobrescrever toda a lista
+    if (Array.isArray(hospital.equipments)) {
+      const hIdx = hospital.equipments.findIndex(e => e.id === item.id || e.codigoBarras === item.codigoBarras || e.tag === item.tag || e.serie === item.serie);
+      if (hIdx !== -1) {
+        hospital.equipments[hIdx] = { ...hospital.equipments[hIdx], ...item };
+      }
+    }
+  } else {
+    hospital.equipments = list;
+  }
+
+  hospital.lastUpdated = nowTimestamp;
+  hospital.lastUpdatedBy = inspectorLabel;
+  db.lastUpdated = nowTimestamp;
   saveDb(db);
 
   res.json({
     success: true,
-    item: list[idx],
+    item: list[idx] || item,
+    planId: targetPlan ? targetPlan.id : (planId || null),
     modality,
     nextChecked,
     equipments: list,
-    lastUpdated: db.lastUpdated,
+    lastUpdated: nowTimestamp,
     lastUpdatedBy: inspectorLabel
   });
 });
@@ -1639,6 +1659,12 @@ app.post('/api/batch-check', (req, res) => {
     return res.status(404).json({ success: false, message: 'Hospital não encontrado.' });
   }
 
+  const hospital = db.hospitals[hospIdx];
+  let targetPlan = null;
+  if (planId && Array.isArray(hospital.plans)) {
+    targetPlan = hospital.plans.find(p => p.id === planId);
+  }
+
   // Mapa de setor de retirada individual para cada equipamento bipado no lote
   const itemSectorMap = new Map();
   if (Array.isArray(items)) {
@@ -1652,7 +1678,8 @@ app.post('/api/batch-check', (req, res) => {
 
   const inspectorLabel = userName ? `${userName} (${userEmail || ''})` : (userEmail || 'Usuário');
   const nowIso = new Date().toISOString();
-  const list = db.hospitals[hospIdx].equipments || [];
+  const nowTimestamp = Date.now();
+  const list = targetPlan ? (targetPlan.equipments || []) : (hospital.equipments || []);
   let checkedCount = 0;
 
   const idSet = new Set(targetIds.map(x => String(x).toLowerCase()));
@@ -1716,21 +1743,49 @@ app.post('/api/batch-check', (req, res) => {
     }
   }
 
-  db.hospitals[hospIdx].equipments = list;
-  db.hospitals[hospIdx].lastUpdated = Date.now();
-  db.hospitals[hospIdx].lastUpdatedBy = inspectorLabel;
+  if (targetPlan) {
+    targetPlan.equipments = list;
+    targetPlan.lastUpdated = nowTimestamp;
+    targetPlan.lastUpdatedBy = inspectorLabel;
 
-  // Sincroniza tanto no plano específico do técnico quanto no plano ativo do hospital
-  if (Array.isArray(db.hospitals[hospIdx].plans)) {
-    const targetPlanId = planId || db.hospitals[hospIdx].activePlanId;
-    const pIdx = db.hospitals[hospIdx].plans.findIndex(p => p.id === targetPlanId);
-    if (pIdx !== -1) {
-      db.hospitals[hospIdx].plans[pIdx].equipments = list;
-      db.hospitals[hospIdx].plans[pIdx].lastUpdated = Date.now();
+    // Sincroniza os itens conferidos também em hospital.equipments sem sobrescrever a lista inteira
+    if (Array.isArray(hospital.equipments)) {
+      const checkedMap = new Map();
+      list.forEach(it => {
+        const k = String(it.id || it.codigoBarras || it.tag || it.serie || '').toLowerCase();
+        if (k) checkedMap.set(k, it);
+      });
+      hospital.equipments.forEach(hItem => {
+        const k = String(hItem.id || hItem.codigoBarras || hItem.tag || hItem.serie || '').toLowerCase();
+        const updated = checkedMap.get(k);
+        if (updated) {
+          hItem.check_calibracao = updated.check_calibracao;
+          hItem.data_calibracao = updated.data_calibracao;
+          hItem.usuario_calibracao = updated.usuario_calibracao;
+          hItem.check_preventiva = updated.check_preventiva;
+          hItem.data_preventiva = updated.data_preventiva;
+          hItem.usuario_preventiva = updated.usuario_preventiva;
+          hItem.check_seguranca = updated.check_seguranca;
+          hItem.data_seguranca = updated.data_seguranca;
+          hItem.usuario_seguranca = updated.usuario_seguranca;
+          hItem.check_externa = updated.check_externa;
+          hItem.data_externa = updated.data_externa;
+          hItem.usuario_externa = updated.usuario_externa;
+          hItem.motivo_externa = updated.motivo_externa;
+          if (updated.setor_retirada) hItem.setor_retirada = updated.setor_retirada;
+          hItem.checado = updated.checado;
+          hItem.dataCheck = updated.dataCheck;
+          hItem.conferidoPor = updated.conferidoPor;
+        }
+      });
     }
+  } else {
+    hospital.equipments = list;
   }
 
-  db.lastUpdated = Date.now();
+  hospital.lastUpdated = nowTimestamp;
+  hospital.lastUpdatedBy = inspectorLabel;
+  db.lastUpdated = nowTimestamp;
   saveDb(db);
 
   res.json({
@@ -1738,15 +1793,16 @@ app.post('/api/batch-check', (req, res) => {
     message: `${checkedCount} equipamentos conferidos com sucesso para [${modality.toUpperCase()}]!`,
     checkedCount,
     modality,
+    planId: targetPlan ? targetPlan.id : (planId || null),
     equipments: list,
-    lastUpdated: db.lastUpdated,
+    lastUpdated: nowTimestamp,
     lastUpdatedBy: inspectorLabel
   });
 });
 
 // Atualizar setor cadastrado ou setor de retirada de um equipamento
 app.post('/api/equipment/update-sector', (req, res) => {
-  const { id, setor, setorRetirada, hospitalId, userEmail, userName } = req.body || {};
+  const { id, setor, setorRetirada, hospitalId, planId, userEmail, userName } = req.body || {};
   if (!id) {
     return res.status(400).json({ success: false, message: 'ID do equipamento não informado.' });
   }
@@ -1759,7 +1815,13 @@ app.post('/api/equipment/update-sector', (req, res) => {
     return res.status(404).json({ success: false, message: 'Hospital não encontrado.' });
   }
 
-  const list = db.hospitals[hospIdx].equipments || [];
+  const hospital = db.hospitals[hospIdx];
+  let targetPlan = null;
+  if (planId && Array.isArray(hospital.plans)) {
+    targetPlan = hospital.plans.find(p => p.id === planId);
+  }
+
+  const list = targetPlan ? (targetPlan.equipments || []) : (hospital.equipments || []);
   const idx = list.findIndex(e => e.id === id || e.codigoBarras === id || e.tag === id || e.serie === id);
 
   if (idx === -1) {
@@ -1768,6 +1830,7 @@ app.post('/api/equipment/update-sector', (req, res) => {
 
   const inspectorLabel = userName ? `${userName} (${userEmail || ''})` : (userEmail || 'Usuário');
   const nowIso = new Date().toISOString();
+  const nowTimestamp = Date.now();
 
   if (setor !== undefined) {
     list[idx].setor = String(setor).trim();
@@ -1778,26 +1841,38 @@ app.post('/api/equipment/update-sector', (req, res) => {
     list[idx].usuario_retirada = inspectorLabel;
   }
 
-  db.hospitals[hospIdx].equipments = list;
-  db.hospitals[hospIdx].lastUpdated = Date.now();
-  db.hospitals[hospIdx].lastUpdatedBy = inspectorLabel;
+  if (targetPlan) {
+    targetPlan.equipments = list;
+    targetPlan.lastUpdated = nowTimestamp;
+    targetPlan.lastUpdatedBy = inspectorLabel;
 
-  if (Array.isArray(db.hospitals[hospIdx].plans)) {
-    const pIdx = db.hospitals[hospIdx].plans.findIndex(p => p.id === db.hospitals[hospIdx].activePlanId);
-    if (pIdx !== -1) {
-      db.hospitals[hospIdx].plans[pIdx].equipments = list;
-      db.hospitals[hospIdx].plans[pIdx].lastUpdated = Date.now();
+    if (Array.isArray(hospital.equipments)) {
+      const hIdx = hospital.equipments.findIndex(e => e.id === id || e.codigoBarras === id || e.tag === id || e.serie === id);
+      if (hIdx !== -1) {
+        if (setor !== undefined) hospital.equipments[hIdx].setor = String(setor).trim();
+        if (setorRetirada !== undefined) {
+          hospital.equipments[hIdx].setor_retirada = String(setorRetirada).trim();
+          hospital.equipments[hIdx].data_retirada = nowIso;
+          hospital.equipments[hIdx].usuario_retirada = inspectorLabel;
+        }
+      }
     }
+  } else {
+    hospital.equipments = list;
   }
 
-  db.lastUpdated = Date.now();
+  hospital.lastUpdated = nowTimestamp;
+  hospital.lastUpdatedBy = inspectorLabel;
+  db.lastUpdated = nowTimestamp;
   saveDb(db);
 
   res.json({
     success: true,
     message: 'Setor atualizado com sucesso.',
     item: list[idx],
-    lastUpdated: db.lastUpdated
+    planId: targetPlan ? targetPlan.id : (planId || null),
+    equipments: list,
+    lastUpdated: nowTimestamp
   });
 });
 
@@ -1834,6 +1909,7 @@ app.post('/api/mass-check', (req, res) => {
     onlyPending = false,
     password, 
     hospitalId, 
+    planId,
     userEmail, 
     userName 
   } = req.body || {};
@@ -1865,6 +1941,12 @@ app.post('/api/mass-check', (req, res) => {
     return res.status(404).json({ success: false, message: 'Hospital não encontrado.' });
   }
 
+  const hospital = db.hospitals[hospIdx];
+  let targetPlan = null;
+  if (planId && Array.isArray(hospital.plans)) {
+    targetPlan = hospital.plans.find(p => p.id === planId);
+  }
+
   // Define as modalidades-alvo
   let targetMods = [];
   if (Array.isArray(modalities) && modalities.length > 0) {
@@ -1882,7 +1964,8 @@ app.post('/api/mass-check', (req, res) => {
     : defaultLabel;
 
   const targetDate = assignedDate ? new Date(assignedDate).toISOString() : new Date().toISOString();
-  const list = db.hospitals[hospIdx].equipments || [];
+  const nowTimestamp = Date.now();
+  const list = targetPlan ? (targetPlan.equipments || []) : (hospital.equipments || []);
   let affectedCount = 0;
 
   for (let i = 0; i < list.length; i++) {
@@ -1975,21 +2058,48 @@ app.post('/api/mass-check', (req, res) => {
     item.conferidoPor = item.usuario_calibracao || item.usuario_preventiva || item.usuario_seguranca || item.usuario_externa || null;
   }
 
-  db.hospitals[hospIdx].equipments = list;
-  db.hospitals[hospIdx].lastUpdated = Date.now();
-  db.hospitals[hospIdx].lastUpdatedBy = `${targetTechnician} (Lote)`;
+  if (targetPlan) {
+    targetPlan.equipments = list;
+    targetPlan.lastUpdated = nowTimestamp;
+    targetPlan.lastUpdatedBy = `${targetTechnician} (Lote)`;
 
-  // Sincroniza tanto no plano específico do técnico quanto no plano ativo do hospital
-  if (Array.isArray(db.hospitals[hospIdx].plans)) {
-    const targetPlanId = planId || db.hospitals[hospIdx].activePlanId;
-    const pIdx = db.hospitals[hospIdx].plans.findIndex(p => p.id === targetPlanId);
-    if (pIdx !== -1) {
-      db.hospitals[hospIdx].plans[pIdx].equipments = list;
-      db.hospitals[hospIdx].plans[pIdx].lastUpdated = Date.now();
+    // Sincroniza em hospital.equipments sem sobrescrever a lista inteira
+    if (Array.isArray(hospital.equipments)) {
+      const map = new Map();
+      list.forEach(it => {
+        const k = String(it.id || it.codigoBarras || it.tag || it.serie || '').toLowerCase();
+        if (k) map.set(k, it);
+      });
+      hospital.equipments.forEach(hItem => {
+        const k = String(hItem.id || hItem.codigoBarras || hItem.tag || hItem.serie || '').toLowerCase();
+        const updated = map.get(k);
+        if (updated) {
+          hItem.check_calibracao = updated.check_calibracao;
+          hItem.data_calibracao = updated.data_calibracao;
+          hItem.usuario_calibracao = updated.usuario_calibracao;
+          hItem.check_preventiva = updated.check_preventiva;
+          hItem.data_preventiva = updated.data_preventiva;
+          hItem.usuario_preventiva = updated.usuario_preventiva;
+          hItem.check_seguranca = updated.check_seguranca;
+          hItem.data_seguranca = updated.data_seguranca;
+          hItem.usuario_seguranca = updated.usuario_seguranca;
+          hItem.check_externa = updated.check_externa;
+          hItem.data_externa = updated.data_externa;
+          hItem.usuario_externa = updated.usuario_externa;
+          hItem.motivo_externa = updated.motivo_externa;
+          hItem.checado = updated.checado;
+          hItem.dataCheck = updated.dataCheck;
+          hItem.conferidoPor = updated.conferidoPor;
+        }
+      });
     }
+  } else {
+    hospital.equipments = list;
   }
 
-  db.lastUpdated = Date.now();
+  hospital.lastUpdated = nowTimestamp;
+  hospital.lastUpdatedBy = `${targetTechnician} (Lote)`;
+  db.lastUpdated = nowTimestamp;
   saveDb(db);
 
   res.json({
@@ -1998,7 +2108,8 @@ app.post('/api/mass-check', (req, res) => {
     affectedCount,
     assignedTechnician: targetTechnician,
     targetModalities: targetMods,
-    lastUpdated: db.lastUpdated,
+    planId: targetPlan ? targetPlan.id : (planId || null),
+    lastUpdated: nowTimestamp,
     equipments: list
   });
 });

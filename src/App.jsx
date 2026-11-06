@@ -112,9 +112,39 @@ export default function App() {
     return localStorage.getItem(HOSP_KEY) || 'hosp_central';
   });
 
-  // Equipments state
+  // Active Plan ID (inicializado sincronamente para evitar qualquer cintilação de tela na recarga)
+  const [activePlanId, setActivePlanId] = useState(() => {
+    try {
+      const savedUserStr = localStorage.getItem(USER_KEY);
+      if (savedUserStr) {
+        const u = JSON.parse(savedUserStr);
+        if (u?.id) {
+          const hospId = localStorage.getItem(`calibracheck_active_hospital_${u.id}`) || localStorage.getItem(HOSP_KEY) || 'hosp_central';
+          const userPlan = localStorage.getItem(`usr_${u.id}_calibracheck_active_plan_${hospId}`);
+          if (userPlan) return userPlan;
+        }
+      }
+    } catch (e) {}
+    return null;
+  });
+
+  // Equipments state (isolado por plano e por hospital)
   const [equipments, setEquipments] = useState(() => {
     try {
+      const savedUserStr = localStorage.getItem(USER_KEY);
+      let initHosp = localStorage.getItem(HOSP_KEY) || 'hosp_central';
+      let initPlan = null;
+      if (savedUserStr) {
+        const u = JSON.parse(savedUserStr);
+        if (u?.id) {
+          initHosp = localStorage.getItem(`calibracheck_active_hospital_${u.id}`) || initHosp;
+          initPlan = localStorage.getItem(`usr_${u.id}_calibracheck_active_plan_${initHosp}`);
+        }
+      }
+      if (initPlan) {
+        const planSaved = localStorage.getItem(`calibracheck_data_${initHosp}_${initPlan}`);
+        if (planSaved) return JSON.parse(planSaved).map(normalizeEquipmentModalities);
+      }
       const saved = localStorage.getItem(STORAGE_KEY);
       return saved ? JSON.parse(saved).map(normalizeEquipmentModalities) : [];
     } catch (e) {
@@ -123,7 +153,25 @@ export default function App() {
   });
 
   const [activeSheetName, setActiveSheetName] = useState(() => {
-    return localStorage.getItem(SHEET_NAME_KEY) || '';
+    try {
+      const savedUserStr = localStorage.getItem(USER_KEY);
+      let initHosp = localStorage.getItem(HOSP_KEY) || 'hosp_central';
+      let initPlan = null;
+      if (savedUserStr) {
+        const u = JSON.parse(savedUserStr);
+        if (u?.id) {
+          initHosp = localStorage.getItem(`calibracheck_active_hospital_${u.id}`) || initHosp;
+          initPlan = localStorage.getItem(`usr_${u.id}_calibracheck_active_plan_${initHosp}`);
+        }
+      }
+      if (initPlan) {
+        const planSheet = localStorage.getItem(`calibracheck_sheet_${initHosp}_${initPlan}`);
+        if (planSheet) return planSheet;
+      }
+      return localStorage.getItem(SHEET_NAME_KEY) || '';
+    } catch (e) {
+      return '';
+    }
   });
 
   const [soundEnabled, setSoundEnabled] = useState(() => {
@@ -133,7 +181,6 @@ export default function App() {
   // UI state
   const [activeMainTab, setActiveMainTab] = useState('conferencia'); // 'conferencia' | 'planejamento'
   const [monthlyPlans, setMonthlyPlans] = useState([]);
-  const [activePlanId, setActivePlanId] = useState(null);
   const [activeFilter, setActiveFilter] = useState('todos');
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isSerialScanOpen, setIsSerialScanOpen] = useState(false);
@@ -300,7 +347,8 @@ export default function App() {
       const data = await res.json();
       if (data.success && data.hospitals) {
         setHospitals(data.hospitals);
-        if (data.activeHospitalId && !localStorage.getItem(HOSP_KEY)) {
+        const userSavedHosp = currentUser?.id ? localStorage.getItem(`calibracheck_active_hospital_${currentUser.id}`) : null;
+        if (!userSavedHosp && data.activeHospitalId && !localStorage.getItem(HOSP_KEY)) {
           setActiveHospitalId(data.activeHospitalId);
         }
       }
@@ -355,6 +403,10 @@ export default function App() {
         if (currentUser?.id) {
           localStorage.setItem(`usr_${currentUser.id}_calibracheck_active_plan_${activeHospitalId}`, planId);
         }
+        try {
+          localStorage.setItem(`calibracheck_data_${activeHospitalId}_${planId}`, JSON.stringify(data.equipments || []));
+          if (data.activeSheetName) localStorage.setItem(`calibracheck_sheet_${activeHospitalId}_${planId}`, data.activeSheetName);
+        } catch (e) {}
         setEquipments(data.equipments || []);
         if (data.activeSheetName) setActiveSheetName(data.activeSheetName);
         setActiveMainTab('conferencia');
@@ -485,15 +537,19 @@ export default function App() {
     } catch (e) {}
   }, [activeHospitalId]);
 
-  // Save to LocalStorage
+  // Save to LocalStorage (global e com escopo por plano/hospital)
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(equipments));
       localStorage.setItem(SHEET_NAME_KEY, activeSheetName);
+      if (activeHospitalId && activePlanId) {
+        localStorage.setItem(`calibracheck_data_${activeHospitalId}_${activePlanId}`, JSON.stringify(equipments));
+        localStorage.setItem(`calibracheck_sheet_${activeHospitalId}_${activePlanId}`, activeSheetName);
+      }
     } catch (e) {
       console.warn('Storage quota exceeded:', e);
     }
-  }, [equipments, activeSheetName]);
+  }, [equipments, activeSheetName, activeHospitalId, activePlanId]);
 
   // Capture Android PWA beforeinstallprompt
   useEffect(() => {
@@ -553,6 +609,11 @@ export default function App() {
         }
 
         if (data.lastUpdated && data.lastUpdated > lastUpdatedServerRef.current) {
+          // Se este técnico tem um plano ativo selecionado, não sobrescreve os equipamentos caso a resposta pertença a outro plano
+          if (activePlanId && data.activePlanId && data.activePlanId !== activePlanId) {
+            return;
+          }
+
           lastUpdatedServerRef.current = data.lastUpdated;
           
           // Se o servidor tem dados atualizados para ESTE plano/hospital, atualiza a lista de bombas
@@ -900,6 +961,7 @@ export default function App() {
             id,
             modality: m,
             hospitalId: activeHospitalId,
+            planId: activePlanId,
             userEmail: currentUser?.email,
             userName: currentUser?.name
           })
@@ -1214,6 +1276,7 @@ export default function App() {
         onlyPending: payloadOrAction.onlyPending ?? false,
         password: payloadOrAction.password,
         hospitalId: activeHospitalId,
+        planId: activePlanId,
         userEmail: currentUser?.email,
         userName: currentUser?.name
       };
@@ -1223,6 +1286,7 @@ export default function App() {
         modality: maybeModality || activeModality,
         password: maybePassword,
         hospitalId: activeHospitalId,
+        planId: activePlanId,
         userEmail: currentUser?.email,
         userName: currentUser?.name
       };
@@ -1451,6 +1515,7 @@ export default function App() {
             id: targetItem.id,
             modality: m,
             hospitalId: activeHospitalId,
+            planId: activePlanId,
             userEmail: currentUser?.email,
             userName: currentUser?.name
           })
