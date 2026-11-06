@@ -124,29 +124,40 @@ export default function MergeCalibrationsModal({
     });
   };
 
-  // Alterna o tipo de serviço (Calibração vs Manutenção Externa) de um item específico
+  // Alterna o tipo de serviço (Calibração vs Manutenção Externa vs Pendente) de um item específico
   const handleToggleItemServiceType = (index) => {
     if (!parseResult) return;
     setParseResult(prev => {
       const updated = [...prev.matches];
       const curType = updated[index].serviceType || updated[index].detectedServiceType || 'calibracao_completa';
-      const newType = curType === 'externa' ? 'calibracao_completa' : 'externa';
+      let nextType = 'calibracao_completa';
+      if (curType === 'calibracao_completa') nextType = 'externa';
+      else if (curType === 'externa') nextType = 'pendente';
+      else nextType = 'calibracao_completa';
+
       updated[index] = { 
         ...updated[index], 
-        serviceType: newType,
-        fileMotivo: newType === 'externa' ? (updated[index].fileMotivo || motivoExterna) : null
+        serviceType: nextType,
+        selected: nextType !== 'pendente',
+        fileMotivo: nextType === 'externa' ? (updated[index].fileMotivo || motivoExterna) : null
       };
       return { ...prev, matches: updated };
     });
   };
 
-  // Selecionar todos ou desmarcar todos
+  // Selecionar todos ou desmarcar todos (marca apenas os que não são pendentes)
   const handleToggleSelectAll = () => {
     if (!parseResult) return;
-    const allSelected = parseResult.matches.every(m => m.selected);
+    const applicableMatches = parseResult.matches.filter(m => getItemEffectiveService(m) !== 'pendente');
+    const allSelected = applicableMatches.length > 0 && applicableMatches.every(m => m.selected);
+    
     setParseResult(prev => ({
       ...prev,
-      matches: prev.matches.map(m => ({ ...m, selected: !allSelected }))
+      matches: prev.matches.map(m => {
+        const isPend = getItemEffectiveService(m) === 'pendente';
+        if (isPend) return { ...m, selected: false };
+        return { ...m, selected: !allSelected };
+      })
     }));
   };
 
@@ -154,7 +165,7 @@ export default function MergeCalibrationsModal({
   const getItemEffectiveService = (m) => {
     if (targetMode === 'externa') return 'externa';
     if (targetMode === 'calibracao_completa') return 'calibracao_completa';
-    return m.serviceType || m.detectedServiceType || 'calibracao_completa';
+    return m.serviceType || m.detectedServiceType || 'pendente';
   };
 
   // Filtra itens para visualização na tabela
@@ -163,7 +174,7 @@ export default function MergeCalibrationsModal({
     return parseResult.matches.map((m, originalIndex) => ({ ...m, originalIndex })).filter(m => {
       const effectiveService = getItemEffectiveService(m);
 
-      if (filterMode === 'pending_only' && m.isAlreadyChecked) return false;
+      if (filterMode === 'pending_file' && effectiveService !== 'pendente') return false;
       if (filterMode === 'already_checked' && !m.isAlreadyChecked) return false;
       if (filterMode === 'externa_only' && effectiveService !== 'externa') return false;
       if (filterMode === 'calibracao_only' && effectiveService !== 'calibracao_completa') return false;
@@ -180,9 +191,12 @@ export default function MergeCalibrationsModal({
     });
   }, [parseResult, filterMode, searchQuery, targetMode]);
 
-  const selectedCount = parseResult?.matches?.filter(m => m.selected).length || 0;
+  // Contagem de itens selecionados para aplicação (exclui pendentes que não devem sofrer alteração)
+  const selectedCount = parseResult?.matches?.filter(m => {
+    return m.selected && getItemEffectiveService(m) !== 'pendente';
+  }).length || 0;
   
-  // Contagens estatísticas refinadas com suporte a Manutenção Externa
+  // Contagens estatísticas refinadas com suporte a Manutenção Externa e Pendentes
   const newCalibrationsCount = parseResult?.matches?.filter(m => {
     if (!m.selected || m.isAlreadyChecked) return false;
     return getItemEffectiveService(m) === 'calibracao_completa';
@@ -190,6 +204,18 @@ export default function MergeCalibrationsModal({
 
   const newExternaCount = parseResult?.matches?.filter(m => {
     if (!m.selected || m.isAlreadyChecked) return false;
+    return getItemEffectiveService(m) === 'externa';
+  }).length || 0;
+
+  const pendingInFileCount = parseResult?.matches?.filter(m => {
+    return getItemEffectiveService(m) === 'pendente';
+  }).length || 0;
+
+  const totalCalibracaoMatches = parseResult?.matches?.filter(m => {
+    return getItemEffectiveService(m) === 'calibracao_completa';
+  }).length || 0;
+
+  const totalExternaMatches = parseResult?.matches?.filter(m => {
     return getItemEffectiveService(m) === 'externa';
   }).length || 0;
 
@@ -372,7 +398,7 @@ export default function MergeCalibrationsModal({
             <div className="space-y-4">
               
               {/* Resumo Estatístico dos Itens Encontrados */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-2.5">
                 <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/80 text-center">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Arquivo Lido</span>
                   <div className="text-xs font-extrabold text-slate-800 dark:text-slate-200 truncate mt-0.5" title={parseResult.fileName}>
@@ -384,7 +410,7 @@ export default function MergeCalibrationsModal({
                 </div>
 
                 <div className="p-3 bg-blue-50/60 dark:bg-blue-950/30 rounded-2xl border border-blue-200 dark:border-blue-900/60 text-center">
-                  <span className="text-[10px] font-bold text-blue-500 uppercase tracking-wider block">Calibração Completa</span>
+                  <span className="text-[10px] font-bold text-blue-500 uppercase tracking-wider block">Calibração</span>
                   <div className="text-lg font-black text-blue-700 dark:text-blue-300">
                     {newCalibrationsCount}
                   </div>
@@ -403,8 +429,18 @@ export default function MergeCalibrationsModal({
                   </span>
                 </div>
 
-                <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/80 text-center">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Já Calibradas</span>
+                <div className="p-3 bg-amber-50/60 dark:bg-amber-950/30 rounded-2xl border border-amber-200 dark:border-amber-900/60 text-center">
+                  <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider block">Pendentes no Arq.</span>
+                  <div className="text-lg font-black text-amber-700 dark:text-amber-300">
+                    {pendingInFileCount}
+                  </div>
+                  <span className="text-[10px] text-amber-600/80 dark:text-amber-400 font-bold">
+                    não calibradas (ignora)
+                  </span>
+                </div>
+
+                <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/80 text-center col-span-2 sm:col-span-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Já no Sistema</span>
                   <div className="text-lg font-black text-slate-700 dark:text-slate-300">
                     {alreadyCheckedCount}
                   </div>
@@ -573,10 +609,10 @@ export default function MergeCalibrationsModal({
                       className="px-2 py-1 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium"
                     >
                       <option value="all">Todas ({(parseResult.matches || []).length})</option>
-                      <option value="pending_only">Somente Pendentes ({newCalibrationsCount + newExternaCount})</option>
-                      <option value="calibracao_only">🎯 Calibração Completa ({newCalibrationsCount})</option>
-                      <option value="externa_only">📦 Manut. Externa ({newExternaCount})</option>
-                      <option value="already_checked">Já Calibradas ({alreadyCheckedCount})</option>
+                      <option value="calibracao_only">🎯 Calibração ({totalCalibracaoMatches})</option>
+                      <option value="externa_only">📦 Manut. Externa ({totalExternaMatches})</option>
+                      <option value="pending_file">⏳ Pendentes no Arquivo ({pendingInFileCount})</option>
+                      <option value="already_checked">Já no Sistema ({alreadyCheckedCount})</option>
                     </select>
                   </div>
                 </div>
@@ -606,13 +642,16 @@ export default function MergeCalibrationsModal({
                           const eq = m.targetEquipment || {};
                           const effectiveService = getItemEffectiveService(m);
                           const isExterna = effectiveService === 'externa';
+                          const isPendente = effectiveService === 'pendente';
 
                           return (
                             <tr 
                               key={eq.id || m.originalIndex}
                               onClick={() => handleToggleMatch(m.originalIndex)}
                               className={`cursor-pointer transition hover:bg-slate-50 dark:hover:bg-slate-800/40 ${
-                                m.selected ? (isExterna ? 'bg-purple-50/30 dark:bg-purple-950/20' : 'bg-blue-50/30 dark:bg-blue-950/15') : 'opacity-60'
+                                isPendente
+                                  ? (m.selected ? 'bg-amber-50/25 dark:bg-amber-950/20' : 'opacity-55 bg-slate-50/20')
+                                  : (m.selected ? (isExterna ? 'bg-purple-50/30 dark:bg-purple-950/20' : 'bg-blue-50/30 dark:bg-blue-950/15') : 'opacity-60')
                               }`}
                             >
                               <td className="py-2.5 px-3 text-center" onClick={e => e.stopPropagation()}>
@@ -653,14 +692,20 @@ export default function MergeCalibrationsModal({
                                     className={`inline-flex items-center gap-1 text-[10px] font-extrabold px-2.5 py-1 rounded-xl transition shadow-2xs hover:scale-105 active:scale-95 ${
                                       isExterna
                                         ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300 border border-purple-300 dark:border-purple-800'
-                                        : 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 border border-blue-300 dark:border-blue-800'
+                                        : isPendente
+                                          ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-slate-300 dark:border-slate-700'
+                                          : 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 border border-blue-300 dark:border-blue-800'
                                     }`}
-                                    title="Clique para alternar entre Calibração e Manutenção Externa"
+                                    title="Clique para alternar entre Calibração, Manutenção Externa ou Pendente"
                                   >
                                     {isExterna ? (
                                       <>
                                         <Package className="w-3 h-3 text-purple-600 dark:text-purple-400" />
                                         <span>📦 Manut. Externa</span>
+                                      </>
+                                    ) : isPendente ? (
+                                      <>
+                                        <span>⏳ Pendente no Arq.</span>
                                       </>
                                     ) : (
                                       <>
@@ -686,7 +731,11 @@ export default function MergeCalibrationsModal({
                                   </span>
                                 ) : m.isAlreadyChecked ? (
                                   <span className="text-[10px] font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
-                                    ✓ Já Calibrada
+                                    ✓ Já no Sistema
+                                  </span>
+                                ) : isPendente ? (
+                                  <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800/80 px-2 py-0.5 rounded-full">
+                                    ⏳ Pendente (Ignorada)
                                   </span>
                                 ) : (
                                   <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/15 px-2 py-0.5 rounded-full animate-pulse">
@@ -755,9 +804,10 @@ export default function MergeCalibrationsModal({
         details={[
           { label: 'Arquivo da Mesclagem', value: parseResult?.fileName || 'Planilha/PDF' },
           { label: 'Total no Plano do Hospital', value: `${safeEquipments.length} bombas` },
-          { label: 'Calibrações a Registrar', value: `${selectedCount - newExternaCount} bombas`, color: 'text-emerald-500 font-extrabold' },
+          { label: 'Calibrações a Registrar', value: `${Math.max(0, selectedCount - newExternaCount)} bombas`, color: 'text-emerald-500 font-extrabold' },
           { label: 'Manutenções Externas', value: `${newExternaCount} bombas`, color: 'text-purple-500 font-extrabold' },
-          { label: 'Já Estavam Validadas', value: `${alreadyCheckedCount} bombas`, color: 'text-slate-400' }
+          { label: 'Pendentes Mantidas Intactas', value: `${pendingInFileCount} bombas (sem alteração)`, color: 'text-amber-500 font-bold' },
+          { label: 'Já Estavam no Sistema', value: `${alreadyCheckedCount} bombas`, color: 'text-slate-400' }
         ]}
         confirmText={`Sim, Confirmar e Aplicar (${selectedCount} bombas)`}
         cancelText="Voltar e Revisar"

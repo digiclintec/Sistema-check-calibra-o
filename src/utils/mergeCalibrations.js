@@ -1,5 +1,86 @@
-import { parseWorkbookBuffer, isMaintenanceExternalText } from './sheetParser.js';
+import { parseWorkbookBuffer, isMaintenanceExternalText, parseCheckValue } from './sheetParser.js';
 import { findBestEquipmentMatches, cleanAlphanumeric } from './fuzzyMatch.js';
+
+/**
+ * Detecta se uma célula de status representa um item PENDENTE ou não calibrado
+ */
+export function isPendingText(val) {
+  if (val === null || val === undefined) return false;
+  const s = String(val)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+  if (!s) return false;
+  return (
+    s === 'pendente' ||
+    s.includes('pendent') ||
+    s === 'aguardando' ||
+    s.includes('aguardando') ||
+    s === 'a calibrar' ||
+    s === 'a fazer' ||
+    s === 'aberto' ||
+    s === 'em aberto' ||
+    s === 'nao' ||
+    s === 'não' ||
+    s === 'nao calibrado' ||
+    s === 'não calibrado' ||
+    s === '0' ||
+    s === 'inativo' ||
+    s === 'false'
+  );
+}
+
+/**
+ * Classifica com precisão se a linha do arquivo é Manutenção Externa, Calibração Completa ou Pendente
+ */
+export function classifyImportedServiceType(item, fileHasCheckOrStatusCol = false) {
+  if (!item) return 'pendente';
+
+  // 1. Prioridade máxima: Manutenção / Manutenção Externa
+  if (checkIfItemIsMaintenance(item)) {
+    return 'externa';
+  }
+
+  const row = item._originalRow || item;
+
+  // 2. Procura termos explícitos nas colunas da linha
+  let hasExplicitPending = false;
+  let hasExplicitCheck = false;
+
+  for (const [k, v] of Object.entries(row)) {
+    if (k.startsWith('_')) continue;
+    if (isPendingText(v)) {
+      hasExplicitPending = true;
+    }
+    if (parseCheckValue(v)) {
+      hasExplicitCheck = true;
+    }
+  }
+
+  // Se o item já tem marcação direta de calibração
+  if (item.check_calibracao || (item.checado && !item.check_externa)) {
+    hasExplicitCheck = true;
+  }
+
+  // Se tiver indicação afirmativa de calibração/check e não for pendente
+  if (hasExplicitCheck && !hasExplicitPending) {
+    return 'calibracao_completa';
+  }
+
+  // Se estiver marcado explicitamente como pendente
+  if (hasExplicitPending) {
+    return 'pendente';
+  }
+
+  // Se o arquivo possui coluna de checagem/status e esta linha não teve check positivo
+  if (fileHasCheckOrStatusCol) {
+    return 'pendente';
+  }
+
+  // Fallback: se o arquivo não tem nenhuma coluna de conferência (ex: lista simples de bombas a carimbar)
+  return 'calibracao_completa';
+}
 
 /**
  * Avalia se um item ou linha importada corresponde à Manutenção / Manutenção Externa
@@ -96,6 +177,20 @@ async function parseExcelFileForMerge(file, currentEquipments = []) {
         const unmatched = [];
         const matchedEqIds = new Set();
 
+        // Avalia se o arquivo possui coluna de checagem/status onde parte das linhas está conferida ou pendente
+        let fileHasCheckOrStatusCol = false;
+        for (const item of importedList) {
+          const row = item._originalRow || item;
+          for (const [k, v] of Object.entries(row)) {
+            if (k.startsWith('_')) continue;
+            if (parseCheckValue(v) || isPendingText(v)) {
+              fileHasCheckOrStatusCol = true;
+              break;
+            }
+          }
+          if (fileHasCheckOrStatusCol) break;
+        }
+
         importedList.forEach(item => {
           // Identificadores possíveis
           const candidates = [
@@ -118,8 +213,10 @@ async function parseExcelFileForMerge(file, currentEquipments = []) {
           if (bestMatch && !matchedEqIds.has(bestMatch.equipment.id)) {
             matchedEqIds.add(bestMatch.equipment.id);
 
-            // Detecção robusta se este item da planilha importada é Manutenção / Manutenção Externa
-            const isFileExterna = checkIfItemIsMaintenance(item);
+            // Classificação inteligente da linha importada (externa, calibracao_completa ou pendente)
+            const classifiedService = classifyImportedServiceType(item, fileHasCheckOrStatusCol);
+            const isFileExterna = classifiedService === 'externa';
+            const isPendente = classifiedService === 'pendente';
 
             const isAlreadyExterna = Boolean(bestMatch.equipment.check_externa);
             const isAlreadyCalibrated = Boolean(
@@ -136,13 +233,15 @@ async function parseExcelFileForMerge(file, currentEquipments = []) {
               isAlreadyChecked: Boolean(isAlreadyCalibrated || isAlreadyExterna || bestMatch.equipment.checado),
               isAlreadyExterna,
               isAlreadyCalibrated,
-              detectedServiceType: isFileExterna ? 'externa' : 'calibracao_completa',
-              serviceType: isFileExterna ? 'externa' : 'calibracao_completa',
+              detectedServiceType: classifiedService,
+              serviceType: classifiedService,
               fileDate: (isFileExterna ? item.data_externa : null) || item.dataCheck || item.data_calibracao || null,
               fileUser: (isFileExterna ? item.usuario_externa : null) || item.conferidoPor || item.usuario_calibracao || null,
               fileMotivo: item.motivo_externa || (isFileExterna ? 'Calibração e conserto por equipe externa terceirizada' : null),
               fileSector: item.setor_retirada || item.setor || null,
-              selected: true // Marcado por padrão para mesclar
+              // CRUCIAL: Bombas pendentes na planilha NUNCA vêm selecionadas por padrão!
+              // Apenas bombas efetivamente calibradas ou em manutenção vêm marcadas.
+              selected: !isPendente
             });
           } else if (!bestMatch) {
             unmatched.push(item);
@@ -319,7 +418,18 @@ export function mergeCalibrationsIntoEquipments(
     const k = String(eq.id).toLowerCase();
     const match = matchMap.get(k);
 
-    if (!match) {
+    if (!match || !match.selected) {
+      return eq;
+    }
+
+    // Se o serviço do item for pendente no arquivo e o modo for auto, NÃO altera o equipamento!
+    const effectiveType = (targetMode === 'externa') 
+      ? 'externa' 
+      : (targetMode === 'calibracao_completa') 
+        ? 'calibracao_completa' 
+        : (match.serviceType || match.detectedServiceType || 'calibracao_completa');
+
+    if (effectiveType === 'pendente') {
       return eq;
     }
 
@@ -330,8 +440,7 @@ export function mergeCalibrationsIntoEquipments(
     const userToApply = match.fileUser || inspector;
 
     // Determina se este item será carimbado como Manutenção Externa
-    const isThisItemExterna = (targetMode === 'externa') || 
-      (targetMode === 'auto' && (match.serviceType === 'externa' || match.detectedServiceType === 'externa'));
+    const isThisItemExterna = (effectiveType === 'externa');
 
     if (isThisItemExterna) {
       if (overwriteExisting || !copy.check_externa) {

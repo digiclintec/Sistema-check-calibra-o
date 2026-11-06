@@ -94,42 +94,44 @@ export const MODALITIES = {
 export function normalizeEquipmentModalities(eq) {
   if (!eq) return eq;
 
+  const isExterna = Boolean(eq.check_externa);
   const isLegacyChecked = Boolean(eq.checado);
   const legacyDate = eq.dataCheck || null;
   const legacyUser = eq.conferidoPor || null;
 
-  const checkCalibracao = eq.check_calibracao !== undefined 
-    ? Boolean(eq.check_calibracao) 
-    : isLegacyChecked;
+  // Se estiver em Manutenção Externa, NUNCA pode constar como calibração interna
+  const checkCalibracao = isExterna
+    ? false
+    : (eq.check_calibracao !== undefined ? Boolean(eq.check_calibracao) : isLegacyChecked);
 
-  const checkPreventiva = Boolean(eq.check_preventiva);
-  const checkSeguranca = Boolean(eq.check_seguranca);
+  const checkPreventiva = isExterna ? false : Boolean(eq.check_preventiva);
+  const checkSeguranca = isExterna ? false : Boolean(eq.check_seguranca);
 
   return {
     ...eq,
     // Calibração
     check_calibracao: checkCalibracao,
-    data_calibracao: eq.data_calibracao || (checkCalibracao ? legacyDate : null),
-    usuario_calibracao: eq.usuario_calibracao || (checkCalibracao ? legacyUser : null),
+    data_calibracao: checkCalibracao ? (eq.data_calibracao || legacyDate) : null,
+    usuario_calibracao: checkCalibracao ? (eq.usuario_calibracao || legacyUser) : null,
 
     // Preventiva
     check_preventiva: checkPreventiva,
-    data_preventiva: eq.data_preventiva || null,
-    usuario_preventiva: eq.usuario_preventiva || null,
+    data_preventiva: checkPreventiva ? eq.data_preventiva : null,
+    usuario_preventiva: checkPreventiva ? eq.usuario_preventiva : null,
 
     // Teste de Segurança
     check_seguranca: checkSeguranca,
-    data_seguranca: eq.data_seguranca || null,
-    usuario_seguranca: eq.usuario_seguranca || null,
+    data_seguranca: checkSeguranca ? eq.data_seguranca : null,
+    usuario_seguranca: checkSeguranca ? eq.usuario_seguranca : null,
 
     // Manutenção Externa (Terceirizada)
-    check_externa: Boolean(eq.check_externa),
+    check_externa: isExterna,
     data_externa: eq.data_externa || null,
     usuario_externa: eq.usuario_externa || null,
     motivo_externa: eq.motivo_externa || null,
 
     // Campo compatível legado
-    checado: checkCalibracao || checkPreventiva || checkSeguranca || Boolean(eq.check_externa)
+    checado: checkCalibracao || checkPreventiva || checkSeguranca || isExterna
   };
 }
 

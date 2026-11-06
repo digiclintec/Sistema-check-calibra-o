@@ -1139,21 +1139,27 @@ function smartMergeGoogleSheet(currentEquipments = [], incomingEquipments = []) 
     if (match) {
       processedCurrentIds.add(match.id);
 
-      const localCal = match.check_calibracao !== undefined ? match.check_calibracao : match.checado;
-      const sheetCal = incoming.check_calibracao !== undefined ? incoming.check_calibracao : incoming.checado;
+      // Manutenção Externa (preserva se o técnico marcou no sistema ou se veio da planilha)
+      const localExt = Boolean(match.check_externa);
+      const sheetExt = Boolean(incoming.check_externa);
+      const finalExt = localExt || sheetExt;
+
+      // Se estiver em manutenção externa, NÃO deve constar como calibração interna
+      const localCal = finalExt ? false : (match.check_calibracao !== undefined ? Boolean(match.check_calibracao) : (!localExt && Boolean(match.checado)));
+      const sheetCal = finalExt ? false : (incoming.check_calibracao !== undefined ? Boolean(incoming.check_calibracao) : (!sheetExt && Boolean(incoming.checado)));
       
-      const localPrev = !!match.check_preventiva;
-      const sheetPrev = !!incoming.check_preventiva;
+      const localPrev = finalExt ? false : !!match.check_preventiva;
+      const sheetPrev = finalExt ? false : !!incoming.check_preventiva;
 
-      const localSeg = !!match.check_seguranca;
-      const sheetSeg = !!incoming.check_seguranca;
+      const localSeg = finalExt ? false : !!match.check_seguranca;
+      const sheetSeg = finalExt ? false : !!incoming.check_seguranca;
 
-      const finalCal = localCal || sheetCal;
-      const finalPrev = localPrev || sheetPrev;
-      const finalSeg = localSeg || sheetSeg;
+      const finalCal = finalExt ? false : (localCal || sheetCal);
+      const finalPrev = finalExt ? false : (localPrev || sheetPrev);
+      const finalSeg = finalExt ? false : (localSeg || sheetSeg);
 
       let itemChanged = false;
-      if (finalCal !== localCal || finalPrev !== localPrev || finalSeg !== localSeg) itemChanged = true;
+      if (finalCal !== localCal || finalPrev !== localPrev || finalSeg !== localSeg || finalExt !== localExt) itemChanged = true;
       if (incoming.setor && incoming.setor !== match.setor) itemChanged = true;
       if (incoming.setor_retirada && incoming.setor_retirada !== match.setor_retirada) itemChanged = true;
       if (incoming.modelo && incoming.modelo !== match.modelo) itemChanged = true;
@@ -1177,18 +1183,23 @@ function smartMergeGoogleSheet(currentEquipments = [], incomingEquipments = []) 
         tag: incoming.tag || match.tag,
         
         check_calibracao: finalCal,
-        usuario_calibracao: localCal ? match.usuario_calibracao : (sheetCal ? (incoming.usuario_calibracao || 'Google Sheets') : null),
-        data_calibracao: localCal ? match.data_calibracao : (sheetCal ? (incoming.data_calibracao || new Date().toISOString()) : null),
+        usuario_calibracao: finalCal ? (localCal ? match.usuario_calibracao : (sheetCal ? (incoming.usuario_calibracao || 'Google Sheets') : null)) : null,
+        data_calibracao: finalCal ? (localCal ? match.data_calibracao : (sheetCal ? (incoming.data_calibracao || new Date().toISOString()) : null)) : null,
 
         check_preventiva: finalPrev,
-        usuario_preventiva: localPrev ? match.usuario_preventiva : (sheetPrev ? (incoming.usuario_preventiva || 'Google Sheets') : null),
-        data_preventiva: localPrev ? match.data_preventiva : (sheetPrev ? (incoming.data_preventiva || new Date().toISOString()) : null),
+        usuario_preventiva: finalPrev ? (localPrev ? match.usuario_preventiva : (sheetPrev ? (incoming.usuario_preventiva || 'Google Sheets') : null)) : null,
+        data_preventiva: finalPrev ? (localPrev ? match.data_preventiva : (sheetPrev ? (incoming.data_preventiva || new Date().toISOString()) : null)) : null,
 
         check_seguranca: finalSeg,
-        usuario_seguranca: localSeg ? match.usuario_seguranca : (sheetSeg ? (incoming.usuario_seguranca || 'Google Sheets') : null),
-        data_seguranca: localSeg ? match.data_seguranca : (sheetSeg ? (incoming.data_seguranca || new Date().toISOString()) : null),
+        usuario_seguranca: finalSeg ? (localSeg ? match.usuario_seguranca : (sheetSeg ? (incoming.usuario_seguranca || 'Google Sheets') : null)) : null,
+        data_seguranca: finalSeg ? (localSeg ? match.data_seguranca : (sheetSeg ? (incoming.data_seguranca || new Date().toISOString()) : null)) : null,
 
-        checado: finalCal,
+        check_externa: finalExt,
+        usuario_externa: finalExt ? (localExt ? match.usuario_externa : (incoming.usuario_externa || 'Equipe Externa')) : null,
+        data_externa: finalExt ? (localExt ? match.data_externa : (incoming.data_externa || new Date().toISOString())) : null,
+        motivo_externa: finalExt ? (match.motivo_externa || incoming.motivo_externa || 'Calibração e conserto por equipe externa terceirizada') : null,
+
+        checado: finalCal || finalPrev || finalSeg || finalExt,
         _originalRow: incoming._originalRow || match._originalRow
       });
     } else {
