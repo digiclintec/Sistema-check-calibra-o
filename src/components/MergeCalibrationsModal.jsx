@@ -15,7 +15,11 @@ import {
   Filter, 
   Search,
   ArrowRight,
-  Info
+  Info,
+  Package,
+  Wrench,
+  Zap,
+  Sliders
 } from 'lucide-react';
 import { parseFileForCalibrationMerge, mergeCalibrationsIntoEquipments } from '../utils/mergeCalibrations.js';
 import { MODALITIES } from '../utils/modalities.js';
@@ -39,8 +43,12 @@ export default function MergeCalibrationsModal({
   const [parseResult, setParseResult] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterMode, setFilterMode] = useState('all'); // 'all' | 'pending_only' | 'already_checked'
+  const [filterMode, setFilterMode] = useState('all'); // 'all' | 'pending_only' | 'externa_only' | 'calibracao_only' | 'already_checked'
   
+  // Modo geral de aplicação: 'auto' (detecta pelo arquivo) | 'calibracao_completa' | 'externa'
+  const [targetMode, setTargetMode] = useState('auto');
+  const [motivoExterna, setMotivoExterna] = useState('Calibração e conserto por equipe externa terceirizada');
+
   // Opções de Mesclagem
   const [applyModalities, setApplyModalities] = useState(() => {
     const mods = [];
@@ -75,6 +83,7 @@ export default function MergeCalibrationsModal({
     setParseResult(null);
     setErrorMessage('');
     setSearchQuery('');
+    setTargetMode('auto');
   };
 
   const handleFileChange = async (e) => {
@@ -112,6 +121,22 @@ export default function MergeCalibrationsModal({
     });
   };
 
+  // Alterna o tipo de serviço (Calibração vs Manutenção Externa) de um item específico
+  const handleToggleItemServiceType = (index) => {
+    if (!parseResult) return;
+    setParseResult(prev => {
+      const updated = [...prev.matches];
+      const curType = updated[index].serviceType || updated[index].detectedServiceType || 'calibracao_completa';
+      const newType = curType === 'externa' ? 'calibracao_completa' : 'externa';
+      updated[index] = { 
+        ...updated[index], 
+        serviceType: newType,
+        fileMotivo: newType === 'externa' ? (updated[index].fileMotivo || motivoExterna) : null
+      };
+      return { ...prev, matches: updated };
+    });
+  };
+
   // Selecionar todos ou desmarcar todos
   const handleToggleSelectAll = () => {
     if (!parseResult) return;
@@ -122,12 +147,23 @@ export default function MergeCalibrationsModal({
     }));
   };
 
+  // Resolve o tipo efetivo de serviço para cada item
+  const getItemEffectiveService = (m) => {
+    if (targetMode === 'externa') return 'externa';
+    if (targetMode === 'calibracao_completa') return 'calibracao_completa';
+    return m.serviceType || m.detectedServiceType || 'calibracao_completa';
+  };
+
   // Filtra itens para visualização na tabela
   const filteredMatches = useMemo(() => {
     if (!parseResult || !parseResult.matches) return [];
-    return parseResult.matches.filter(m => {
+    return parseResult.matches.map((m, originalIndex) => ({ ...m, originalIndex })).filter(m => {
+      const effectiveService = getItemEffectiveService(m);
+
       if (filterMode === 'pending_only' && m.isAlreadyChecked) return false;
       if (filterMode === 'already_checked' && !m.isAlreadyChecked) return false;
+      if (filterMode === 'externa_only' && effectiveService !== 'externa') return false;
+      if (filterMode === 'calibracao_only' && effectiveService !== 'calibracao_completa') return false;
 
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
@@ -139,10 +175,22 @@ export default function MergeCalibrationsModal({
       }
       return true;
     });
-  }, [parseResult, filterMode, searchQuery]);
+  }, [parseResult, filterMode, searchQuery, targetMode]);
 
   const selectedCount = parseResult?.matches?.filter(m => m.selected).length || 0;
-  const newCalibrationsCount = parseResult?.matches?.filter(m => m.selected && !m.isAlreadyChecked).length || 0;
+  
+  // Contagens estatísticas refinadas com suporte a Manutenção Externa
+  const newCalibrationsCount = parseResult?.matches?.filter(m => {
+    if (!m.selected || m.isAlreadyChecked) return false;
+    return getItemEffectiveService(m) === 'calibracao_completa';
+  }).length || 0;
+
+  const newExternaCount = parseResult?.matches?.filter(m => {
+    if (!m.selected || m.isAlreadyChecked) return false;
+    return getItemEffectiveService(m) === 'externa';
+  }).length || 0;
+
+  const alreadyCheckedCount = (parseResult?.matches || []).filter(m => m.isAlreadyChecked).length;
 
   // Confirmar e aplicar a mesclagem
   const handleConfirmMerge = async () => {
@@ -153,15 +201,18 @@ export default function MergeCalibrationsModal({
       parseResult.matches,
       {
         modalities: applyModalities,
+        targetMode,
         inspector: inspectorName,
-        overwriteExisting
+        overwriteExisting,
+        motivoExterna
       }
     );
 
     if (onApplyMerge) {
+      const externaMsg = newExternaCount > 0 ? ` (${newExternaCount} em Manutenção Externa)` : '';
       await onApplyMerge(
         updatedEquipments, 
-        `Mesclagem via ${parseResult.fileName}: ${updatedCount} bombas carimbadas como calibradas`
+        `Mesclagem via ${parseResult.fileName}: ${updatedCount} bombas atualizadas${externaMsg}`
       );
     }
 
@@ -188,7 +239,7 @@ export default function MergeCalibrationsModal({
       onClick={() => { onClose(); handleReset(); }}
     >
       <div 
-        className="relative z-10 w-full max-w-3xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col max-h-[90vh] overflow-hidden text-slate-900 dark:text-slate-100"
+        className="relative z-10 w-full max-w-4xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col max-h-[92vh] overflow-hidden text-slate-900 dark:text-slate-100"
         onClick={e => e.stopPropagation()}
       >
         
@@ -201,7 +252,7 @@ export default function MergeCalibrationsModal({
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="font-extrabold text-base sm:text-lg tracking-tight truncate">
-                  Mesclar Calibrações Feitas
+                  Mesclar Calibrações & Manutenção Externa
                 </h3>
                 <span className="text-[10px] bg-white/20 text-white px-2 py-0.5 rounded-full font-bold shrink-0">
                   XLS, XLSX, CSV ou PDF
@@ -227,7 +278,7 @@ export default function MergeCalibrationsModal({
         <div className="bg-blue-50 dark:bg-blue-950/40 px-4 py-2 border-b border-blue-100 dark:border-blue-900/50 flex items-center gap-2 text-[11px] sm:text-xs text-blue-900 dark:text-blue-200 shrink-0">
           <ShieldCheck className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
           <span>
-            <strong>Seguro:</strong> Nenhum equipamento do seu plano será apagado ou duplicado. O sistema apenas identifica as bombas que já foram feitas e atualiza seus status de calibração.
+            <strong>Seguro e Inteligente:</strong> Cruza as bombas sem apagar nem duplicar nada. Identifica automaticamente calibrações normais e itens enviados para <strong>Manutenção Externa</strong>.
           </span>
         </div>
 
@@ -266,12 +317,12 @@ export default function MergeCalibrationsModal({
 
                 <div>
                   <h4 className="font-extrabold text-slate-900 dark:text-white text-base sm:text-lg">
-                    {isProcessing ? 'Cruzando bombas com seu plano ativo...' : 'Selecione a lista de calibrações'}
+                    {isProcessing ? 'Cruzando bombas e identificando serviços...' : 'Selecione a lista de calibrações ou manutenção'}
                   </h4>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
                     {isProcessing 
-                      ? 'Extraindo números de série, tags e datas do arquivo para encontrar as bombas no plano...' 
-                      : 'Aceita planilhas de outros técnicos (.xlsx, .xls, .csv) ou relatórios/certificados em PDF.'}
+                      ? 'Lendo números de série, tags, calibrações e apontamentos de manutenção externa...' 
+                      : 'Aceita planilhas de calibração, listas de manutenção externa terceirizada (.xlsx, .xls, .csv) ou relatórios/certificados em PDF.'}
                   </p>
                 </div>
 
@@ -284,6 +335,10 @@ export default function MergeCalibrationsModal({
                     <span className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 shadow-sm">
                       <FileText className="w-4 h-4 text-rose-500" />
                       <span>Relatório em PDF</span>
+                    </span>
+                    <span className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-purple-200 dark:border-purple-800/60 text-xs font-bold text-purple-700 dark:text-purple-300 flex items-center gap-1.5 shadow-sm">
+                      <Package className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                      <span>Lê Manut. Externa</span>
                     </span>
                   </div>
                 )}
@@ -310,34 +365,34 @@ export default function MergeCalibrationsModal({
                     {parseResult.fileName}
                   </div>
                   <span className="text-[10px] text-slate-500 uppercase font-mono font-bold">
-                    {parseResult.fileType === 'pdf' ? 'PDF' : 'Excel/CSV'}
+                    {parseResult.fileType === 'pdf' ? 'PDF' : 'Excel/CSV'} ({parseResult.totalMatches} no plano)
                   </span>
                 </div>
 
                 <div className="p-3 bg-blue-50/60 dark:bg-blue-950/30 rounded-2xl border border-blue-200 dark:border-blue-900/60 text-center">
-                  <span className="text-[10px] font-bold text-blue-500 uppercase tracking-wider block">Bombas no Plano</span>
+                  <span className="text-[10px] font-bold text-blue-500 uppercase tracking-wider block">Calibração Completa</span>
                   <div className="text-lg font-black text-blue-700 dark:text-blue-300">
-                    {parseResult.totalMatches}
+                    {newCalibrationsCount}
                   </div>
                   <span className="text-[10px] text-blue-600/80 font-bold">
-                    correspondências
+                    novas conferências
                   </span>
                 </div>
 
-                <div className="p-3 bg-emerald-50/60 dark:bg-emerald-950/30 rounded-2xl border border-emerald-200 dark:border-emerald-900/60 text-center">
-                  <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block">Serão Calibradas</span>
-                  <div className="text-lg font-black text-emerald-700 dark:text-emerald-300">
-                    {newCalibrationsCount}
+                <div className="p-3 bg-purple-50/60 dark:bg-purple-950/30 rounded-2xl border border-purple-200 dark:border-purple-900/60 text-center">
+                  <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider block">Manut. Externa</span>
+                  <div className="text-lg font-black text-purple-700 dark:text-purple-300">
+                    {newExternaCount}
                   </div>
-                  <span className="text-[10px] text-emerald-600/80 font-bold">
-                    novas conferências
+                  <span className="text-[10px] text-purple-600/80 dark:text-purple-400 font-bold">
+                    terceirizadas
                   </span>
                 </div>
 
                 <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/80 text-center">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Já Calibradas</span>
                   <div className="text-lg font-black text-slate-700 dark:text-slate-300">
-                    {(parseResult.matches || []).filter(m => m.isAlreadyChecked).length}
+                    {alreadyCheckedCount}
                   </div>
                   <span className="text-[10px] text-slate-500 font-bold">
                     já estavam OK
@@ -350,7 +405,7 @@ export default function MergeCalibrationsModal({
                 <div className="flex items-center justify-between flex-wrap gap-2 text-xs">
                   <div className="flex items-center gap-1.5 font-bold text-slate-800 dark:text-slate-200">
                     <SlidersHorizontal className="w-4 h-4 text-blue-500" />
-                    <span>Opções ao Aplicar a Mesclagem:</span>
+                    <span>Como aplicar a mesclagem das bombas:</span>
                   </div>
 
                   <button
@@ -362,24 +417,70 @@ export default function MergeCalibrationsModal({
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
-                      Serviços que serão carimbados nas bombas:
-                    </label>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="px-2 py-1 rounded-lg bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-bold text-[11px] border border-blue-200 dark:border-blue-800">
-                        🎯 Calibração
-                      </span>
-                      <span className="px-2 py-1 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-bold text-[11px] border border-emerald-200 dark:border-emerald-800">
-                        🔧 Preventiva
-                      </span>
-                      <span className="px-2 py-1 rounded-lg bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-bold text-[11px] border border-amber-200 dark:border-amber-800">
-                        ⚡ Seg. Elétrica
-                      </span>
+                {/* Seletor de Modo de Serviço */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTargetMode('auto')}
+                    className={`p-2.5 rounded-xl border text-left transition flex items-start gap-2 ${
+                      targetMode === 'auto'
+                        ? 'border-indigo-500 bg-indigo-50/80 dark:bg-indigo-950/40 shadow-xs'
+                        : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/70 opacity-75 hover:opacity-100'
+                    }`}
+                  >
+                    <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-extrabold text-xs text-slate-900 dark:text-white">
+                        Detectar pelo Arquivo
+                      </div>
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight mt-0.5">
+                        Lê Manutenção Externa e Calibração conforme anotado na planilha
+                      </div>
                     </div>
-                  </div>
+                  </button>
 
+                  <button
+                    type="button"
+                    onClick={() => setTargetMode('calibracao_completa')}
+                    className={`p-2.5 rounded-xl border text-left transition flex items-start gap-2 ${
+                      targetMode === 'calibracao_completa'
+                        ? 'border-blue-500 bg-blue-50/80 dark:bg-blue-950/40 shadow-xs'
+                        : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/70 opacity-75 hover:opacity-100'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-extrabold text-xs text-slate-900 dark:text-white">
+                        Calibração Completa
+                      </div>
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight mt-0.5">
+                        Carimbar todas como Calibração + Preventiva + Seg. Elétrica
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTargetMode('externa')}
+                    className={`p-2.5 rounded-xl border text-left transition flex items-start gap-2 ${
+                      targetMode === 'externa'
+                        ? 'border-purple-500 bg-purple-50/80 dark:bg-purple-950/40 shadow-xs'
+                        : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/70 opacity-75 hover:opacity-100'
+                    }`}
+                  >
+                    <Package className="w-4 h-4 text-purple-600 dark:text-purple-400 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-extrabold text-xs text-slate-900 dark:text-white">
+                        Manutenção Externa
+                      </div>
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight mt-0.5">
+                        Carimbar todas como recolhidas para conserto/calibração terceirizada
+                      </div>
+                    </div>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-1">
                   <div>
                     <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
                       Responsável registrado:
@@ -392,9 +493,24 @@ export default function MergeCalibrationsModal({
                       className="w-full px-2.5 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 text-xs font-medium focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
+
+                  {(targetMode === 'externa' || newExternaCount > 0) && (
+                    <div>
+                      <label className="text-[11px] font-bold text-purple-600 dark:text-purple-400 block mb-1">
+                        Motivo / Destino da Manutenção Externa:
+                      </label>
+                      <input
+                        type="text"
+                        value={motivoExterna}
+                        onChange={e => setMotivoExterna(e.target.value)}
+                        placeholder="Ex: Enviado para calibrador credenciado"
+                        className="w-full px-2.5 py-1.5 rounded-xl border border-purple-300 dark:border-purple-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 text-xs font-medium focus:ring-2 focus:ring-purple-500"
+                      />
+                    </div>
+                  )}
                 </div>
 
-                <div className="flex items-center gap-2 pt-1">
+                <div className="flex items-center gap-2 pt-0.5">
                   <input
                     type="checkbox"
                     id="overwriteExisting"
@@ -413,7 +529,7 @@ export default function MergeCalibrationsModal({
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                      Bombas para Mesclar ({selectedCount} de {(parseResult.matches || []).length}):
+                      Bombas Selecionadas ({selectedCount} de {(parseResult.matches || []).length}):
                     </span>
                     <button
                       type="button"
@@ -425,7 +541,7 @@ export default function MergeCalibrationsModal({
                   </div>
 
                   {/* Filtro e Busca Rápida */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <div className="relative">
                       <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                       <input
@@ -433,7 +549,7 @@ export default function MergeCalibrationsModal({
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
                         placeholder="Buscar por tag, série..."
-                        className="pl-8 pr-2.5 py-1 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 w-36 sm:w-48"
+                        className="pl-8 pr-2.5 py-1 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 w-36 sm:w-44"
                       />
                     </div>
 
@@ -443,8 +559,10 @@ export default function MergeCalibrationsModal({
                       className="px-2 py-1 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium"
                     >
                       <option value="all">Todas ({(parseResult.matches || []).length})</option>
-                      <option value="pending_only">Somente Pendentes ({newCalibrationsCount})</option>
-                      <option value="already_checked">Já Calibradas</option>
+                      <option value="pending_only">Somente Pendentes ({newCalibrationsCount + newExternaCount})</option>
+                      <option value="calibracao_only">🎯 Calibração Completa ({newCalibrationsCount})</option>
+                      <option value="externa_only">📦 Manut. Externa ({newExternaCount})</option>
+                      <option value="already_checked">Já Calibradas ({alreadyCheckedCount})</option>
                     </select>
                   </div>
                 </div>
@@ -458,32 +576,36 @@ export default function MergeCalibrationsModal({
                         <th className="py-2 px-3">Bomba / Modelo</th>
                         <th className="py-2 px-3">IDEC / Série</th>
                         <th className="py-2 px-3">Correspondência</th>
+                        <th className="py-2 px-3 text-center">Serviço Que Será Aplicado</th>
                         <th className="py-2 px-3">Status Atual</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-medium">
                       {filteredMatches.length === 0 ? (
                         <tr>
-                          <td colSpan={5} className="py-8 text-center text-slate-400 text-xs">
+                          <td colSpan={6} className="py-8 text-center text-slate-400 text-xs">
                             Nenhuma bomba corresponde aos filtros atuais.
                           </td>
                         </tr>
                       ) : (
-                        filteredMatches.map((m, idx) => {
+                        filteredMatches.map((m) => {
                           const eq = m.targetEquipment || {};
+                          const effectiveService = getItemEffectiveService(m);
+                          const isExterna = effectiveService === 'externa';
+
                           return (
                             <tr 
-                              key={eq.id || idx}
-                              onClick={() => handleToggleMatch(idx)}
+                              key={eq.id || m.originalIndex}
+                              onClick={() => handleToggleMatch(m.originalIndex)}
                               className={`cursor-pointer transition hover:bg-slate-50 dark:hover:bg-slate-800/40 ${
-                                m.selected ? 'bg-blue-50/30 dark:bg-blue-950/15' : 'opacity-60'
+                                m.selected ? (isExterna ? 'bg-purple-50/30 dark:bg-purple-950/20' : 'bg-blue-50/30 dark:bg-blue-950/15') : 'opacity-60'
                               }`}
                             >
                               <td className="py-2.5 px-3 text-center" onClick={e => e.stopPropagation()}>
                                 <input
                                   type="checkbox"
                                   checked={m.selected}
-                                  onChange={() => handleToggleMatch(idx)}
+                                  onChange={() => handleToggleMatch(m.originalIndex)}
                                   className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300"
                                 />
                               </td>
@@ -509,14 +631,52 @@ export default function MergeCalibrationsModal({
                                   <span>{m.matchReason}</span>
                                 </span>
                               </td>
+                              <td className="py-2.5 px-3 text-center" onClick={e => e.stopPropagation()}>
+                                {targetMode === 'auto' ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleItemServiceType(m.originalIndex)}
+                                    className={`inline-flex items-center gap-1 text-[10px] font-extrabold px-2.5 py-1 rounded-xl transition shadow-2xs hover:scale-105 active:scale-95 ${
+                                      isExterna
+                                        ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300 border border-purple-300 dark:border-purple-800'
+                                        : 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 border border-blue-300 dark:border-blue-800'
+                                    }`}
+                                    title="Clique para alternar entre Calibração e Manutenção Externa"
+                                  >
+                                    {isExterna ? (
+                                      <>
+                                        <Package className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                                        <span>📦 Manut. Externa</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Sparkles className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+                                        <span>🎯 Calibração Completa</span>
+                                      </>
+                                    )}
+                                  </button>
+                                ) : (
+                                  <span className={`inline-flex items-center gap-1 text-[10px] font-extrabold px-2.5 py-1 rounded-xl ${
+                                    isExterna
+                                      ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300 border border-purple-200 dark:border-purple-800'
+                                      : 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
+                                  }`}>
+                                    {isExterna ? '📦 Manut. Externa' : '🎯 Calibração Completa'}
+                                  </span>
+                                )}
+                              </td>
                               <td className="py-2.5 px-3">
-                                {m.isAlreadyChecked ? (
+                                {m.isAlreadyExterna ? (
+                                  <span className="text-[10px] font-bold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-950 px-2 py-0.5 rounded-full border border-purple-200 dark:border-purple-800">
+                                    ✓ Em Manut. Externa
+                                  </span>
+                                ) : m.isAlreadyChecked ? (
                                   <span className="text-[10px] font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
                                     ✓ Já Calibrada
                                   </span>
                                 ) : (
                                   <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/15 px-2 py-0.5 rounded-full animate-pulse">
-                                    ⚡ Será Calibrada
+                                    ⚡ Será Atualizada
                                   </span>
                                 )}
                               </td>
@@ -556,7 +716,10 @@ export default function MergeCalibrationsModal({
               }`}
             >
               <Sparkles className="w-4 h-4 text-emerald-200" />
-              <span>Confirmar Mesclagem e Carimbar ({selectedCount} bombas)</span>
+              <span>
+                Confirmar Mesclagem ({selectedCount} bombas
+                {newExternaCount > 0 ? ` • ${newExternaCount} externas` : ''})
+              </span>
             </button>
           )}
         </div>

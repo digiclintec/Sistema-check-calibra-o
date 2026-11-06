@@ -4,6 +4,7 @@ import { findBestEquipmentMatches, cleanAlphanumeric } from './fuzzyMatch.js';
 /**
  * Lê arquivo (XLSX, XLS, CSV ou PDF) e identifica bombas e calibrações correspondentes
  * para mesclar com o plano ativo sem duplicar ou apagar nada.
+ * Suporta detecção de Calibração Completa E Manutenção Externa.
  */
 export async function parseFileForCalibrationMerge(file, currentEquipments = []) {
   const fileName = file.name || 'arquivo';
@@ -17,7 +18,7 @@ export async function parseFileForCalibrationMerge(file, currentEquipments = [])
 }
 
 /**
- * Processa arquivo Excel / CSV para mesclagem de calibrações
+ * Processa arquivo Excel / CSV para mesclagem de calibrações e manutenção externa
  */
 async function parseExcelFileForMerge(file, currentEquipments = []) {
   return new Promise((resolve, reject) => {
@@ -54,18 +55,41 @@ async function parseExcelFileForMerge(file, currentEquipments = []) {
 
           if (bestMatch && !matchedEqIds.has(bestMatch.equipment.id)) {
             matchedEqIds.add(bestMatch.equipment.id);
+
+            // Detecção robusta se este item da planilha importada é Manutenção Externa
+            const isFileExterna = Boolean(
+              item.check_externa ||
+              String(item.status || '').toLowerCase().includes('extern') ||
+              String(item.statusCalibracao || '').toLowerCase().includes('extern') ||
+              String(item.observacao || '').toLowerCase().includes('extern') ||
+              String(item.servico || '').toLowerCase().includes('extern') ||
+              String(item.tipo || '').toLowerCase().includes('extern') ||
+              String(item.situacao || '').toLowerCase().includes('extern') ||
+              String(item.destino || '').toLowerCase().includes('extern') ||
+              String(item.status || '').toLowerCase().includes('terceir') ||
+              String(item.observacao || '').toLowerCase().includes('terceir')
+            );
+
+            const isAlreadyExterna = Boolean(bestMatch.equipment.check_externa);
+            const isAlreadyCalibrated = Boolean(
+              bestMatch.equipment.check_calibracao || 
+              bestMatch.equipment.check_preventiva || 
+              bestMatch.equipment.check_seguranca
+            );
+
             matches.push({
               targetEquipment: bestMatch.equipment,
               importedItem: item,
               matchReason: bestMatch.reason,
               confidence: bestMatch.confidence,
-              isAlreadyChecked: Boolean(
-                bestMatch.equipment.check_calibracao || 
-                bestMatch.equipment.check_preventiva || 
-                bestMatch.equipment.checado
-              ),
-              fileDate: item.dataCheck || item.data_calibracao || null,
-              fileUser: item.conferidoPor || item.usuario_calibracao || null,
+              isAlreadyChecked: Boolean(isAlreadyCalibrated || isAlreadyExterna || bestMatch.equipment.checado),
+              isAlreadyExterna,
+              isAlreadyCalibrated,
+              detectedServiceType: isFileExterna ? 'externa' : 'calibracao_completa',
+              serviceType: isFileExterna ? 'externa' : 'calibracao_completa',
+              fileDate: (isFileExterna ? item.data_externa : null) || item.dataCheck || item.data_calibracao || null,
+              fileUser: (isFileExterna ? item.usuario_externa : null) || item.conferidoPor || item.usuario_calibracao || null,
+              fileMotivo: item.motivo_externa || (isFileExterna ? 'Calibração e conserto por equipe externa terceirizada' : null),
               fileSector: item.setor_retirada || item.setor || null,
               selected: true // Marcado por padrão para mesclar
             });
@@ -134,8 +158,6 @@ async function parsePdfFileForMerge(file, currentEquipments = []) {
 
           // Busca por número de série isolado
           if (serial && serial.length >= 4) {
-            const cleanS = cleanAlphanumeric(serial);
-            // Regex com bordas de palavra para não dar falso positivo
             const regex = new RegExp(`(^|[^a-zA-Z0-9])${serial}([^a-zA-Z0-9]|$)`, 'i');
             if (regex.test(fullText)) {
               found = true;
@@ -163,6 +185,20 @@ async function parsePdfFileForMerge(file, currentEquipments = []) {
 
           if (found && !matchedEqIds.has(eq.id)) {
             matchedEqIds.add(eq.id);
+
+            // Verifica se o contexto deste PDF ou linhas próximas indicam Manutenção Externa
+            const fullLower = fullText.toLowerCase();
+            const isDocExterna = (fullLower.includes('manuten') || fullLower.includes('conserto') || fullLower.includes('calibra')) && 
+              (fullLower.includes('extern') || fullLower.includes('terceir'));
+            
+            const targetToken = (serial || tag || barcode || '').toLowerCase();
+            const nearbyLines = lines.filter(l => l.toLowerCase().includes(targetToken));
+            const nearbyText = nearbyLines.join(' ').toLowerCase();
+            const isItemExterna = isDocExterna || nearbyText.includes('extern') || nearbyText.includes('terceir');
+
+            const isAlreadyExterna = Boolean(eq.check_externa);
+            const isAlreadyCalibrated = Boolean(eq.check_calibracao || eq.check_preventiva || eq.check_seguranca);
+
             matches.push({
               targetEquipment: eq,
               importedItem: {
@@ -172,9 +208,14 @@ async function parsePdfFileForMerge(file, currentEquipments = []) {
               },
               matchReason: matchDetail,
               confidence: 95,
-              isAlreadyChecked: Boolean(eq.check_calibracao || eq.check_preventiva || eq.checado),
+              isAlreadyChecked: Boolean(isAlreadyCalibrated || isAlreadyExterna || eq.checado),
+              isAlreadyExterna,
+              isAlreadyCalibrated,
+              detectedServiceType: isItemExterna ? 'externa' : 'calibracao_completa',
+              serviceType: isItemExterna ? 'externa' : 'calibracao_completa',
               fileDate: null,
               fileUser: null,
+              fileMotivo: isItemExterna ? 'Calibração e conserto por equipe externa terceirizada' : null,
               fileSector: null,
               selected: true
             });
@@ -201,7 +242,7 @@ async function parsePdfFileForMerge(file, currentEquipments = []) {
 }
 
 /**
- * Mescla as calibrações no array de equipamentos ativo
+ * Mescla as calibrações e manutenções externas no array de equipamentos ativo
  */
 export function mergeCalibrationsIntoEquipments(
   currentEquipments = [], 
@@ -210,9 +251,11 @@ export function mergeCalibrationsIntoEquipments(
 ) {
   const {
     modalities = ['calibracao', 'preventiva', 'seguranca'],
+    targetMode = 'auto', // 'auto' | 'calibracao_completa' | 'externa'
     inspector = 'Importação / Mesclagem',
     customDate = null,
-    overwriteExisting = false
+    overwriteExisting = false,
+    motivoExterna = 'Calibração e conserto por equipe externa terceirizada'
   } = options;
 
   const matchMap = new Map();
@@ -239,46 +282,68 @@ export function mergeCalibrationsIntoEquipments(
     const dateToApply = match.fileDate || nowIso;
     const userToApply = match.fileUser || inspector;
 
-    modalities.forEach(m => {
-      if (m === 'calibracao') {
-        if (overwriteExisting || !copy.check_calibracao) {
-          copy.check_calibracao = true;
-          copy.data_calibracao = dateToApply;
-          copy.usuario_calibracao = userToApply;
-          copy.check_externa = false;
-          hasChanges = true;
-        }
-      } else if (m === 'preventiva') {
-        if (overwriteExisting || !copy.check_preventiva) {
-          copy.check_preventiva = true;
-          copy.data_preventiva = dateToApply;
-          copy.usuario_preventiva = userToApply;
-          hasChanges = true;
-        }
-      } else if (m === 'seguranca') {
-        if (overwriteExisting || !copy.check_seguranca) {
-          copy.check_seguranca = true;
-          copy.data_seguranca = dateToApply;
-          copy.usuario_seguranca = userToApply;
-          hasChanges = true;
-        }
-      } else if (m === 'externa') {
+    // Determina se este item será carimbado como Manutenção Externa
+    const isThisItemExterna = (targetMode === 'externa') || 
+      (targetMode === 'auto' && (match.serviceType === 'externa' || match.detectedServiceType === 'externa'));
+
+    if (isThisItemExterna) {
+      if (overwriteExisting || !copy.check_externa) {
         copy.check_externa = true;
         copy.data_externa = dateToApply;
         copy.usuario_externa = userToApply;
+        copy.motivo_externa = match.fileMotivo || motivoExterna;
+        // Ao registrar manutenção externa, limpa calibração interna conforme regra do sistema
         copy.check_calibracao = false;
+        copy.data_calibracao = null;
+        copy.usuario_calibracao = null;
+        copy.checado = true;
+        copy.dataCheck = dateToApply;
+        copy.conferidoPor = userToApply;
         hasChanges = true;
       }
-    });
+    } else {
+      // Aplica Calibração Completa / Serviços internos
+      modalities.forEach(m => {
+        if (m === 'calibracao') {
+          if (overwriteExisting || !copy.check_calibracao) {
+            copy.check_calibracao = true;
+            copy.data_calibracao = dateToApply;
+            copy.usuario_calibracao = userToApply;
+            copy.check_externa = false;
+            copy.data_externa = null;
+            copy.usuario_externa = null;
+            copy.motivo_externa = null;
+            hasChanges = true;
+          }
+        } else if (m === 'preventiva') {
+          if (overwriteExisting || !copy.check_preventiva) {
+            copy.check_preventiva = true;
+            copy.data_preventiva = dateToApply;
+            copy.usuario_preventiva = userToApply;
+            hasChanges = true;
+          }
+        } else if (m === 'seguranca') {
+          if (overwriteExisting || !copy.check_seguranca) {
+            copy.check_seguranca = true;
+            copy.data_seguranca = dateToApply;
+            copy.usuario_seguranca = userToApply;
+            hasChanges = true;
+          }
+        }
+      });
+      if (hasChanges) {
+        copy.check_externa = false;
+        copy.checado = Boolean(copy.check_calibracao || copy.check_preventiva || copy.check_seguranca);
+        copy.dataCheck = copy.data_calibracao || copy.data_preventiva || copy.data_seguranca || dateToApply;
+        copy.conferidoPor = copy.usuario_calibracao || userToApply;
+      }
+    }
 
     if (match.fileSector && !copy.setor_retirada) {
       copy.setor_retirada = match.fileSector;
     }
 
     if (hasChanges) {
-      copy.checado = Boolean(copy.check_calibracao || copy.check_preventiva || copy.check_seguranca || copy.check_externa);
-      copy.dataCheck = copy.data_calibracao || copy.data_preventiva || copy.data_seguranca || dateToApply;
-      copy.conferidoPor = copy.usuario_calibracao || userToApply;
       updatedCount++;
     }
 
@@ -290,4 +355,3 @@ export function mergeCalibrationsIntoEquipments(
     updatedCount
   };
 }
-

@@ -148,6 +148,12 @@ export function identifyColumns(headers, sampleRows = []) {
     dataSeguranca: null,
     usuarioSeguranca: null,
 
+    // Frente 4: Manutenção Externa / Terceirizada
+    checkExterna: null,
+    dataExterna: null,
+    usuarioExterna: null,
+    motivoExterna: null,
+
     usuarioGeral: null,
     dataGeral: null,
     observacao: null,
@@ -236,6 +242,35 @@ export function identifyColumns(headers, sampleRows = []) {
       (norm.includes('status') || norm.includes('check') || norm.includes('situacao') || norm.includes('ok') || norm === 'seguranca' || norm === 'tse' || norm === 'segeletrica' || norm === 'segurancaeletrica')
     )) {
       mapping.checkSeguranca = h;
+    }
+
+    // --- FRENTE 4: MANUTENÇÃO EXTERNA / TERCEIRIZADA ---
+    // Data da manutenção externa
+    else if (!mapping.dataExterna && (
+      (norm.includes('data') || norm.includes('dt')) && (norm.includes('extern') || norm.includes('terceir') || norm.includes('envio'))
+    )) {
+      mapping.dataExterna = h;
+    }
+    // Responsável / Empresa / Técnico da manutenção externa
+    else if (!mapping.usuarioExterna && (
+      (norm.includes('tecnico') || norm.includes('resp') || norm.includes('empresa') || norm.includes('laboratorio') || norm.includes('fornecedor') || norm.includes('usuario')) &&
+      (norm.includes('extern') || norm.includes('terceir'))
+    )) {
+      mapping.usuarioExterna = h;
+    }
+    // Motivo / Destino da manutenção externa
+    else if (!mapping.motivoExterna && (
+      (norm.includes('motivo') || norm.includes('destino') || norm.includes('justificativa') || norm.includes('defeito') || norm.includes('laudo')) &&
+      (norm.includes('extern') || norm.includes('terceir') || norm.includes('conserto') || norm.includes('envio'))
+    )) {
+      mapping.motivoExterna = h;
+    }
+    // Check / Status de manutenção externa (ex: "MANUT. EXTERNA", "EXTERNA", "TERCEIRIZADA", "CHECK EXTERNA", "STATUS EXTERNA")
+    else if (!mapping.checkExterna && (
+      (norm.includes('extern') || norm.includes('terceir')) &&
+      (norm.includes('status') || norm.includes('check') || norm.includes('situacao') || norm.includes('ok') || norm.includes('manut') || norm === 'externa' || norm === 'manutencaoexterna' || norm === 'manutexterna')
+    )) {
+      mapping.checkExterna = h;
     }
 
     // --- CAMPOS DE IDENTIFICAÇÃO BÁSICA ---
@@ -515,7 +550,7 @@ export function normalizeRows(rows, mapping) {
     // FRENTE 1: CALIBRAÇÃO
     const hasCalCol = Boolean(mapping.checkCalibracao);
     const rawCheckCal = hasCalCol ? row[mapping.checkCalibracao] : null;
-    const isCalChecked = hasCalCol ? parseCheckValue(rawCheckCal) : isChecadoGeral;
+    let isCalChecked = hasCalCol ? parseCheckValue(rawCheckCal) : isChecadoGeral;
     
     let dataCal = mapping.dataCalibracao ? parseDateValue(row[mapping.dataCalibracao]) : null;
     if (!dataCal && isCalChecked) {
@@ -537,13 +572,69 @@ export function normalizeRows(rows, mapping) {
     // FRENTE 3: SEGURANÇA ELÉTRICA
     const hasSegCol = Boolean(mapping.checkSeguranca);
     const rawCheckSeg = hasSegCol ? row[mapping.checkSeguranca] : null;
-    const isSegChecked = hasSegCol ? parseCheckValue(rawCheckSeg) : false;
+    let isSegChecked = hasSegCol ? parseCheckValue(rawCheckSeg) : false;
 
     let dataSeg = mapping.dataSeguranca ? parseDateValue(row[mapping.dataSeguranca]) : null;
     if (!dataSeg && isSegChecked) {
       dataSeg = parseDateValue(rawCheckSeg) || (mapping.dataGeral ? parseDateValue(row[mapping.dataGeral]) : null) || new Date().toISOString();
     }
     const userSeg = mapping.usuarioSeguranca ? String(row[mapping.usuarioSeguranca] ?? '').trim() : (mapping.usuarioGeral ? String(row[mapping.usuarioGeral] ?? '').trim() : null);
+
+    // FRENTE 4: MANUTENÇÃO EXTERNA / TERCEIRIZADA
+    const hasExtCol = Boolean(mapping.checkExterna);
+    const rawCheckExt = hasExtCol ? row[mapping.checkExterna] : null;
+    let isExtChecked = hasExtCol ? parseCheckValue(rawCheckExt) : false;
+
+    // Detecção inteligente em colunas de status, tipo ou observações
+    const textHasExternalTerm = (val) => {
+      if (!val) return false;
+      const s = String(val).toLowerCase().trim();
+      return (
+        s.includes('extern') || 
+        s.includes('terceir') || 
+        s.includes('conserto ext') || 
+        s.includes('fora do hosp') ||
+        s.includes('fora da unidade') ||
+        s.includes('recolhida externa') ||
+        s.includes('em manutencao externa') ||
+        s.includes('em manutenção externa')
+      );
+    };
+
+    if (!isExtChecked) {
+      if (
+        textHasExternalTerm(rawStatus) ||
+        textHasExternalTerm(rawChecadoGeral) ||
+        textHasExternalTerm(row['Status']) ||
+        textHasExternalTerm(row['Situação']) ||
+        textHasExternalTerm(row['Situacao']) ||
+        textHasExternalTerm(row['Tipo']) ||
+        textHasExternalTerm(row['Tipo Manutenção']) ||
+        textHasExternalTerm(row['Tipo Manutencao']) ||
+        textHasExternalTerm(row['Serviço']) ||
+        textHasExternalTerm(row['Servico']) ||
+        textHasExternalTerm(row['Destino'])
+      ) {
+        isExtChecked = true;
+      }
+    }
+
+    let dataExt = mapping.dataExterna ? parseDateValue(row[mapping.dataExterna]) : null;
+    if (!dataExt && isExtChecked) {
+      dataExt = parseDateValue(rawCheckExt) || (mapping.dataGeral ? parseDateValue(row[mapping.dataGeral]) : null) || new Date().toISOString();
+    }
+    const userExt = mapping.usuarioExterna 
+      ? String(row[mapping.usuarioExterna] ?? '').trim() 
+      : (mapping.usuarioGeral ? String(row[mapping.usuarioGeral] ?? '').trim() : 'Equipe Externa');
+
+    const motivoExt = mapping.motivoExterna && row[mapping.motivoExterna]
+      ? String(row[mapping.motivoExterna]).trim()
+      : 'Calibração e conserto por equipe externa terceirizada';
+
+    // Se estiver em Manutenção Externa e a calibração não veio explicitamente marcada como OK
+    if (isExtChecked && !hasCalCol) {
+      isCalChecked = false;
+    }
 
     // Observações, OS e Certificados
     let rawObs = mapping.observacao ? String(row[mapping.observacao] ?? '').trim() : '';
@@ -591,7 +682,7 @@ export function normalizeRows(rows, mapping) {
     const finalBarcode = rawBarcode || rawSerie || rawTag || `CAL-${String(idx + 1).padStart(4, '0')}`;
     const finalTag = rawTag || (row['Identificação'] ? String(row['Identificação']).trim() : `TAG-${String(idx + 1).padStart(3, '0')}`);
 
-    const isGlobalChecked = Boolean(isCalChecked || isPrevChecked || isSegChecked || isChecadoGeral);
+    const isGlobalChecked = Boolean(isCalChecked || isPrevChecked || isSegChecked || isExtChecked || isChecadoGeral);
 
     return {
       id: uniqueId,
@@ -608,10 +699,10 @@ export function normalizeRows(rows, mapping) {
       validadeCalibracao: rawValidade || 'N/A',
       statusCalibracao: calculatedStatus || 'Válido',
       checado: isGlobalChecked,
-      dataCheck: dataCal || dataPrev || dataSeg || (isGlobalChecked ? new Date().toISOString() : null),
+      dataCheck: dataCal || dataPrev || dataSeg || dataExt || (isGlobalChecked ? new Date().toISOString() : null),
       observacao: rawObs,
       
-      // Suporte multiequipes (Calibração, Preventiva, Segurança Elétrica)
+      // Suporte multiequipes (Calibração, Preventiva, Segurança Elétrica, Manutenção Externa)
       check_calibracao: Boolean(isCalChecked),
       data_calibracao: isCalChecked ? (dataCal || new Date().toISOString()) : null,
       usuario_calibracao: isCalChecked ? (userCal || 'Planilha Original') : null,
@@ -623,6 +714,11 @@ export function normalizeRows(rows, mapping) {
       check_seguranca: Boolean(isSegChecked),
       data_seguranca: isSegChecked ? (dataSeg || new Date().toISOString()) : null,
       usuario_seguranca: isSegChecked ? (userSeg || 'Planilha Original') : null,
+
+      check_externa: Boolean(isExtChecked),
+      data_externa: isExtChecked ? (dataExt || new Date().toISOString()) : null,
+      usuario_externa: isExtChecked ? (userExt || 'Equipe Externa') : null,
+      motivo_externa: isExtChecked ? motivoExt : null,
 
       _originalRow: row,
     };
