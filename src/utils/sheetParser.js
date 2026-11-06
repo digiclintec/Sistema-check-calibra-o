@@ -30,6 +30,9 @@ export function parseCheckValue(val) {
     str === 'a conferir' ||
     str === 'nao' ||
     str === 'não' ||
+    str === 'nao enviada' ||
+    str === 'não enviada' ||
+    str === 'terceirizada' ||
     str === 'false' ||
     str === '0' ||
     str === 'n' ||
@@ -54,8 +57,13 @@ export function parseCheckValue(val) {
     str === 'checked' ||
     str === 'checado' ||
     str === 'conferido' ||
+    str === 'conferido / ok' ||
+    str === 'conferido/ok' ||
     str === 'concluido' ||
     str === 'concluído' ||
+    str === '100% concluido' ||
+    str === '100% concluído' ||
+    str.startsWith('100% conclu') ||
     str === 'realizado' ||
     str === 'feito' ||
     str === 'executado' ||
@@ -98,6 +106,19 @@ export function isMaintenanceExternalText(rawVal) {
     .trim();
   if (!s) return false;
 
+  // Casos negativos explícitos (ex: "NÃO ENVIADA" de coluna de manutenção externa)
+  if (
+    s.includes('nao enviada') ||
+    s.includes('não enviada') ||
+    s === 'nao' ||
+    s === 'não' ||
+    s === 'false' ||
+    s === '0' ||
+    s === 'pendente'
+  ) {
+    return false;
+  }
+
   // Exclui preventiva explícita (ex: "Manutenção Preventiva", "MP", "Prev")
   if (s.includes('preventiv') || s === 'mp' || s === 'prev') return false;
 
@@ -116,7 +137,6 @@ export function isMaintenanceExternalText(rawVal) {
     s.includes('defeito') ||
     s.includes('quebrad') ||
     s.includes('avariad') ||
-    s.includes('aguardando') ||
     s.includes('fora de uso') ||
     s.includes('fora da unidade') ||
     s.includes('fora do hosp')
@@ -138,6 +158,7 @@ export function isPrevOnlyText(rawVal) {
     .replace(/[\u0300-\u036f]/g, '')
     .trim();
   if (!s) return false;
+  if (s.includes('pendent') || s.includes('nao') || s.includes('terceir')) return false;
   return (
     s === 'prev' ||
     s === 'mp' ||
@@ -163,6 +184,7 @@ export function isTseOnlyText(rawVal) {
     .replace(/[\u0300-\u036f]/g, '')
     .trim();
   if (!s) return false;
+  if (s.includes('pendent') || s.includes('nao') || s.includes('terceir')) return false;
   return (
     s === 'tse' ||
     s === 'somente tse' ||
@@ -187,6 +209,7 @@ export function isCalibradoText(rawVal) {
     .replace(/[\u0300-\u036f]/g, '')
     .trim();
   if (!s) return false;
+  if (s.includes('pendent') || s.includes('nao') || s.includes('terceir')) return false;
   return (
     s === 'calibrado' ||
     s === 'calibrada' ||
@@ -198,7 +221,12 @@ export function isCalibradoText(rawVal) {
     s.includes('calibrac') ||
     s === 'check' ||
     s === 'ok' ||
-    s === 'sim'
+    s === 'sim' ||
+    s === 'conferido / ok' ||
+    s === 'conferido/ok' ||
+    s === 'conferido' ||
+    s.includes('conferido') ||
+    s.includes('100%')
   );
 }
 
@@ -210,11 +238,20 @@ export function parseDateValue(val) {
   if (val instanceof Date && !isNaN(val.getTime())) {
     return val.toISOString();
   }
+
+  // Excel serial number (número de dias desde 30/12/1899)
+  if (typeof val === 'number' && !isNaN(val) && val > 1000 && val < 100000) {
+    const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+    const ms = Math.round(val * 86400000);
+    const d = new Date(excelEpoch.getTime() + ms);
+    if (!isNaN(d.getTime())) return d.toISOString();
+  }
+
   const str = String(val).trim();
   if (!str) return null;
 
-  // DD/MM/AAAA ou DD/MM/AAAA HH:mm:ss
-  const brMatch = str.match(/^(\d{1,2})[\/\.-](\d{1,2})[\/\.-](\d{2,4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+  // DD/MM/AAAA ou DD/MM/AAAA HH:mm:ss ou DD/MM/AAAA, HH:mm:ss (padrão toLocaleString pt-BR)
+  const brMatch = str.match(/^(\d{1,2})[\/\.-](\d{1,2})[\/\.-](\d{2,4})(?:[,\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
   if (brMatch) {
     const day = parseInt(brMatch[1], 10);
     const month = parseInt(brMatch[2], 10) - 1;
@@ -223,6 +260,19 @@ export function parseDateValue(val) {
     const hour = brMatch[4] ? parseInt(brMatch[4], 10) : 12;
     const min = brMatch[5] ? parseInt(brMatch[5], 10) : 0;
     const sec = brMatch[6] ? parseInt(brMatch[6], 10) : 0;
+    const d = new Date(year, month, day, hour, min, sec);
+    if (!isNaN(d.getTime())) return d.toISOString();
+  }
+
+  // ISO ou YYYY-MM-DD
+  const isoMatch = str.match(/^(\d{4})[\/\.-](\d{1,2})[\/\.-](\d{1,2})(?:[T\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+  if (isoMatch) {
+    const year = parseInt(isoMatch[1], 10);
+    const month = parseInt(isoMatch[2], 10) - 1;
+    const day = parseInt(isoMatch[3], 10);
+    const hour = isoMatch[4] ? parseInt(isoMatch[4], 10) : 12;
+    const min = isoMatch[5] ? parseInt(isoMatch[5], 10) : 0;
+    const sec = isoMatch[6] ? parseInt(isoMatch[6], 10) : 0;
     const d = new Date(year, month, day, hour, min, sec);
     if (!isNaN(d.getTime())) return d.toISOString();
   }
@@ -246,6 +296,8 @@ export function identifyColumns(headers, sampleRows = []) {
     serie: null,
     setor: null,
     setorRetirada: null,
+    dataRetirada: null,
+    usuarioRetirada: null,
     validadeCalibracao: null,
     statusCalibracao: null,
     checadoGeral: null,
@@ -279,6 +331,96 @@ export function identifyColumns(headers, sampleRows = []) {
   headers.forEach((h) => {
     const norm = normalizeHeader(h);
     if (!norm) return;
+
+    // --- RECONHECIMENTO AUTOMÁTICO DE PLANILHAS DO CALIBRACHECK ---
+    if (norm === 'calibracaostatus') {
+      mapping.checkCalibracao = h;
+      return;
+    }
+    if (norm === 'calibracaodatahora') {
+      mapping.dataCalibracao = h;
+      return;
+    }
+    if (norm === 'calibracaoresponsavel') {
+      mapping.usuarioCalibracao = h;
+      return;
+    }
+    if (norm === 'preventivastatus') {
+      mapping.checkPreventiva = h;
+      return;
+    }
+    if (norm === 'preventivadatahora') {
+      mapping.dataPreventiva = h;
+      return;
+    }
+    if (norm === 'preventivaresponsavel') {
+      mapping.usuarioPreventiva = h;
+      return;
+    }
+    if (norm === 'segeletricastatus' || norm === 'segurancaeletricastatus') {
+      mapping.checkSeguranca = h;
+      return;
+    }
+    if (norm === 'segeletricadatahora' || norm === 'segurancaeletricadatahora') {
+      mapping.dataSeguranca = h;
+      return;
+    }
+    if (norm === 'segeletricaresponsavel' || norm === 'segurancaeletricaresponsavel') {
+      mapping.usuarioSeguranca = h;
+      return;
+    }
+    if (norm === 'manutexternastatus' || norm === 'manutencaoexternastatus') {
+      mapping.checkExterna = h;
+      return;
+    }
+    if (norm === 'manutexternadataenvio' || norm === 'manutencaoexternadataenvio' || norm === 'manutexternadata') {
+      mapping.dataExterna = h;
+      return;
+    }
+    if (norm === 'manutexternaresponsavel' || norm === 'manutencaoexternaresponsavel') {
+      mapping.usuarioExterna = h;
+      return;
+    }
+    if (norm === 'setorcadastrado') {
+      mapping.setor = h;
+      return;
+    }
+    if (norm === 'setorretirada') {
+      mapping.setorRetirada = h;
+      return;
+    }
+    if (norm === 'datadaretirada' || norm === 'dataretirada') {
+      mapping.dataRetirada = h;
+      return;
+    }
+    if (norm === 'tecnicocoleta' || norm === 'usuarioretirada') {
+      mapping.usuarioRetirada = h;
+      return;
+    }
+    if (norm === 'statusgeral') {
+      mapping.checadoGeral = h;
+      return;
+    }
+    if (norm === 'statusvalidade') {
+      mapping.statusCalibracao = h;
+      return;
+    }
+    if (norm === 'tagidec' || norm === 'idectag') {
+      mapping.tag = h;
+      return;
+    }
+    if (norm === 'ndeserie' || norm === 'numerodeserie') {
+      mapping.serie = h;
+      return;
+    }
+    if (norm === 'codigodebarras' || norm === 'codigobarras') {
+      mapping.codigoBarras = h;
+      return;
+    }
+    if (norm === 'observacoes' || norm === 'observacao') {
+      mapping.observacao = h;
+      return;
+    }
 
     // --- FRENTE 1: CALIBRAÇÃO (Detecção Prioritária) ---
     // Status de validade do certificado (ex: "Status Calibração", "Situação Calibração")
@@ -471,7 +613,7 @@ export function identifyColumns(headers, sampleRows = []) {
       norm.includes('retirad') ||
       norm.includes('colet') ||
       norm.includes('origem') ||
-      (norm.includes('setor') && mapping.setor && mapping.setor !== h)
+      (norm.includes('setor') && mapping.setor && mapping.setor !== h && !norm.includes('efetiv') && !norm.includes('cadastrad'))
     )) {
       mapping.setorRetirada = h;
     }
@@ -676,7 +818,15 @@ export function normalizeRows(rows, mapping) {
     // FRENTE 1: CALIBRAÇÃO
     const hasCalCol = Boolean(mapping.checkCalibracao);
     const rawCheckCal = hasCalCol ? row[mapping.checkCalibracao] : null;
-    let isCalChecked = hasCalCol ? parseCheckValue(rawCheckCal) : isChecadoGeral;
+    let isCalChecked = false;
+    if (hasCalCol) {
+      const sCal = String(rawCheckCal ?? '').trim().toUpperCase();
+      if (sCal.includes('CONFERIDO') || sCal.includes('OK') || sCal === 'SIM' || sCal === 'TRUE' || sCal === '1' || parseCheckValue(rawCheckCal)) {
+        isCalChecked = true;
+      }
+    } else {
+      isCalChecked = isChecadoGeral;
+    }
     
     let dataCal = mapping.dataCalibracao ? parseDateValue(row[mapping.dataCalibracao]) : null;
     if (!dataCal && isCalChecked) {
@@ -687,7 +837,13 @@ export function normalizeRows(rows, mapping) {
     // FRENTE 2: PREVENTIVA
     const hasPrevCol = Boolean(mapping.checkPreventiva);
     const rawCheckPrev = hasPrevCol ? row[mapping.checkPreventiva] : null;
-    let isPrevChecked = hasPrevCol ? parseCheckValue(rawCheckPrev) : false;
+    let isPrevChecked = false;
+    if (hasPrevCol) {
+      const sPrev = String(rawCheckPrev ?? '').trim().toUpperCase();
+      if (sPrev.includes('CONFERIDO') || sPrev.includes('OK') || sPrev === 'SIM' || sPrev === 'TRUE' || sPrev === '1' || parseCheckValue(rawCheckPrev)) {
+        isPrevChecked = true;
+      }
+    }
 
     let dataPrev = mapping.dataPreventiva ? parseDateValue(row[mapping.dataPreventiva]) : null;
     if (!dataPrev && isPrevChecked) {
@@ -698,7 +854,13 @@ export function normalizeRows(rows, mapping) {
     // FRENTE 3: SEGURANÇA ELÉTRICA
     const hasSegCol = Boolean(mapping.checkSeguranca);
     const rawCheckSeg = hasSegCol ? row[mapping.checkSeguranca] : null;
-    let isSegChecked = hasSegCol ? parseCheckValue(rawCheckSeg) : false;
+    let isSegChecked = false;
+    if (hasSegCol) {
+      const sSeg = String(rawCheckSeg ?? '').trim().toUpperCase();
+      if (sSeg.includes('CONFERIDO') || sSeg.includes('OK') || sSeg === 'SIM' || sSeg === 'TRUE' || sSeg === '1' || parseCheckValue(rawCheckSeg)) {
+        isSegChecked = true;
+      }
+    }
 
     let dataSeg = mapping.dataSeguranca ? parseDateValue(row[mapping.dataSeguranca]) : null;
     if (!dataSeg && isSegChecked) {
@@ -709,42 +871,32 @@ export function normalizeRows(rows, mapping) {
     // FRENTE 4: MANUTENÇÃO EXTERNA / TERCEIRIZADA
     const hasExtCol = Boolean(mapping.checkExterna);
     const rawCheckExt = hasExtCol ? row[mapping.checkExterna] : null;
-    let isExtChecked = hasExtCol ? (parseCheckValue(rawCheckExt) || isMaintenanceExternalText(rawCheckExt)) : false;
+    let isExtChecked = false;
 
-    // Detecção inteligente em colunas de status, tipo ou observações
-    if (!isExtChecked) {
-      if (
+    if (hasExtCol) {
+      const sExt = String(rawCheckExt ?? '').trim().toUpperCase();
+      if (sExt.includes('NAO') || sExt.includes('NÃO') || sExt.includes('PENDENTE')) {
+        isExtChecked = false;
+      } else if (sExt.includes('ENVIADA') || sExt.includes('TERCEIR') || sExt === 'SIM' || sExt === 'TRUE' || sExt === '1' || parseCheckValue(rawCheckExt)) {
+        isExtChecked = true;
+      } else {
+        isExtChecked = false;
+      }
+    } else {
+      // Checa se o status da calibração foi preenchido como terceirizada
+      const sCal = String(rawCheckCal ?? '').trim().toUpperCase();
+      if (sCal.includes('TERCEIR')) {
+        isExtChecked = true;
+      } else if (
         isMaintenanceExternalText(rawStatus) ||
         isMaintenanceExternalText(rawChecadoGeral) ||
         isMaintenanceExternalText(row['Status']) ||
         isMaintenanceExternalText(row['Situação']) ||
         isMaintenanceExternalText(row['Situacao']) ||
         isMaintenanceExternalText(row['Tipo']) ||
-        isMaintenanceExternalText(row['Tipo Manutenção']) ||
-        isMaintenanceExternalText(row['Tipo Manutencao']) ||
-        isMaintenanceExternalText(row['Serviço']) ||
-        isMaintenanceExternalText(row['Servico']) ||
-        isMaintenanceExternalText(row['Destino']) ||
-        isMaintenanceExternalText(row['Obs']) ||
-        isMaintenanceExternalText(row['Observação']) ||
-        isMaintenanceExternalText(row['Observacao']) ||
-        isMaintenanceExternalText(row['MANUTENÇÃO']) ||
-        isMaintenanceExternalText(row['Manutenção']) ||
-        isMaintenanceExternalText(row['Manutencao']) ||
-        isMaintenanceExternalText(row['EM MANUTENÇÃO']) ||
-        isMaintenanceExternalText(row['Em Manutenção'])
+        isMaintenanceExternalText(row['Destino'])
       ) {
         isExtChecked = true;
-      }
-
-      // Varredura de fallback em todos os valores da linha
-      if (!isExtChecked) {
-        for (const [k, v] of Object.entries(row)) {
-          if (isMaintenanceExternalText(v)) {
-            isExtChecked = true;
-            break;
-          }
-        }
       }
     }
 
@@ -783,6 +935,22 @@ export function normalizeRows(rows, mapping) {
       // Gatilho 'calibrado': Calibração metrológica padrão
       isCalChecked = true;
       if (!dataCal) dataCal = parseDateValue(triggerSource) || new Date().toISOString();
+    }
+
+    // Se o STATUS GERAL do CalibraCheck indica 100% ou Manutenção Externa e não havia colunas individuais:
+    if (!hasCalCol && !hasPrevCol && !hasSegCol && rawChecadoGeral) {
+      const sGeral = String(rawChecadoGeral).trim().toUpperCase();
+      if (sGeral.includes('100%') || sGeral.includes('3 FRENTES')) {
+        isCalChecked = true;
+        isPrevChecked = true;
+        isSegChecked = true;
+      } else if (sGeral.includes('MANUTENÇÃO EXTERNA') || sGeral.includes('MANUTENCAO EXTERNA') || sGeral.includes('TERCEIRIZADA')) {
+        isExtChecked = true;
+      } else if (sGeral.includes('PARCIAL')) {
+        if (sGeral.includes('CALIBRAÇÃO') || sGeral.includes('CALIBRACAO')) isCalChecked = true;
+        if (sGeral.includes('PREVENTIVA')) isPrevChecked = true;
+        if (sGeral.includes('SEGURANÇA') || sGeral.includes('SEGURANCA')) isSegChecked = true;
+      }
     }
 
     // Se estiver em Manutenção, não pode constar como calibração, preventiva ou segurança interna
@@ -841,6 +1009,9 @@ export function normalizeRows(rows, mapping) {
 
     const isGlobalChecked = Boolean(isCalChecked || isPrevChecked || isSegChecked || isExtChecked || isChecadoGeral);
 
+    const dataRet = mapping.dataRetirada ? parseDateValue(row[mapping.dataRetirada]) : (row.data_retirada ? parseDateValue(row.data_retirada) : null);
+    const userRet = mapping.usuarioRetirada ? String(row[mapping.usuarioRetirada] ?? '').trim() : (row.usuario_retirada || null);
+
     return {
       id: uniqueId,
       codigoBarras: finalBarcode,
@@ -851,8 +1022,8 @@ export function normalizeRows(rows, mapping) {
       serie: rawSerie,
       setor: rawSetor,
       setor_retirada: rawSetorRetirada,
-      data_retirada: row.data_retirada || (rawSetorRetirada ? new Date().toISOString() : null),
-      usuario_retirada: row.usuario_retirada || null,
+      data_retirada: dataRet || (rawSetorRetirada ? new Date().toISOString() : null),
+      usuario_retirada: userRet,
       validadeCalibracao: rawValidade || 'N/A',
       statusCalibracao: calculatedStatus || 'Válido',
       checado: isGlobalChecked,

@@ -41,73 +41,71 @@ export function isPendingText(val) {
 }
 
 /**
- * Classifica com precisão se a linha do arquivo é Manutenção Externa, Calibração, Preventiva (Prev), TSE ou Pendente
+ * Classifica com precisão se a linha do arquivo é Manutenção Externa, Calibração, Preventiva (Prev), TSE, Parcial ou Pendente
  */
 export function classifyImportedServiceType(item, fileHasCheckOrStatusCol = false) {
   if (!item) return 'pendente';
 
-  // 1. Prioridade máxima: Manutenção / Manutenção Externa
+  // 1. Manutenção Externa (Prioridade máxima caso esteja marcada como externa)
   if (checkIfItemIsMaintenance(item)) {
     return 'externa';
   }
 
-  const row = item._originalRow || item;
+  // 2. Frentes já extraídas pelo parser de planilhas
+  const hasCal = Boolean(item.check_calibracao);
+  const hasPrev = Boolean(item.check_preventiva);
+  const hasSeg = Boolean(item.check_seguranca);
 
-  // 2. Procura termos e gatilhos explícitos nas colunas da linha
-  let hasExplicitPending = false;
-  let hasExplicitPrev = false;
-  let hasExplicitTse = false;
-  let hasExplicitCal = false;
-  let hasGenericCheck = false;
-
-  for (const [k, v] of Object.entries(row)) {
-    if (k.startsWith('_')) continue;
-    if (isPendingText(v)) hasExplicitPending = true;
-    if (isPrevOnlyText(v)) hasExplicitPrev = true;
-    if (isTseOnlyText(v)) hasExplicitTse = true;
-    if (isCalibradoText(v)) hasExplicitCal = true;
-    if (parseCheckValue(v)) hasGenericCheck = true;
+  // 100% Concluído nas 3 frentes
+  if (hasCal && hasPrev && hasSeg) {
+    return 'completa';
   }
 
-  // Se o item já tem marcação direta de calibração ou modalidade no objeto
-  if (item.check_calibracao || (item.checado && !item.check_externa)) {
-    hasExplicitCal = true;
-  }
-  if (item.check_preventiva) hasExplicitPrev = true;
-  if (item.check_seguranca) hasExplicitTse = true;
-
-  // Gatilho: Somente Preventiva (Prev)
-  if (hasExplicitPrev && !hasExplicitCal && !hasExplicitTse) {
-    return 'preventiva';
-  }
-
-  // Gatilho: Somente Teste de Segurança (TSE)
-  if (hasExplicitTse && !hasExplicitCal && !hasExplicitPrev) {
-    return 'seguranca';
-  }
-
-  // Gatilho: Calibrado
-  if (hasExplicitCal && !hasExplicitPending) {
+  // Apenas calibração
+  if (hasCal && !hasPrev && !hasSeg) {
     return 'calibrado';
   }
 
-  // Se tiver indicação afirmativa genérica de calibração/check e não for pendente
+  // Apenas preventiva
+  if (hasPrev && !hasCal && !hasSeg) {
+    return 'preventiva';
+  }
+
+  // Apenas segurança elétrica
+  if (hasSeg && !hasCal && !hasPrev) {
+    return 'seguranca';
+  }
+
+  // Combinação parcial (ex: Calibração + Preventiva)
+  if (hasCal || hasPrev || hasSeg) {
+    return 'parcial';
+  }
+
+  // Movimentado de setor (recolhido em setor diferente) mesmo sem serviços ainda
+  if (item.setor_retirada && item.setor && item.setor_retirada.trim().toLowerCase() !== item.setor.trim().toLowerCase()) {
+    return 'movimentado';
+  }
+
+  // 3. Fallback para colunas brutas de planilhas genéricas que não possuíam colunas estruturadas
+  const row = item._originalRow || item;
+  let hasGenericCheck = false;
+  let hasExplicitPending = false;
+
+  for (const [k, v] of Object.entries(row)) {
+    if (k.startsWith('_')) continue;
+    const cleanK = String(k).toLowerCase();
+    // Só analisa células de colunas que tenham semântica de conferência/status
+    if (cleanK.includes('status') || cleanK.includes('check') || cleanK.includes('confer') || cleanK.includes('situacao') || cleanK.includes('estado')) {
+      if (isPendingText(v)) hasExplicitPending = true;
+      if (parseCheckValue(v) || isCalibradoText(v)) hasGenericCheck = true;
+    }
+  }
+
   if (hasGenericCheck && !hasExplicitPending) {
-    return 'calibracao_completa';
+    return 'calibrado';
   }
 
-  // Se estiver marcado explicitamente como pendente
-  if (hasExplicitPending) {
-    return 'pendente';
-  }
-
-  // Se o arquivo possui coluna de checagem/status e esta linha não teve check positivo
-  if (fileHasCheckOrStatusCol) {
-    return 'pendente';
-  }
-
-  // Fallback: se o arquivo não tem nenhuma coluna de conferência
-  return 'calibrado';
+  return 'pendente';
 }
 
 /**
@@ -115,27 +113,27 @@ export function classifyImportedServiceType(item, fileHasCheckOrStatusCol = fals
  */
 export function checkIfItemIsMaintenance(item) {
   if (!item) return false;
-  if (item.check_externa) return true;
+  // Se já foi classificado pelo parser
+  if (item.check_externa === true) return true;
+  if (item.check_externa === false && (item.check_calibracao || item.check_preventiva || item.check_seguranca)) {
+    return false;
+  }
 
-  // 1. Campos diretos mapeados no item
-  const fieldsToCheck = [
+  // 1. Campos diretos de serviço/status
+  const statusFields = [
     item.status,
-    item.statusCalibracao,
     item.situacao,
     item.tipo,
     item.servico,
-    item.observacao,
     item.destino,
-    item.motivo_externa,
-    item.setor,
-    item.setor_retirada
+    item.motivo_externa
   ];
 
-  for (const val of fieldsToCheck) {
+  for (const val of statusFields) {
     if (isMaintenanceExternalText(val)) return true;
   }
 
-  // 2. Colunas e valores da linha original do arquivo
+  // 2. Coluna específica de manutenção na linha original (evita falso positivo em colunas de setor ou observação)
   if (item._originalRow && typeof item._originalRow === 'object') {
     for (const [key, val] of Object.entries(item._originalRow)) {
       const cleanKey = String(key)
@@ -144,27 +142,22 @@ export function checkIfItemIsMaintenance(item) {
         .replace(/[\u0300-\u036f]/g, '')
         .trim();
 
-      // Se a coluna é sobre manutenção (ex: "MANUTENÇÃO", "EM MANUTENÇÃO", "MANUT", "CONSERTO", etc.)
-      if (
-        !cleanKey.includes('preventiv') &&
-        (
-          cleanKey.includes('manut') || 
-          cleanKey.includes('conserto') || 
-          cleanKey.includes('reparo') || 
-          cleanKey.includes('extern') || 
-          cleanKey.includes('terceir') ||
-          cleanKey.includes('assistenc')
-        )
-      ) {
-        const sVal = String(val ?? '').trim().toLowerCase();
-        if (sVal && sVal !== 'nao' && sVal !== 'não' && sVal !== 'false' && sVal !== '0') {
-          return true;
-        }
+      // Ignora setor e observação livre para não confundir nomes de locais
+      if (cleanKey.includes('setor') || cleanKey.includes('local') || cleanKey.includes('preventiv') || cleanKey.includes('obs')) {
+        continue;
       }
 
-      // Se o valor de QUALQUER célula desta linha contém "manutenção", "em manutenção", etc.
-      if (isMaintenanceExternalText(val)) {
-        return true;
+      if (
+        cleanKey.includes('extern') || 
+        cleanKey.includes('terceir') ||
+        cleanKey.includes('conserto') || 
+        cleanKey.includes('reparo') || 
+        cleanKey.includes('assistenc') ||
+        (cleanKey.includes('manut') && (cleanKey.includes('status') || cleanKey.includes('check') || cleanKey.includes('situacao') || cleanKey.includes('tipo')))
+      ) {
+        if (isMaintenanceExternalText(val) || parseCheckValue(val)) {
+          return true;
+        }
       }
     }
   }
@@ -263,12 +256,35 @@ async function parseExcelFileForMerge(file, currentEquipments = []) {
               isAlreadyCalibrated,
               detectedServiceType: classifiedService,
               serviceType: classifiedService,
-              fileDate: (isFileExterna ? item.data_externa : null) || item.dataCheck || item.data_calibracao || null,
-              fileUser: (isFileExterna ? item.usuario_externa : null) || item.conferidoPor || item.usuario_calibracao || null,
+
+              // Detalhamento individual das frentes do arquivo importado
+              fileCalibracao: Boolean(item.check_calibracao),
+              fileDataCalibracao: item.data_calibracao || null,
+              fileUsuarioCalibracao: item.usuario_calibracao || null,
+
+              filePreventiva: Boolean(item.check_preventiva),
+              fileDataPreventiva: item.data_preventiva || null,
+              fileUsuarioPreventiva: item.usuario_preventiva || null,
+
+              fileSeguranca: Boolean(item.check_seguranca),
+              fileDataSeguranca: item.data_seguranca || null,
+              fileUsuarioSeguranca: item.usuario_seguranca || null,
+
+              fileExterna: Boolean(isFileExterna || item.check_externa),
+              fileDataExterna: item.data_externa || null,
+              fileUsuarioExterna: item.usuario_externa || null,
+              fileMotivoExterna: item.motivo_externa || (isFileExterna ? 'Calibração e conserto por equipe externa terceirizada' : null),
+
+              fileSetorRetirada: item.setor_retirada || null,
+              fileDataRetirada: item.data_retirada || null,
+              fileUsuarioRetirada: item.usuario_retirada || null,
+
+              fileDate: (isFileExterna ? item.data_externa : null) || item.data_calibracao || item.data_preventiva || item.data_seguranca || item.dataCheck || null,
+              fileUser: (isFileExterna ? item.usuario_externa : null) || item.usuario_calibracao || item.usuario_preventiva || item.usuario_seguranca || item.conferidoPor || null,
               fileMotivo: item.motivo_externa || (isFileExterna ? 'Calibração e conserto por equipe externa terceirizada' : null),
               fileSector: item.setor_retirada || item.setor || null,
-              // CRUCIAL: Bombas pendentes na planilha NUNCA vêm selecionadas por padrão!
-              // Apenas bombas efetivamente calibradas ou em manutenção vêm marcadas.
+
+              // Bombas pendentes no arquivo vêm desmarcadas; bombas com QUALQUER serviço ou movimentação vêm selecionadas por padrão!
               selected: !isPendente
             });
           } else if (!bestMatch) {
@@ -385,8 +401,21 @@ async function parsePdfFileForMerge(file, currentEquipments = []) {
               isAlreadyChecked: Boolean(isAlreadyCalibrated || isAlreadyExterna || eq.checado),
               isAlreadyExterna,
               isAlreadyCalibrated,
-              detectedServiceType: isItemExterna ? 'externa' : 'calibracao_completa',
-              serviceType: isItemExterna ? 'externa' : 'calibracao_completa',
+              detectedServiceType: isItemExterna ? 'externa' : 'completa',
+              serviceType: isItemExterna ? 'externa' : 'completa',
+              fileCalibracao: !isItemExterna,
+              filePreventiva: !isItemExterna,
+              fileSeguranca: !isItemExterna,
+              fileExterna: isItemExterna,
+              fileDataCalibracao: null,
+              fileUsuarioCalibracao: null,
+              fileDataPreventiva: null,
+              fileUsuarioPreventiva: null,
+              fileDataSeguranca: null,
+              fileUsuarioSeguranca: null,
+              fileDataExterna: null,
+              fileUsuarioExterna: null,
+              fileSetorRetirada: null,
               fileDate: null,
               fileUser: null,
               fileMotivo: isItemExterna ? 'Calibração e conserto por equipe externa terceirizada' : null,
@@ -462,63 +491,38 @@ export function mergeCalibrationsIntoEquipments(
     }
 
     const copy = { ...eq };
+    const item = match.importedItem || {};
     let hasChanges = false;
 
     const dateToApply = match.fileDate || nowIso;
     const userToApply = match.fileUser || inspector;
 
     // Determina se este item será carimbado como Manutenção Externa
-    const isThisItemExterna = (effectiveType === 'externa');
+    const isThisItemExterna = (targetMode === 'externa') || (targetMode === 'auto' && Boolean(match.fileExterna || item.check_externa || effectiveType === 'externa'));
 
     if (isThisItemExterna) {
       if (overwriteExisting || !copy.check_externa) {
         copy.check_externa = true;
-        copy.data_externa = dateToApply;
-        copy.usuario_externa = userToApply;
-        copy.motivo_externa = match.fileMotivo || motivoExterna;
+        copy.data_externa = match.fileDataExterna || item.data_externa || dateToApply;
+        copy.usuario_externa = match.fileUsuarioExterna || item.usuario_externa || userToApply;
+        copy.motivo_externa = match.fileMotivoExterna || item.motivo_externa || match.fileMotivo || motivoExterna;
         // Ao registrar manutenção externa, limpa calibração interna conforme regra do sistema
         copy.check_calibracao = false;
         copy.data_calibracao = null;
         copy.usuario_calibracao = null;
         copy.check_preventiva = false;
+        copy.data_preventiva = null;
+        copy.usuario_preventiva = null;
         copy.check_seguranca = false;
+        copy.data_seguranca = null;
+        copy.usuario_seguranca = null;
         copy.checado = true;
-        copy.dataCheck = dateToApply;
-        copy.conferidoPor = userToApply;
+        copy.dataCheck = copy.data_externa;
+        copy.conferidoPor = copy.usuario_externa;
         hasChanges = true;
       }
-    } else if (effectiveType === 'preventiva') {
-      // GATILHO 'Prev': Marca exclusivamente Preventiva
-      if (overwriteExisting || !copy.check_preventiva) {
-        copy.check_preventiva = true;
-        copy.data_preventiva = dateToApply;
-        copy.usuario_preventiva = userToApply;
-        copy.check_externa = false;
-        copy.data_externa = null;
-        copy.usuario_externa = null;
-        copy.motivo_externa = null;
-        copy.checado = true;
-        copy.dataCheck = dateToApply;
-        copy.conferidoPor = userToApply;
-        hasChanges = true;
-      }
-    } else if (effectiveType === 'seguranca') {
-      // GATILHO 'tse': Marca exclusivamente Teste de Segurança Elétrica
-      if (overwriteExisting || !copy.check_seguranca) {
-        copy.check_seguranca = true;
-        copy.data_seguranca = dateToApply;
-        copy.usuario_seguranca = userToApply;
-        copy.check_externa = false;
-        copy.data_externa = null;
-        copy.usuario_externa = null;
-        copy.motivo_externa = null;
-        copy.checado = true;
-        copy.dataCheck = dateToApply;
-        copy.conferidoPor = userToApply;
-        hasChanges = true;
-      }
-    } else {
-      // GATILHO 'calibrado' ou 'calibracao_completa'
+    } else if (targetMode === 'calibracao_completa') {
+      // Modo manual: força todas as modalidades selecionadas no modal
       modalities.forEach(m => {
         if (m === 'calibracao') {
           if (overwriteExisting || !copy.check_calibracao) {
@@ -536,6 +540,7 @@ export function mergeCalibrationsIntoEquipments(
             copy.check_preventiva = true;
             copy.data_preventiva = dateToApply;
             copy.usuario_preventiva = userToApply;
+            copy.check_externa = false;
             hasChanges = true;
           }
         } else if (m === 'seguranca') {
@@ -543,6 +548,7 @@ export function mergeCalibrationsIntoEquipments(
             copy.check_seguranca = true;
             copy.data_seguranca = dateToApply;
             copy.usuario_seguranca = userToApply;
+            copy.check_externa = false;
             hasChanges = true;
           }
         }
@@ -553,10 +559,102 @@ export function mergeCalibrationsIntoEquipments(
         copy.dataCheck = copy.data_calibracao || copy.data_preventiva || copy.data_seguranca || dateToApply;
         copy.conferidoPor = copy.usuario_calibracao || userToApply;
       }
+    } else {
+      // MODO AUTO: Detecção e aplicação inteligente por linha da planilha (com suporte total multiequipes)
+      const fileHasCal = Boolean(match.fileCalibracao || item.check_calibracao || effectiveType === 'calibrado' || effectiveType === 'completa');
+      const fileHasPrev = Boolean(match.filePreventiva || item.check_preventiva || effectiveType === 'preventiva' || effectiveType === 'completa');
+      const fileHasSeg = Boolean(match.fileSeguranca || item.check_seguranca || effectiveType === 'seguranca' || effectiveType === 'completa');
+
+      if (fileHasCal) {
+        if (overwriteExisting || !copy.check_calibracao) {
+          copy.check_calibracao = true;
+          copy.data_calibracao = match.fileDataCalibracao || item.data_calibracao || dateToApply;
+          copy.usuario_calibracao = match.fileUsuarioCalibracao || item.usuario_calibracao || userToApply;
+          copy.check_externa = false;
+          copy.data_externa = null;
+          copy.usuario_externa = null;
+          copy.motivo_externa = null;
+          hasChanges = true;
+        }
+      }
+
+      if (fileHasPrev) {
+        if (overwriteExisting || !copy.check_preventiva) {
+          copy.check_preventiva = true;
+          copy.data_preventiva = match.fileDataPreventiva || item.data_preventiva || dateToApply;
+          copy.usuario_preventiva = match.fileUsuarioPreventiva || item.usuario_preventiva || userToApply;
+          copy.check_externa = false;
+          hasChanges = true;
+        }
+      }
+
+      if (fileHasSeg) {
+        if (overwriteExisting || !copy.check_seguranca) {
+          copy.check_seguranca = true;
+          copy.data_seguranca = match.fileDataSeguranca || item.data_seguranca || dateToApply;
+          copy.usuario_seguranca = match.fileUsuarioSeguranca || item.usuario_seguranca || userToApply;
+          copy.check_externa = false;
+          hasChanges = true;
+        }
+      }
+
+      // Se a planilha tinha um check genérico antigo ou veio de PDF/arquivo simples
+      if (!fileHasCal && !fileHasPrev && !fileHasSeg && effectiveType === 'calibracao_completa') {
+        modalities.forEach(m => {
+          if (m === 'calibracao' && (overwriteExisting || !copy.check_calibracao)) {
+            copy.check_calibracao = true;
+            copy.data_calibracao = dateToApply;
+            copy.usuario_calibracao = userToApply;
+            hasChanges = true;
+          }
+          if (m === 'preventiva' && (overwriteExisting || !copy.check_preventiva)) {
+            copy.check_preventiva = true;
+            copy.data_preventiva = dateToApply;
+            copy.usuario_preventiva = userToApply;
+            hasChanges = true;
+          }
+          if (m === 'seguranca' && (overwriteExisting || !copy.check_seguranca)) {
+            copy.check_seguranca = true;
+            copy.data_seguranca = dateToApply;
+            copy.usuario_seguranca = userToApply;
+            hasChanges = true;
+          }
+        });
+      }
+
+      if (hasChanges) {
+        copy.check_externa = false;
+        copy.checado = Boolean(copy.check_calibracao || copy.check_preventiva || copy.check_seguranca);
+        copy.dataCheck = copy.data_calibracao || copy.data_preventiva || copy.data_seguranca || dateToApply;
+        copy.conferidoPor = copy.usuario_calibracao || copy.usuario_preventiva || copy.usuario_seguranca || userToApply;
+      }
     }
 
-    if (match.fileSector && !copy.setor_retirada) {
-      copy.setor_retirada = match.fileSector;
+    // Setor de Retirada / Movimentação física da bomba
+    const newSector = match.fileSetorRetirada || item.setor_retirada || match.fileSector;
+    if (newSector && newSector.trim()) {
+      if (overwriteExisting || !copy.setor_retirada || copy.setor_retirada !== newSector) {
+        copy.setor_retirada = newSector;
+        if (match.fileDataRetirada || item.data_retirada) {
+          copy.data_retirada = match.fileDataRetirada || item.data_retirada;
+        }
+        if (match.fileUsuarioRetirada || item.usuario_retirada) {
+          copy.usuario_retirada = match.fileUsuarioRetirada || item.usuario_retirada;
+        }
+        hasChanges = true;
+      }
+    }
+
+    // Observações adicionais
+    const obsToAdd = (item.observacao && String(item.observacao).trim() !== 'N/A') ? String(item.observacao).trim() : '';
+    if (obsToAdd) {
+      if (!copy.observacao) {
+        copy.observacao = obsToAdd;
+        hasChanges = true;
+      } else if (!copy.observacao.includes(obsToAdd)) {
+        copy.observacao = `${copy.observacao} | ${obsToAdd}`;
+        hasChanges = true;
+      }
     }
 
     if (hasChanges) {

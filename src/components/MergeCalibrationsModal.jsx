@@ -167,7 +167,15 @@ export default function MergeCalibrationsModal({
   const getItemEffectiveService = (m) => {
     if (targetMode === 'externa') return 'externa';
     if (targetMode === 'calibracao_completa') return 'calibracao_completa';
-    return m.serviceType || m.detectedServiceType || 'pendente';
+    if (m.serviceType) return m.serviceType;
+    if (m.fileExterna) return 'externa';
+    if (m.fileCalibracao && m.filePreventiva && m.fileSeguranca) return 'completa';
+    if (m.fileCalibracao && !m.filePreventiva && !m.fileSeguranca) return 'calibrado';
+    if (m.filePreventiva && !m.fileCalibracao && !m.fileSeguranca) return 'preventiva';
+    if (m.fileSeguranca && !m.fileCalibracao && !m.filePreventiva) return 'seguranca';
+    if (m.fileCalibracao || m.filePreventiva || m.fileSeguranca) return 'parcial';
+    if (m.fileSetorRetirada) return 'movimentado';
+    return m.detectedServiceType || 'pendente';
   };
 
   // Filtra itens para visualização na tabela
@@ -178,10 +186,11 @@ export default function MergeCalibrationsModal({
 
       if (filterMode === 'pending_file' && effectiveService !== 'pendente') return false;
       if (filterMode === 'already_checked' && !m.isAlreadyChecked) return false;
-      if (filterMode === 'externa_only' && effectiveService !== 'externa') return false;
-      if (filterMode === 'preventiva_only' && effectiveService !== 'preventiva') return false;
-      if (filterMode === 'seguranca_only' && effectiveService !== 'seguranca') return false;
-      if (filterMode === 'calibracao_only' && (effectiveService !== 'calibracao_completa' && effectiveService !== 'calibrado')) return false;
+      if (filterMode === 'externa_only' && !m.fileExterna && effectiveService !== 'externa') return false;
+      if (filterMode === 'preventiva_only' && !m.filePreventiva && effectiveService !== 'preventiva') return false;
+      if (filterMode === 'seguranca_only' && !m.fileSeguranca && effectiveService !== 'seguranca') return false;
+      if (filterMode === 'calibracao_only' && !m.fileCalibracao && effectiveService !== 'calibrado' && effectiveService !== 'completa') return false;
+      if (filterMode === 'movimentado_only' && !m.fileSetorRetirada) return false;
 
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
@@ -189,7 +198,8 @@ export default function MergeCalibrationsModal({
         const serie = (m.targetEquipment?.serie || '').toLowerCase();
         const eqName = (m.targetEquipment?.equipamento || '').toLowerCase();
         const reason = (m.matchReason || '').toLowerCase();
-        return tag.includes(q) || serie.includes(q) || eqName.includes(q) || reason.includes(q);
+        const retSector = (m.fileSetorRetirada || '').toLowerCase();
+        return tag.includes(q) || serie.includes(q) || eqName.includes(q) || reason.includes(q) || retSector.includes(q);
       }
       return true;
     });
@@ -203,23 +213,22 @@ export default function MergeCalibrationsModal({
   // Contagens estatísticas refinadas por modalidade (Calibrado, Prev, TSE, Externa, Pendente)
   const newCalibrationsCount = parseResult?.matches?.filter(m => {
     if (!m.selected || m.isAlreadyChecked) return false;
-    const s = getItemEffectiveService(m);
-    return s === 'calibracao_completa' || s === 'calibrado';
+    return Boolean(m.fileCalibracao || m.serviceType === 'calibrado' || m.serviceType === 'completa');
   }).length || 0;
 
   const newPreventivaCount = parseResult?.matches?.filter(m => {
     if (!m.selected || m.isAlreadyChecked) return false;
-    return getItemEffectiveService(m) === 'preventiva';
+    return Boolean(m.filePreventiva || m.serviceType === 'preventiva' || m.serviceType === 'completa');
   }).length || 0;
 
   const newSegurancaCount = parseResult?.matches?.filter(m => {
     if (!m.selected || m.isAlreadyChecked) return false;
-    return getItemEffectiveService(m) === 'seguranca';
+    return Boolean(m.fileSeguranca || m.serviceType === 'seguranca' || m.serviceType === 'completa');
   }).length || 0;
 
   const newExternaCount = parseResult?.matches?.filter(m => {
     if (!m.selected || m.isAlreadyChecked) return false;
-    return getItemEffectiveService(m) === 'externa';
+    return Boolean(m.fileExterna || m.serviceType === 'externa');
   }).length || 0;
 
   const pendingInFileCount = parseResult?.matches?.filter(m => {
@@ -227,20 +236,23 @@ export default function MergeCalibrationsModal({
   }).length || 0;
 
   const totalCalibracaoMatches = parseResult?.matches?.filter(m => {
-    const s = getItemEffectiveService(m);
-    return s === 'calibracao_completa' || s === 'calibrado';
+    return Boolean(m.fileCalibracao || m.serviceType === 'calibrado' || m.serviceType === 'completa');
   }).length || 0;
 
   const totalPreventivaMatches = parseResult?.matches?.filter(m => {
-    return getItemEffectiveService(m) === 'preventiva';
+    return Boolean(m.filePreventiva || m.serviceType === 'preventiva' || m.serviceType === 'completa');
   }).length || 0;
 
   const totalSegurancaMatches = parseResult?.matches?.filter(m => {
-    return getItemEffectiveService(m) === 'seguranca';
+    return Boolean(m.fileSeguranca || m.serviceType === 'seguranca' || m.serviceType === 'completa');
   }).length || 0;
 
   const totalExternaMatches = parseResult?.matches?.filter(m => {
-    return getItemEffectiveService(m) === 'externa';
+    return Boolean(m.fileExterna || m.serviceType === 'externa');
+  }).length || 0;
+
+  const totalMovimentadoMatches = parseResult?.matches?.filter(m => {
+    return Boolean(m.fileSetorRetirada);
   }).length || 0;
 
   const alreadyCheckedCount = (parseResult?.matches || []).filter(m => m.isAlreadyChecked).length;
@@ -647,6 +659,9 @@ export default function MergeCalibrationsModal({
                       <option value="preventiva_only">🔧 Somente Preventiva - Prev ({totalPreventivaMatches})</option>
                       <option value="seguranca_only">⚡ Somente Segurança - TSE ({totalSegurancaMatches})</option>
                       <option value="externa_only">📦 Manut. Externa ({totalExternaMatches})</option>
+                      {totalMovimentadoMatches > 0 && (
+                        <option value="movimentado_only">📍 Movimentadas de Setor ({totalMovimentadoMatches})</option>
+                      )}
                       <option value="pending_file">⏳ Pendentes no Arquivo ({pendingInFileCount})</option>
                       <option value="already_checked">Já no Sistema ({alreadyCheckedCount})</option>
                     </select>
@@ -681,6 +696,7 @@ export default function MergeCalibrationsModal({
                           const isPrev = effectiveService === 'preventiva';
                           const isTse = effectiveService === 'seguranca';
                           const isPendente = effectiveService === 'pendente';
+                          const isCompleta = effectiveService === 'completa' || (m.fileCalibracao && m.filePreventiva && m.fileSeguranca);
 
                           return (
                             <tr 
@@ -691,11 +707,9 @@ export default function MergeCalibrationsModal({
                                   ? (m.selected ? 'bg-amber-50/25 dark:bg-amber-950/20' : 'opacity-55 bg-slate-50/20')
                                   : isExterna
                                     ? 'bg-purple-50/30 dark:bg-purple-950/20'
-                                    : isPrev
-                                      ? 'bg-emerald-50/30 dark:bg-emerald-950/20'
-                                      : isTse
-                                        ? 'bg-amber-50/30 dark:bg-amber-950/20'
-                                        : (m.selected ? 'bg-blue-50/30 dark:bg-blue-950/15' : 'opacity-60')
+                                    : isCompleta
+                                      ? 'bg-teal-50/30 dark:bg-teal-950/20'
+                                      : (m.selected ? 'bg-blue-50/30 dark:bg-blue-950/15' : 'opacity-60')
                               }`}
                             >
                               <td className="py-2.5 px-3 text-center" onClick={e => e.stopPropagation()}>
@@ -730,48 +744,52 @@ export default function MergeCalibrationsModal({
                               </td>
                               <td className="py-2.5 px-3 text-center" onClick={e => e.stopPropagation()}>
                                 {targetMode === 'auto' ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleToggleItemServiceType(m.originalIndex)}
-                                    className={`inline-flex items-center gap-1 text-[10px] font-extrabold px-2.5 py-1 rounded-xl transition shadow-2xs hover:scale-105 active:scale-95 ${
-                                      isExterna
-                                        ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300 border border-purple-300 dark:border-purple-800'
-                                        : isPrev
-                                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
-                                          : isTse
-                                            ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800'
-                                            : isPendente
-                                              ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-slate-300 dark:border-slate-700'
-                                              : 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 border border-blue-300 dark:border-blue-800'
-                                    }`}
-                                    title="Clique para alternar entre Calibrado, Preventiva (Prev), TSE, Externa ou Pendente"
-                                  >
+                                  <div className="flex flex-wrap items-center justify-center gap-1 max-w-[260px] mx-auto">
                                     {isExterna ? (
-                                      <>
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-xl bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300 border border-purple-300 dark:border-purple-800">
                                         <Package className="w-3 h-3 text-purple-600 dark:text-purple-400" />
                                         <span>📦 Manut. Externa</span>
-                                      </>
-                                    ) : isPrev ? (
+                                      </span>
+                                    ) : isCompleta ? (
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-xl bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300 border border-teal-300 dark:border-teal-800">
+                                        <CheckCircle2 className="w-3 h-3 text-teal-600 dark:text-teal-400" />
+                                        <span>🎯 100% Concluído (3 Frentes)</span>
+                                      </span>
+                                    ) : (m.fileCalibracao || m.filePreventiva || m.fileSeguranca) ? (
                                       <>
-                                        <Wrench className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                                        <span>🔧 Prev (Preventiva)</span>
-                                      </>
-                                    ) : isTse ? (
-                                      <>
-                                        <Zap className="w-3 h-3 text-amber-600 dark:text-amber-400" />
-                                        <span>⚡ TSE (Segurança)</span>
+                                        {m.fileCalibracao && (
+                                          <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-lg bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                                            🎯 Calibração
+                                          </span>
+                                        )}
+                                        {m.filePreventiva && (
+                                          <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                            🔧 Prev
+                                          </span>
+                                        )}
+                                        {m.fileSeguranca && (
+                                          <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-lg bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                                            ⚡ TSE
+                                          </span>
+                                        )}
                                       </>
                                     ) : isPendente ? (
-                                      <>
-                                        <span>⏳ Pendente no Arq.</span>
-                                      </>
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-xl bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                                        ⏳ Pendente no Arq.
+                                      </span>
                                     ) : (
-                                      <>
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
                                         <Sparkles className="w-3 h-3 text-blue-600 dark:text-blue-400" />
                                         <span>🎯 Calibrado</span>
-                                      </>
+                                      </span>
                                     )}
-                                  </button>
+
+                                    {m.fileSetorRetirada && (
+                                      <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-lg bg-orange-50 text-orange-700 dark:bg-orange-950/60 dark:text-orange-300 border border-orange-200 dark:border-orange-800/60" title={`Bomba recolhida no setor: ${m.fileSetorRetirada}`}>
+                                        📍 Recolhida: {m.fileSetorRetirada}
+                                      </span>
+                                    )}
+                                  </div>
                                 ) : (
                                   <span className={`inline-flex items-center gap-1 text-[10px] font-extrabold px-2.5 py-1 rounded-xl ${
                                     isExterna
