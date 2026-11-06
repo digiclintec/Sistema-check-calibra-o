@@ -79,7 +79,8 @@ export default function TeamManagementModal({
   const loadUsers = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/users');
+      const hospParam = (!isMaster && activeHospitalId) ? `?hospitalId=${encodeURIComponent(activeHospitalId)}` : '';
+      const res = await fetch(`/api/users${hospParam}`);
       const data = await res.json();
       if (data.success && data.users) {
         setUsers(data.users);
@@ -91,6 +92,27 @@ export default function TeamManagementModal({
     }
   };
 
+  // Limitação de visibilidade por hospital:
+  // O Master pode ver todos os usuários cadastrados.
+  // Técnicos e supervisores locais enxergam ESTRITAMENTE os técnicos alocados no seu hospital!
+  const visibleUsers = useMemo(() => {
+    if (isMaster) {
+      return users;
+    }
+
+    const targetHospId = activeHospitalId || currentUser?.hospitalIds?.[0] || currentUser?.hospitalId;
+    if (!targetHospId) return users;
+
+    return users.filter(u => {
+      const uHospIds = Array.isArray(u.hospitalIds) && u.hospitalIds.length > 0 
+        ? u.hospitalIds 
+        : [u.hospitalId || 'all'];
+
+      // Retorna apenas se o usuário pertencer a este hospital ou for o próprio usuário logado
+      return uHospIds.includes(targetHospId) || (u.role === 'master' && uHospIds.includes('all')) || u.id === currentUser?.id;
+    });
+  }, [users, isMaster, activeHospitalId, currentUser]);
+
   const handleCreateUser = async (e) => {
     e.preventDefault();
     if (!userName.trim() || !userEmail.trim() || !userPassword.trim()) {
@@ -101,6 +123,9 @@ export default function TeamManagementModal({
     setLoading(true);
     setMessage(null);
 
+    // Se não for master, o usuário é vinculado obrigatoriamente e exclusivamente a este hospital
+    const targetHospIds = isMaster ? selectedHospitalIds : [activeHospitalId];
+
     try {
       const res = await fetch('/api/users', {
         method: 'POST',
@@ -110,7 +135,7 @@ export default function TeamManagementModal({
           email: userEmail.trim(),
           password: userPassword.trim(),
           role: userRole,
-          hospitalIds: selectedHospitalIds
+          hospitalIds: targetHospIds
         })
       });
 
@@ -683,7 +708,9 @@ export default function TeamManagementModal({
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-400">
-                  Usuários com Acesso ao CalibraCheck ({users.length})
+                  {isMaster 
+                    ? `Todos os Usuários do Sistema (${visibleUsers.length})` 
+                    : `Técnicos da Equipe - ${hospitalName} (${visibleUsers.length})`}
                 </h4>
                 {isAdmin && (
                   <button
@@ -696,13 +723,13 @@ export default function TeamManagementModal({
                 )}
               </div>
 
-              {users.length === 0 ? (
+              {visibleUsers.length === 0 ? (
                 <div className="text-center py-10 text-slate-500 text-xs">
-                  Nenhum usuário cadastrado além do Master.
+                  Nenhum técnico cadastrado para este hospital além de você.
                 </div>
               ) : (
                 <div className="space-y-2.5">
-                  {users.map((u) => {
+                  {visibleUsers.map((u) => {
                     const isUCurrent = u.email === currentUser?.email;
                     const isUMaster = u.role === 'master';
 
@@ -965,39 +992,46 @@ export default function TeamManagementModal({
               {/* Multi-hospital permissions */}
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Vincular aos Hospitais:
+                  Vincular ao Hospital:
                 </label>
-                <div className="space-y-1.5 p-2 rounded-xl bg-slate-950 border border-slate-800 max-h-40 overflow-y-auto">
-                  <label className="flex items-center gap-2 p-1.5 rounded-lg bg-slate-900 border border-slate-800 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={selectedHospitalIds.includes('all')}
-                      onChange={() => handleToggleHospSelection('all')}
-                      className="rounded text-blue-600 focus:ring-0"
-                    />
-                    <span className="text-xs font-bold text-white">🌐 Todos os Hospitais</span>
-                  </label>
-
-                  {hospitals.map(h => (
-                    <label 
-                      key={h.id} 
-                      className={`flex items-center gap-2 p-1.5 rounded-lg border cursor-pointer text-xs ${
-                        selectedHospitalIds.includes(h.id) || selectedHospitalIds.includes('all')
-                          ? 'bg-blue-950/20 border-blue-500/40 text-blue-200'
-                          : 'bg-slate-900/60 border-slate-800 text-slate-300'
-                      }`}
-                    >
+                {isMaster ? (
+                  <div className="space-y-1.5 p-2 rounded-xl bg-slate-950 border border-slate-800 max-h-40 overflow-y-auto">
+                    <label className="flex items-center gap-2 p-1.5 rounded-lg bg-slate-900 border border-slate-800 cursor-pointer">
                       <input
                         type="checkbox"
-                        disabled={selectedHospitalIds.includes('all')}
-                        checked={selectedHospitalIds.includes('all') || selectedHospitalIds.includes(h.id)}
-                        onChange={() => handleToggleHospSelection(h.id)}
+                        checked={selectedHospitalIds.includes('all')}
+                        onChange={() => handleToggleHospSelection('all')}
                         className="rounded text-blue-600 focus:ring-0"
                       />
-                      <span className="truncate">{h.name}</span>
+                      <span className="text-xs font-bold text-white">🌐 Todos os Hospitais</span>
                     </label>
-                  ))}
-                </div>
+
+                    {hospitals.map(h => (
+                      <label 
+                        key={h.id} 
+                        className={`flex items-center gap-2 p-1.5 rounded-lg border cursor-pointer text-xs ${
+                          selectedHospitalIds.includes(h.id) || selectedHospitalIds.includes('all')
+                            ? 'bg-blue-950/20 border-blue-500/40 text-blue-200'
+                            : 'bg-slate-900/60 border-slate-800 text-slate-300'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          disabled={selectedHospitalIds.includes('all')}
+                          checked={selectedHospitalIds.includes('all') || selectedHospitalIds.includes(h.id)}
+                          onChange={() => handleToggleHospSelection(h.id)}
+                          className="rounded text-blue-600 focus:ring-0"
+                        />
+                        <span className="truncate">{h.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-300 flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-blue-400 shrink-0" />
+                    <span>Este técnico terá acesso exclusivamente ao: <strong>{hospitalName}</strong></span>
+                  </div>
+                )}
               </div>
 
               <button

@@ -25,6 +25,7 @@ export default function SmartBatchModal({
   activeModality = 'calibracao',
   equipments = [],
   hospitalName = '',
+  hospitalId,
   planTitle = '',
   currentUser,
   onConfirm
@@ -81,10 +82,16 @@ export default function SmartBatchModal({
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch('/api/users');
+      const targetHosp = hospitalId || currentUser?.hospitalIds?.[0] || currentUser?.hospitalId;
+      const hospParam = (!isMaster && targetHosp) ? `?hospitalId=${encodeURIComponent(targetHosp)}` : '';
+      const res = await fetch(`/api/users${hospParam}`);
       const data = await res.json();
       if (data.success && Array.isArray(data.users)) {
-        setTeamUsers(data.users);
+        const filtered = isMaster ? data.users : data.users.filter(u => {
+          const uHospIds = Array.isArray(u.hospitalIds) && u.hospitalIds.length > 0 ? u.hospitalIds : [u.hospitalId || 'all'];
+          return uHospIds.includes(targetHosp) || uHospIds.includes('all');
+        });
+        setTeamUsers(filtered);
       }
     } catch (e) {
       console.warn('Não foi possível carregar lista de usuários:', e);

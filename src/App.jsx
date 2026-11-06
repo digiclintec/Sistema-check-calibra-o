@@ -2070,6 +2070,7 @@ export default function App() {
         equipments={equipments}
         hospitalName={activeHospital?.name}
         planTitle={activeSheetName}
+        hospitalId={activeHospitalId}
         currentUser={currentUser}
         onConfirm={handleMassCheck}
       />

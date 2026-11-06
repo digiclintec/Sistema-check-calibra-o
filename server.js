@@ -428,8 +428,21 @@ app.post('/api/login', (req, res) => {
 
 // List users (nunca expõe senhas)
 app.get('/api/users', (req, res) => {
+  const { hospitalId } = req.query || {};
   const users = readUsers();
-  const sanitized = users.map(u => ({
+
+  // Se especificado hospitalId (técnicos visualizando apenas sua equipe), filtra estritamente
+  let filtered = users;
+  if (hospitalId && hospitalId !== 'all') {
+    filtered = users.filter(u => {
+      const uHospIds = Array.isArray(u.hospitalIds) && u.hospitalIds.length > 0 
+        ? u.hospitalIds 
+        : [u.hospitalId || 'all'];
+      return uHospIds.includes(hospitalId) || uHospIds.includes('all');
+    });
+  }
+
+  const sanitized = filtered.map(u => ({
     id: u.id,
     name: u.name,
     email: u.email,
