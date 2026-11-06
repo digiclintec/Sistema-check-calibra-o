@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { parseWorkbookBuffer } from './src/utils/sheetParser.js';
+import { PDFParse } from 'pdf-parse';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -890,6 +891,34 @@ app.post('/api/sector-colors', (req, res) => {
     message: 'Cores dos setores salvas com sucesso.',
     sectorColors: idx !== -1 ? db.hospitals[idx].sectorColors : db.sectorColors
   });
+});
+
+// PDF Text Extraction Route for Calibration Reports
+app.post('/api/parse-pdf-calibrations', async (req, res) => {
+  try {
+    const { pdfBase64 } = req.body || {};
+    if (!pdfBase64) {
+      return res.status(400).json({ success: false, message: 'Arquivo PDF não fornecido.' });
+    }
+
+    const cleanBase64 = pdfBase64.replace(/^data:application\/pdf;base64,/, '').replace(/\s/g, '');
+    const buffer = Buffer.from(cleanBase64, 'base64');
+
+    const parser = new PDFParse({ data: buffer });
+    const textResult = await parser.getText();
+    const fullText = typeof textResult === 'string' ? textResult : (textResult?.text || '');
+    const lines = fullText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+
+    res.json({
+      success: true,
+      text: fullText,
+      lines,
+      totalLines: lines.length
+    });
+  } catch (err) {
+    console.error('Error parsing PDF:', err);
+    res.status(500).json({ success: false, message: 'Erro ao processar o arquivo PDF: ' + err.message });
+  }
 });
 
 // Update service configuration for hospital

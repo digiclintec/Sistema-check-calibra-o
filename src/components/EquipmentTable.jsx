@@ -569,16 +569,28 @@ export default function EquipmentTable({
                     </button>
                   </div>
 
-                  {/* Auditoria / Quem conferiu a modalidade ativa */}
+                  {/* Auditoria Completa: Quem conferiu, Data e Horário (100% legível) */}
                   {(() => {
                     const meta = getCheckMeta(item, activeModality);
-                    if (meta.checked && meta.user) {
+                    if (meta.checked && (meta.user || meta.date)) {
+                      const formattedDate = meta.date ? new Date(meta.date).toLocaleDateString('pt-BR') : '';
+                      const formattedTime = meta.date ? new Date(meta.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
                       return (
-                        <div className="mt-2 text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1 truncate">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
-                          <span className="truncate">
-                            {currentMod.shortName}: {meta.user}
-                          </span>
+                        <div className="mt-2.5 p-2 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 text-[11px] text-slate-700 dark:text-slate-300 space-y-0.5">
+                          <div className="flex items-center gap-1 font-bold text-emerald-700 dark:text-emerald-300">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                            <span>✓ {currentMod.shortName} Concluída:</span>
+                          </div>
+                          {meta.user && (
+                            <div className="text-[11px] text-slate-800 dark:text-slate-200 break-words">
+                              👤 <strong>Responsável:</strong> {meta.user}
+                            </div>
+                          )}
+                          {meta.date && (
+                            <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                              📅 <strong>Data:</strong> {formattedDate} às {formattedTime}
+                            </div>
+                          )}
                         </div>
                       );
                     }

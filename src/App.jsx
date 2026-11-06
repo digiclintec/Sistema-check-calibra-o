@@ -17,12 +17,14 @@ import {
   RefreshCw,
   Link2,
   Unlink,
-  ExternalLink
+  ExternalLink,
+  GitMerge
 } from 'lucide-react';
 
 import LoginScreen from './components/LoginScreen';
 import Navbar from './components/Navbar';
 import HeroBanner from './components/HeroBanner';
+import MergeCalibrationsModal from './components/MergeCalibrationsModal';
 import StatsCards from './components/StatsCards';
 import EquipmentTable from './components/EquipmentTable';
 import ScannerModal from './components/ScannerModal';
@@ -134,6 +136,7 @@ export default function App() {
     };
   });
   const [serviceConfigModal, setServiceConfigModal] = useState({ isOpen: false, isInitialSetup: false });
+  const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
 
   // Custom Sector Colors (Map of normalizedSectorKey -> hex)
   const [isSectorColorModalOpen, setIsSectorColorModalOpen] = useState(false);
@@ -196,6 +199,11 @@ export default function App() {
       });
     } catch (e) {}
     showToast('success', `Opções atualizadas: ${newConfig.executionMode === 'all_at_once' ? '⚡ Bipar Tudo de Uma Vez' : '🎯 Bipar Separado'}`);
+  };
+
+  const handleApplyMerge = async (updatedEquipments, actionDesc) => {
+    await pushServerUpdate(updatedEquipments, activeSheetName, actionDesc);
+    showToast('success', actionDesc);
   };
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [lastScannedId, setLastScannedId] = useState(null);
@@ -1465,6 +1473,7 @@ export default function App() {
         monthlyPlans={monthlyPlans}
         activePlanId={activePlanId}
         onSwitchPlan={handleSwitchPlan}
+        onOpenMergeModal={() => setIsMergeModalOpen(true)}
         activeModality={activeModality}
         onChangeModality={setActiveModality}
       />
@@ -1482,6 +1491,7 @@ export default function App() {
             onOpenServiceConfig={() => setServiceConfigModal({ isOpen: true, isInitialSetup: false })}
             sectorColors={sectorColors}
             onOpenSectorColors={() => setIsSectorColorModalOpen(true)}
+            onOpenMergeModal={() => setIsMergeModalOpen(true)}
           />
         ) : activeMainTab === 'planejamento' ? (
           <MonthlyPlanningTab
@@ -1598,6 +1608,15 @@ export default function App() {
                 </button>
 
                 <button
+                  onClick={() => setIsMergeModalOpen(true)}
+                  className="flex-1 sm:flex-initial py-2 px-3 sm:px-3.5 bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700 hover:from-indigo-500 hover:to-blue-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition shadow-sm active:scale-95"
+                  title="Mesclar lista de calibrações de outra planilha ou PDF ao plano atual sem apagar nem duplicar equipamentos"
+                >
+                  <GitMerge className="w-3.5 h-3.5 text-indigo-200" />
+                  <span>Mesclar Calibrações (XLS/PDF)</span>
+                </button>
+
+                <button
                   onClick={handleResetData}
                   className="p-2 text-slate-400 hover:text-red-500 rounded-xl hover:bg-red-50 dark:hover:bg-red-950/30 transition shrink-0"
                   title="Trocar ou Limpar Planilha deste Hospital"
@@ -1702,6 +1721,18 @@ export default function App() {
         onClose={() => setIsGoogleModalOpen(false)}
         onImportData={handleGoogleDataImport}
         currentGoogleSheetUrl={googleSheetUrl}
+      />
+
+      {/* Modal de Mesclagem de Calibrações Feitas (XLS, XLSX, CSV ou PDF) */}
+      <MergeCalibrationsModal
+        isOpen={isMergeModalOpen}
+        onClose={() => setIsMergeModalOpen(false)}
+        equipments={equipments}
+        serviceConfig={serviceConfig}
+        currentUser={currentUser}
+        onApplyMerge={handleApplyMerge}
+        hospitalName={activeHospital?.name}
+        planTitle={activeSheetName}
       />
 
       {/* Modal de Configuração de Serviços e Modo de Bipagem da Planilha */}

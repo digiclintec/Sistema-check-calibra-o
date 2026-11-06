@@ -16,7 +16,8 @@ import {
   ShieldCheck,
   PlusCircle,
   MoreVertical,
-  ChevronDown
+  ChevronDown,
+  GitMerge
 } from 'lucide-react';
 
 export default function Navbar({ 
@@ -24,6 +25,7 @@ export default function Navbar({
   onOpenGoogleModal, 
   onOpenScanner, 
   onExportExcel, 
+  onOpenMergeModal,
   hasData,
   soundEnabled,
   setSoundEnabled,
@@ -355,16 +357,29 @@ export default function Navbar({
                     </button>
 
                     {hasData && (
-                      <button
-                        onClick={() => {
-                          setShowMoreMenu(false);
-                          if (onExportExcel) onExportExcel();
-                        }}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition text-slate-700 dark:text-slate-200"
-                      >
-                        <Download className="w-4 h-4 text-slate-500 shrink-0" />
-                        <span>Exportar Planilha</span>
-                      </button>
+                      <>
+                        <button
+                          onClick={() => {
+                            setShowMoreMenu(false);
+                            if (onOpenMergeModal) onOpenMergeModal();
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition text-indigo-600 dark:text-indigo-400"
+                        >
+                          <GitMerge className="w-4 h-4 text-indigo-500 shrink-0" />
+                          <span>Mesclar Calibrações (XLS/PDF)</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setShowMoreMenu(false);
+                            if (onExportExcel) onExportExcel();
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition text-slate-700 dark:text-slate-200"
+                        >
+                          <Download className="w-4 h-4 text-slate-500 shrink-0" />
+                          <span>Exportar Planilha</span>
+                        </button>
+                      </>
                     )}
                   </div>
 

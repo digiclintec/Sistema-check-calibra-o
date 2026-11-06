@@ -25,7 +25,8 @@ import {
   Zap,
   MapPin,
   Clock3,
-  Palette
+  Palette,
+  GitMerge
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { getSectorColor, getEffectiveSector, getSectorBadgeStyles } from '../utils/sectorColors';
@@ -40,7 +41,8 @@ export default function SpreadsheetAuditView({
   serviceConfig = null,
   onOpenServiceConfig = null,
   sectorColors = {},
-  onOpenSectorColors = null
+  onOpenSectorColors = null,
+  onOpenMergeModal = null
 }) {
   const [viewMode, setViewMode] = useState('equipments'); // 'equipments' | 'ponto'
   const [searchQuery, setSearchQuery] = useState('');
@@ -384,6 +386,17 @@ export default function SpreadsheetAuditView({
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
               <span>Sincronizar</span>
+            </button>
+          )}
+
+          {onOpenMergeModal && (
+            <button
+              onClick={onOpenMergeModal}
+              className="py-2 px-3.5 bg-indigo-500/25 hover:bg-indigo-500/40 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition border border-indigo-400/40 shadow-sm"
+              title="Mesclar e unir calibrações de outra planilha ou PDF ao plano atual sem apagar nem duplicar equipamentos"
+            >
+              <GitMerge className="w-3.5 h-3.5 text-indigo-300" />
+              <span>Mesclar Calibrações (XLS/PDF)</span>
             </button>
           )}
 
