@@ -264,10 +264,10 @@ export default function TechnicianProfileTab({
           <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
             <div>
               <h4 className="text-xs font-bold text-slate-900 dark:text-white">
-                Sons de Bipagem & Alerta de Voz
+                Sons de Bipagem Hospitalar (Modo Silencioso / UTIN & UCINCO)
               </h4>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                Bipes hospitalares + aviso em voz alta quando a bomba já foi checada ou está em manutenção.
+                Bipes curtos e discretos (&lt;80ms) sem voz falada, adequados para UTIN, UCINCO e leitos com pacientes em repouso.
               </p>
             </div>
 

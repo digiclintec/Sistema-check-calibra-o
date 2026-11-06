@@ -272,8 +272,9 @@ export function playUndoSound() {
 }
 
 /**
- * Som de Equipamento Já Bipado / Já Calibrado
- * Tom: Duplo acorde afirmativo em tom de alerta dourado (G5 784Hz -> B5 987Hz)
+ * Bip Curto de Alerta Hospitalar (Adequado para UTIN, UCINCO e Enfermarias)
+ * Tom: Pulso senoidal suave, curto e discreto (740 Hz, 75ms)
+ * Seguro para setores silenciosos, sem sobressalto e sem acordar bebês dormindo
  */
 export function playAlreadyCheckedSound() {
   try {
@@ -281,42 +282,27 @@ export function playAlreadyCheckedSound() {
     if (!ctx) return;
 
     const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
 
-    // Tom 1: 784 Hz (G5)
-    const osc1 = ctx.createOscillator();
-    const gain1 = ctx.createGain();
-    osc1.type = 'triangle';
-    osc1.frequency.setValueAtTime(783.99, now);
-    gain1.gain.setValueAtTime(0.001, now);
-    gain1.gain.linearRampToValueAtTime(0.18, now + 0.006);
-    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
-    osc1.connect(gain1);
-    gain1.connect(ctx.destination);
-    osc1.start(now);
-    osc1.stop(now + 0.12);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(740, now);
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.12, now + 0.004);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.075);
 
-    // Tom 2: 987.77 Hz (B5) com harmônico de atenção
-    const osc2 = ctx.createOscillator();
-    const gain2 = ctx.createGain();
-    osc2.type = 'sine';
-    osc2.frequency.setValueAtTime(987.77, now + 0.07);
-    gain2.gain.setValueAtTime(0.001, now + 0.07);
-    gain2.gain.linearRampToValueAtTime(0.20, now + 0.076);
-    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
-    osc2.connect(gain2);
-    gain2.connect(ctx.destination);
-    osc2.start(now + 0.07);
-    osc2.stop(now + 0.24);
-
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.075);
   } catch (e) {
     console.warn('Audio feedback failed:', e);
   }
 }
 
 /**
- * Som de Equipamento em Manutenção Externa (Terceirizada)
- * Tom: Tríade com ressonância profunda (A4 440Hz -> C#5 554Hz -> E5 659Hz)
- * Inconfundível no hospital para avisar que a bomba foi recolhida
+ * Bip Curto de Manutenção Externa (Discreto para UTIN/UCINCO)
+ * Tom: Dois micropulsos suaves e amortecidos (587 Hz, 55ms cada)
  */
 export function playMaintenanceAlertSound() {
   try {
@@ -325,67 +311,42 @@ export function playMaintenanceAlertSound() {
 
     const now = ctx.currentTime;
 
-    // Nota 1: A4 (440 Hz)
+    // Micropulso 1
     const osc1 = ctx.createOscillator();
     const gain1 = ctx.createGain();
     osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(440, now);
+    osc1.frequency.setValueAtTime(587.33, now);
     gain1.gain.setValueAtTime(0.001, now);
-    gain1.gain.linearRampToValueAtTime(0.16, now + 0.005);
-    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.10);
+    gain1.gain.linearRampToValueAtTime(0.10, now + 0.004);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
     osc1.connect(gain1);
     gain1.connect(ctx.destination);
     osc1.start(now);
-    osc1.stop(now + 0.10);
+    osc1.stop(now + 0.05);
 
-    // Nota 2: C#5 (554.37 Hz)
+    // Micropulso 2
     const osc2 = ctx.createOscillator();
     const gain2 = ctx.createGain();
-    osc2.type = 'triangle';
-    osc2.frequency.setValueAtTime(554.37, now + 0.06);
-    gain2.gain.setValueAtTime(0.001, now + 0.06);
-    gain2.gain.linearRampToValueAtTime(0.18, now + 0.066);
-    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(587.33, now + 0.065);
+    gain2.gain.setValueAtTime(0.001, now + 0.065);
+    gain2.gain.linearRampToValueAtTime(0.10, now + 0.069);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.115);
     osc2.connect(gain2);
     gain2.connect(ctx.destination);
-    osc2.start(now + 0.06);
-    osc2.stop(now + 0.16);
-
-    // Nota 3: E5 (659.25 Hz)
-    const osc3 = ctx.createOscillator();
-    const gain3 = ctx.createGain();
-    osc3.type = 'sine';
-    osc3.frequency.setValueAtTime(659.25, now + 0.12);
-    gain3.gain.setValueAtTime(0.001, now + 0.12);
-    gain3.gain.linearRampToValueAtTime(0.22, now + 0.126);
-    gain3.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
-    osc3.connect(gain3);
-    gain3.connect(ctx.destination);
-    osc3.start(now + 0.12);
-    osc3.stop(now + 0.28);
-
+    osc2.start(now + 0.065);
+    osc2.stop(now + 0.115);
   } catch (e) {
     console.warn('Audio feedback failed:', e);
   }
 }
 
 /**
- * Síntese de Voz Nativa em Português (SpeechSynthesis)
- * Avisa o operador em voz alta pelo alto-falante do celular / tablet
+ * Síntese de Voz desativada por padrão conforme diretriz para UTIN/UCINCO
  */
-export function speakVoiceAlert(text, isSoundEnabled = true) {
-  if (!isSoundEnabled) return;
-  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-  try {
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'pt-BR';
-    utterance.rate = 1.15;
-    utterance.pitch = 1.0;
-    utterance.volume = 1.0;
-    window.speechSynthesis.speak(utterance);
-  } catch (e) {
-    console.warn('Speech synthesis feedback failed:', e);
+export function speakVoiceAlert() {
+  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    try { window.speechSynthesis.cancel(); } catch (e) {}
   }
 }
 

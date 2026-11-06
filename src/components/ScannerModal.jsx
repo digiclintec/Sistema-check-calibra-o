@@ -41,7 +41,6 @@ import {
   playErrorSound,
   playAlreadyCheckedSound,
   playMaintenanceAlertSound,
-  speakVoiceAlert,
   triggerHapticAlert
 } from '../utils/audio';
 import { findBestEquipmentMatches } from '../utils/fuzzyMatch';
@@ -1151,7 +1150,6 @@ export default function ScannerModal({
     if (Boolean(targetEq.check_externa) && !effectiveMods.includes('externa')) {
       if (soundEnabled) {
         playMaintenanceAlertSound();
-        speakVoiceAlert("Atenção! Esta bomba está em manutenção externa!", soundEnabled);
       }
       triggerHapticAlert('maintenance');
 
@@ -1180,7 +1178,6 @@ export default function ScannerModal({
     if (isAlreadyCheckedAll) {
       if (soundEnabled) {
         playAlreadyCheckedSound();
-        speakVoiceAlert("Atenção! Bomba já foi checada!", soundEnabled);
       }
       triggerHapticAlert('already_checked');
 

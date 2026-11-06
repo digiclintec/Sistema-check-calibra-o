@@ -331,8 +331,8 @@ export function identifyColumns(headers, sampleRows = []) {
       mapping.usuarioPreventiva = h;
     }
     // Check / Status da preventiva (ex: "PREVENTIVA - Status", "PREVENTIVA", "MANUTENÇÃO PREVENTIVA", "CHECK PREVENTIVA", "MP")
-    else if (!mapping.checkPreventiva && (
-      (norm.includes('preventiv') || norm.includes('mp') || norm.includes('manutencao')) &&
+    else if (!mapping.checkPreventiva && !norm.includes('extern') && !norm.includes('terceir') && (
+      (norm.includes('preventiv') || norm === 'mp' || norm.includes('manutencaopreventiv')) &&
       (norm.includes('status') || norm.includes('check') || norm.includes('situacao') || norm.includes('ok') || norm === 'preventiva' || norm === 'mp' || norm === 'manutencaopreventiva')
     )) {
       mapping.checkPreventiva = h;
@@ -932,7 +932,12 @@ export function extractDataFromWorksheet(worksheet) {
 
   const rawHeaderRow = rawMatrix[bestHeaderRowIndex] || [];
   const prevHeaderRow = bestHeaderRowIndex > 0 ? (rawMatrix[bestHeaderRowIndex - 1] || []) : [];
-  const maxCols = Math.max(rawHeaderRow.length, prevHeaderRow.length);
+  let maxCols = Math.max(rawHeaderRow.length, prevHeaderRow.length);
+  for (let r = 0; r < Math.min(rawMatrix.length, 100); r++) {
+    if (Array.isArray(rawMatrix[r]) && rawMatrix[r].length > maxCols) {
+      maxCols = rawMatrix[r].length;
+    }
+  }
 
   const headers = [];
   for (let colIdx = 0; colIdx < maxCols; colIdx++) {

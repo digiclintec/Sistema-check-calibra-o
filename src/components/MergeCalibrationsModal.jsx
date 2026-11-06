@@ -436,17 +436,17 @@ export default function MergeCalibrationsModal({
                 <div className="p-3 bg-blue-50/60 dark:bg-blue-950/30 rounded-2xl border border-blue-200 dark:border-blue-900/60 text-center">
                   <span className="text-[10px] font-bold text-blue-500 uppercase tracking-wider block">🎯 Calibrado</span>
                   <div className="text-lg font-black text-blue-700 dark:text-blue-300">
-                    {newCalibrationsCount}
+                    {totalCalibracaoMatches}
                   </div>
                   <span className="text-[10px] text-blue-600/80 font-bold">
-                    conferências
+                    {newCalibrationsCount < totalCalibracaoMatches ? `${newCalibrationsCount} novas` : 'conferências'}
                   </span>
                 </div>
 
                 <div className="p-3 bg-emerald-50/60 dark:bg-emerald-950/30 rounded-2xl border border-emerald-200 dark:border-emerald-900/60 text-center">
                   <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider block">🔧 Prev</span>
                   <div className="text-lg font-black text-emerald-700 dark:text-emerald-300">
-                    {newPreventivaCount}
+                    {totalPreventivaMatches}
                   </div>
                   <span className="text-[10px] text-emerald-600/80 dark:text-emerald-400 font-bold">
                     só preventiva
@@ -456,7 +456,7 @@ export default function MergeCalibrationsModal({
                 <div className="p-3 bg-amber-50/60 dark:bg-amber-950/30 rounded-2xl border border-amber-200 dark:border-amber-900/60 text-center">
                   <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider block">⚡ TSE</span>
                   <div className="text-lg font-black text-amber-700 dark:text-amber-300">
-                    {newSegurancaCount}
+                    {totalSegurancaMatches}
                   </div>
                   <span className="text-[10px] text-amber-600/80 dark:text-amber-400 font-bold">
                     seg. elétrica
@@ -466,10 +466,10 @@ export default function MergeCalibrationsModal({
                 <div className="p-3 bg-purple-50/60 dark:bg-purple-950/30 rounded-2xl border border-purple-200 dark:border-purple-900/60 text-center">
                   <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider block">📦 Manut. Ext.</span>
                   <div className="text-lg font-black text-purple-700 dark:text-purple-300">
-                    {newExternaCount}
+                    {totalExternaMatches}
                   </div>
                   <span className="text-[10px] text-purple-600/80 dark:text-purple-400 font-bold">
-                    terceirizadas
+                    {newExternaCount < totalExternaMatches ? `${totalExternaMatches} no arquivo` : 'terceirizadas'}
                   </span>
                 </div>
 
