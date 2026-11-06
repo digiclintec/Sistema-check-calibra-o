@@ -54,6 +54,7 @@ import { parseSpreadsheetFile, exportToExcel } from './utils/sheetParser';
 import { SAMPLE_EQUIPMENT } from './utils/sampleData';
 import { 
   playSuccessSound, 
+  playBatchConfirmSound,
   playWarningSound, 
   playErrorSound, 
   playManualCheckSound, 
@@ -1204,10 +1205,10 @@ export default function App() {
       `Check em lote [${modLabels}]: ${checkedCount} equipamentos conferidos com sucesso`
     );
 
-    if (soundEnabled) playSuccessSound();
+    if (soundEnabled) playBatchConfirmSound();
     showToast(
       'success', 
-      `🎉 ${checkedCount} equipamentos conferidos para [${modLabels}]!`, 
+      `✓ ${checkedCount} equipamentos conferidos para [${modLabels}]!`, 
       checkedCount >= 5 ? { label: 'Desfazer', onClick: handleUndoAction } : null
     );
   };
@@ -1269,12 +1270,7 @@ export default function App() {
       }
 
       if (payload.action === 'check_all') {
-        if (soundEnabled) playSuccessSound();
-        confetti({
-          particleCount: 150,
-          spread: 80,
-          origin: { y: 0.5 }
-        });
+        if (soundEnabled) playBatchConfirmSound();
         showToast('success', data.message || `Equipamentos marcados com sucesso!`, {
           label: 'Desfazer',
           onClick: handleUndoAction

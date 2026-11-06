@@ -17,9 +17,10 @@ function getAudioContext() {
 }
 
 /**
- * Som de Sucesso na Bipagem (Equipamento Encontrado e Registrado)
- * Tom: Chime profissional estilo coletor hospitalar Zebra / Apple Pay
- * Elegante, cristalino e de alta definição, sem parecer joguinho
+ * Som de Sucesso na Bipagem / Confirmação de Equipamento
+ * Tom: Bip curto, limpo e cristalino estilo coletor hospitalar de precisão (Zebra/Honeywell)
+ * Duração: 50ms | Frequência: 1318.5 Hz (E6)
+ * Ultra-discreto, sem estardalhaço e sem eco, seguro para UTIN, UCINCO e enfermarias
  */
 export function playSuccessSound() {
   try {
@@ -28,45 +29,65 @@ export function playSuccessSound() {
 
     const now = ctx.currentTime;
 
-    // Nota 1: 1046.5 Hz (C6) - curta e suave de entrada
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    // Senoide pura com transiente suave anti-clique
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1318.5, now); // E6 agradável e limpo
+    
+    // Envelope macio e ultra-curto (50ms)
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(0.14, now + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.050);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.052);
+  } catch (e) {
+    console.warn('Audio feedback failed:', e);
+  }
+}
+
+/**
+ * Som de Confirmação de Lote / Finalização de Bombas Bipadas
+ * Tom: Bip duplo curto e refinado (35ms cada tom, 1046 Hz -> 1318 Hz)
+ * Discreto, rápido e conclusivo para ambientes clínicos
+ */
+export function playBatchConfirmSound() {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+
+    // Primeiro micro-bip: 1046.5 Hz (C6, 30ms)
     const osc1 = ctx.createOscillator();
     const gain1 = ctx.createGain();
     osc1.type = 'sine';
     osc1.frequency.setValueAtTime(1046.5, now);
-    gain1.gain.setValueAtTime(0.001, now);
-    gain1.gain.linearRampToValueAtTime(0.18, now + 0.006);
-    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+    gain1.gain.setValueAtTime(0.0001, now);
+    gain1.gain.linearRampToValueAtTime(0.12, now + 0.004);
+    gain1.gain.exponentialRampToValueAtTime(0.0001, now + 0.035);
     osc1.connect(gain1);
     gain1.connect(ctx.destination);
     osc1.start(now);
-    osc1.stop(now + 0.09);
+    osc1.stop(now + 0.036);
 
-    // Nota 2: 1567.98 Hz (G6) - ressonância cristalina harmoniosa
+    // Segundo micro-bip: 1318.5 Hz (E6, 40ms)
     const osc2 = ctx.createOscillator();
     const gain2 = ctx.createGain();
     osc2.type = 'sine';
-    osc2.frequency.setValueAtTime(1567.98, now + 0.045);
-    gain2.gain.setValueAtTime(0.001, now + 0.045);
-    gain2.gain.linearRampToValueAtTime(0.22, now + 0.052);
-    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+    osc2.frequency.setValueAtTime(1318.5, now + 0.045);
+    gain2.gain.setValueAtTime(0.0001, now + 0.045);
+    gain2.gain.linearRampToValueAtTime(0.13, now + 0.050);
+    gain2.gain.exponentialRampToValueAtTime(0.0001, now + 0.090);
     osc2.connect(gain2);
     gain2.connect(ctx.destination);
     osc2.start(now + 0.045);
-    osc2.stop(now + 0.22);
-
-    // Harmônico sutil e suave: 2093 Hz (C7)
-    const osc3 = ctx.createOscillator();
-    const gain3 = ctx.createGain();
-    osc3.type = 'sine';
-    osc3.frequency.setValueAtTime(2093, now + 0.045);
-    gain3.gain.setValueAtTime(0.001, now + 0.045);
-    gain3.gain.linearRampToValueAtTime(0.06, now + 0.052);
-    gain3.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
-    osc3.connect(gain3);
-    gain3.connect(ctx.destination);
-    osc3.start(now + 0.045);
-    osc3.stop(now + 0.18);
-
+    osc2.stop(now + 0.092);
   } catch (e) {
     console.warn('Audio feedback failed:', e);
   }

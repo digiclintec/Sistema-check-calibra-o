@@ -34,9 +34,9 @@ import {
   Package,
   Check
 } from 'lucide-react';
-import confetti from 'canvas-confetti';
 import {
   playSuccessSound,
+  playBatchConfirmSound,
   playWarningSound,
   playErrorSound,
   playAlreadyCheckedSound,
@@ -1323,11 +1323,9 @@ export default function ScannerModal({
       await onBatchCheck(itemsPayload, effectiveMods);
     }
 
-    confetti({
-      particleCount: 120,
-      spread: 70,
-      origin: { y: 0.6 }
-    });
+    if (soundEnabled) {
+      playBatchConfirmSound();
+    }
 
     setStagedItems([]);
     setLastScannedFeedback(null);
