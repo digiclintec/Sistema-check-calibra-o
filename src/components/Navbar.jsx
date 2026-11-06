@@ -18,7 +18,8 @@ import {
   MoreVertical,
   ChevronDown,
   GitMerge,
-  RotateCcw
+  RotateCcw,
+  User
 } from 'lucide-react';
 
 export default function Navbar({ 
@@ -204,6 +205,19 @@ export default function Navbar({
                   </span>
                 )}
               </button>
+
+              <button
+                onClick={() => onChangeMainTab('perfil')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                  activeMainTab === 'perfil'
+                    ? 'bg-purple-600 text-white shadow-sm ring-1 ring-purple-500'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+                title="Perfil do Técnico: Frente de Trabalho e Opções de Checagem"
+              >
+                <User className="w-3.5 h-3.5 shrink-0" />
+                <span>Perfil do Técnico</span>
+              </button>
             </nav>
           )}
 
@@ -306,21 +320,27 @@ export default function Navbar({
                   
                   {/* Cabeçalho do Menu com Usuário */}
                   {currentUser && (
-                    <div className="px-3 py-2 text-xs">
-                      <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMoreMenu(false);
+                        if (onChangeMainTab) onChangeMainTab('perfil');
+                      }}
+                      className="w-full text-left px-3 py-2 text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition block"
+                      title="Abrir Perfil do Técnico"
+                    >
+                      <div className="flex items-center justify-between gap-1.5">
                         <span className="font-bold text-slate-900 dark:text-white truncate">
                           {currentUser.name || 'Operador'}
                         </span>
-                        {isMaster && (
-                          <span className="text-[9px] font-black uppercase px-1 py-0.2 bg-amber-500/10 text-amber-500 border border-amber-500/30 rounded">
-                            Master
-                          </span>
-                        )}
+                        <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400">
+                          Perfil →
+                        </span>
                       </div>
                       <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate mt-0.5">
                         {currentUser.email || ''}
                       </p>
-                    </div>
+                    </button>
                   )}
 
                   {/* Ações e Ferramentas */}
@@ -419,16 +439,22 @@ export default function Navbar({
             {/* Perfil do Usuário e Sair (visível em tablet/desktop sm+) */}
             {currentUser && (
               <div className="flex items-center gap-1.5 pl-1.5 border-l border-slate-200 dark:border-slate-800 shrink-0">
-                <div 
-                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center font-bold text-xs text-slate-700 dark:text-slate-200 shrink-0"
-                  title={`${currentUser.name || 'Usuário'} (${currentUser.email || ''})`}
+                <button
+                  type="button"
+                  onClick={() => onChangeMainTab && onChangeMainTab('perfil')}
+                  className={`w-7 h-7 sm:w-8 sm:h-8 rounded-xl border flex items-center justify-center font-bold text-xs transition active:scale-95 shrink-0 ${
+                    activeMainTab === 'perfil'
+                      ? 'bg-purple-600 text-white border-purple-400 shadow-md shadow-purple-500/30 ring-2 ring-purple-500/40'
+                      : 'bg-slate-100 dark:bg-slate-800 hover:bg-purple-50 dark:hover:bg-purple-950/40 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200'
+                  }`}
+                  title={`Abrir Perfil do Técnico: ${currentUser.name || 'Usuário'} (${currentUser.email || ''})`}
                 >
                   {isMaster ? (
                     <Crown className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-500" />
                   ) : (
                     <span>{(currentUser.name || currentUser.email || 'U').charAt(0).toUpperCase()}</span>
                   )}
-                </div>
+                </button>
 
                 <button
                   onClick={onLogout}
@@ -450,11 +476,11 @@ export default function Navbar({
           Garante navegação com 100% de largura, sem cortes ou sobreposições
       ============================================================ */}
       {onChangeMainTab && (
-        <div className="lg:hidden w-full bg-slate-50/95 dark:bg-[#090f1d]/95 border-t border-slate-200 dark:border-slate-800 px-2.5 sm:px-4 py-1.5">
-          <nav className="max-w-xl mx-auto grid grid-cols-3 gap-1 bg-white/90 dark:bg-slate-800/90 p-0.5 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-xs">
+        <div className="lg:hidden w-full bg-slate-50/95 dark:bg-[#090f1d]/95 border-t border-slate-200 dark:border-slate-800 px-2 sm:px-4 py-1.5">
+          <nav className="max-w-xl mx-auto grid grid-cols-4 gap-1 bg-white/90 dark:bg-slate-800/90 p-0.5 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-xs">
             <button
               onClick={() => onChangeMainTab('conferencia')}
-              className={`py-1.5 px-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 truncate ${
+              className={`py-1.5 px-1 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 truncate ${
                 activeMainTab === 'conferencia'
                   ? 'bg-blue-600 text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -466,7 +492,7 @@ export default function Navbar({
 
             <button
               onClick={() => onChangeMainTab('auditoria')}
-              className={`py-1.5 px-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 truncate ${
+              className={`py-1.5 px-1 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 truncate ${
                 activeMainTab === 'auditoria'
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -474,12 +500,12 @@ export default function Navbar({
               title="Espelho Seguro da Planilha"
             >
               <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">Espelho Seguro</span>
+              <span className="truncate">Espelho</span>
             </button>
 
             <button
               onClick={() => onChangeMainTab('planejamento')}
-              className={`py-1.5 px-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 relative truncate ${
+              className={`py-1.5 px-1 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 relative truncate ${
                 activeMainTab === 'planejamento'
                   ? 'bg-indigo-600 text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -487,7 +513,7 @@ export default function Navbar({
               title="Planejamento de Metas"
             >
               <Calendar className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">Planejamento</span>
+              <span className="truncate">Metas</span>
               {monthlyPlans.length > 0 && (
                 <span className={`text-[9px] px-1 py-0.2 rounded-full font-black shrink-0 ${
                   activeMainTab === 'planejamento' 
@@ -497,6 +523,19 @@ export default function Navbar({
                   {monthlyPlans.length}
                 </span>
               )}
+            </button>
+
+            <button
+              onClick={() => onChangeMainTab('perfil')}
+              className={`py-1.5 px-1 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 truncate ${
+                activeMainTab === 'perfil'
+                  ? 'bg-purple-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+              title="Perfil do Técnico: Frente de Trabalho e Opções"
+            >
+              <User className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">Perfil</span>
             </button>
           </nav>
         </div>

@@ -19,7 +19,8 @@ import {
   Unlink,
   ExternalLink,
   GitMerge,
-  RotateCcw
+  RotateCcw,
+  User
 } from 'lucide-react';
 
 import LoginScreen from './components/LoginScreen';
@@ -36,6 +37,7 @@ import InstallPromptModal from './components/InstallPromptModal';
 import MobileBottomBar from './components/MobileBottomBar';
 import TeamManagementModal from './components/TeamManagementModal';
 import MonthlyPlanningTab from './components/MonthlyPlanningTab';
+import TechnicianProfileTab from './components/TechnicianProfileTab';
 import SerialScanModal from './components/SerialScanModal';
 import MassActionPasswordModal from './components/MassActionPasswordModal';
 import SmartBatchModal from './components/SmartBatchModal';
@@ -1841,6 +1843,20 @@ export default function App() {
               setIsScannerOpen(true);
             }}
           />
+        ) : activeMainTab === 'perfil' ? (
+          <TechnicianProfileTab
+            currentUser={currentUser}
+            activeHospital={activeHospital}
+            equipments={equipments}
+            activeModality={activeModality}
+            onChangeModality={setActiveModality}
+            serviceConfig={serviceConfig}
+            onOpenServiceConfig={() => setServiceConfigModal({ isOpen: true, isInitialSetup: false })}
+            soundEnabled={soundEnabled}
+            setSoundEnabled={setSoundEnabled}
+            onNavigateToConferencia={() => setActiveMainTab('conferencia')}
+            onLogout={handleLogout}
+          />
         ) : equipments.length === 0 ? (
           /* Empty / Welcome State */
           <HeroBanner
@@ -1961,14 +1977,33 @@ export default function App() {
               </div>
             </div>
 
-            {/* Seletor de Frente de Trabalho / Equipes Técnicas */}
-            <ModalityBar
-              activeModality={activeModality}
-              onChangeModality={setActiveModality}
-              equipments={equipments}
-              serviceConfig={serviceConfig}
-              onOpenServiceConfig={() => setServiceConfigModal({ isOpen: true, isInitialSetup: false })}
-            />
+            {/* Barra Compacta da Frente Ativa com Acesso Rápido ao Perfil do Técnico */}
+            <div className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-3 shadow-xs flex items-center justify-between gap-2.5 flex-wrap">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 hidden xs:inline">
+                  Frente Ativa:
+                </span>
+                <span className={`text-xs font-black px-2.5 py-1 rounded-xl inline-flex items-center gap-1.5 ${MODALITIES[activeModality]?.badgeClass || ''}`}>
+                  <span>{MODALITIES[activeModality]?.icon}</span>
+                  <span className="truncate">{MODALITIES[activeModality]?.name}</span>
+                </span>
+                <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 font-bold hidden sm:inline">
+                  ({stats.checked}/{stats.total} itens • {stats.percent}%)
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 ml-auto">
+                <button
+                  type="button"
+                  onClick={() => setActiveMainTab('perfil')}
+                  className="px-3 py-1.5 bg-purple-600/10 hover:bg-purple-600/20 text-purple-700 dark:text-purple-300 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-purple-500/30 transition active:scale-95 shadow-xs"
+                  title="Acessar Perfil do Técnico para trocar de frente de trabalho ou ajustar opções de checagem"
+                >
+                  <User className="w-3.5 h-3.5 text-purple-500" />
+                  <span>Perfil do Técnico & Opções</span>
+                </button>
+              </div>
+            </div>
 
             {/* Stats Cards & Progress */}
             <StatsCards
