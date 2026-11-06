@@ -1830,6 +1830,8 @@ export default function App() {
         onChangeModality={setActiveModality}
         undoCheckpoint={undoCheckpoint?.hospitalId === activeHospitalId ? undoCheckpoint : null}
         onUndo={handleUndoAction}
+        onResetData={handleResetData}
+        googleSheetUrl={googleSheetUrl}
       />
 
       {/* Main Content Area */}
@@ -1929,140 +1931,7 @@ export default function App() {
           /* Active Spreadsheet View */
           <div className="space-y-4 sm:space-y-6 w-full">
             
-            {/* Active Hospital & File Header info & live sync indicator */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-3.5 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm w-full overflow-hidden">
-              <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 border border-blue-200 dark:border-blue-900/50">
-                  <Building2 className="w-4 h-4 sm:w-5 sm:h-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-                    <h3 className="font-bold text-slate-900 dark:text-white text-xs sm:text-base truncate">
-                      {activeHospital?.name || 'Hospital Central'}
-                    </h3>
-                    <span className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-2 py-0.5 rounded-full font-mono shrink-0">
-                      {equipments.length} itens
-                    </span>
-                    {googleSheetUrl ? (
-                      <span className="text-[10px] bg-emerald-50 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800/80 px-2 py-0.5 rounded-full font-bold flex items-center gap-1 shrink-0">
-                        <RefreshCw className={`w-3 h-3 ${isSyncingGoogle ? 'animate-spin text-emerald-600' : 'text-emerald-500'}`} />
-                        <span>Google Sheets Ao Vivo</span>
-                      </span>
-                    ) : (
-                      <span className="text-[10px] bg-blue-50 text-blue-700 dark:bg-blue-950/80 dark:text-blue-400 border border-blue-200 dark:border-blue-900/60 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1 shrink-0">
-                        <FileSpreadsheet className="w-3 h-3 text-blue-500" />
-                        <span>Arquivo Local</span>
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5 flex items-center gap-1.5 flex-wrap">
-                    <span>Arquivo ativo: <strong className="text-slate-700 dark:text-slate-300">{activeSheetName || 'Planilha Compartilhada'}</strong></span>
-                    {googleSheetUrl && (
-                      <a 
-                        href={googleSheetUrl} 
-                        target="_blank" 
-                        rel="noopener noreferrer" 
-                        className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-0.5 font-bold shrink-0"
-                        title="Abrir planilha no Google Sheets em nova aba"
-                      >
-                        <span>Abrir no Google</span>
-                        <ExternalLink className="w-2.5 h-2.5" />
-                      </a>
-                    )}
-                  </p>
-                </div>
-              </div>
 
-              {/* Action Buttons */}
-              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 self-end sm:self-auto w-full sm:w-auto flex-wrap">
-                {/* Sincronização Google Sheets Ao Vivo */}
-                {googleSheetUrl ? (
-                  <>
-                    <button
-                      onClick={() => handleSyncGoogleSheet(true)}
-                      disabled={isSyncingGoogle}
-                      className="flex-1 sm:flex-initial py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition shadow-sm disabled:opacity-50"
-                      title="Sincronizar agora com o Google Sheets para puxar novos itens ou edições"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${isSyncingGoogle ? 'animate-spin' : ''}`} />
-                      <span>{isSyncingGoogle ? 'Sincronizando...' : 'Sincronizar Google'}</span>
-                    </button>
-
-                    <button
-                      onClick={handleUnlinkGoogleSheet}
-                      className="p-2 text-slate-400 hover:text-amber-500 rounded-xl hover:bg-amber-50 dark:hover:bg-amber-950/30 transition shrink-0"
-                      title="Desvincular Google Sheets e manter apenas como arquivo local deste hospital"
-                    >
-                      <Unlink className="w-4 h-4" />
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    onClick={() => setIsGoogleModalOpen(true)}
-                    className="flex-1 sm:flex-initial py-2 px-2.5 sm:px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition border border-slate-200 dark:border-slate-700"
-                    title="Conectar um link público do Google Sheets para ver alterações da equipe em tempo real"
-                  >
-                    <Link2 className="w-3.5 h-3.5 text-emerald-500" />
-                    <span className="hidden sm:inline">Vincular Link Google</span>
-                    <span className="sm:hidden">Vincular Google</span>
-                  </button>
-                )}
-
-                <button
-                  onClick={handleExport}
-                  className="flex-1 sm:flex-initial py-2 px-3 sm:px-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition shadow-sm"
-                  title="Exportar planilha atualizada em formato Excel (.xlsx) com cores e checks"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Baixar Excel</span>
-                </button>
-
-                <button
-                  onClick={() => setIsMergeModalOpen(true)}
-                  className="flex-1 sm:flex-initial py-2 px-3 sm:px-3.5 bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700 hover:from-indigo-500 hover:to-blue-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition shadow-sm active:scale-95"
-                  title="Mesclar lista de calibrações de outra planilha ou PDF ao plano atual sem apagar nem duplicar equipamentos"
-                >
-                  <GitMerge className="w-3.5 h-3.5 text-indigo-200" />
-                  <span>Mesclar Calibrações (XLS/PDF)</span>
-                </button>
-
-                <button
-                  onClick={handleResetData}
-                  className="p-2 text-slate-400 hover:text-red-500 rounded-xl hover:bg-red-50 dark:hover:bg-red-950/30 transition shrink-0"
-                  title="Trocar ou Limpar Planilha deste Hospital"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            {/* Barra Compacta da Frente Ativa com Acesso Rápido ao Perfil do Técnico */}
-            <div className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-3 shadow-xs flex items-center justify-between gap-2.5 flex-wrap">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 hidden xs:inline">
-                  Frente Ativa:
-                </span>
-                <span className={`text-xs font-black px-2.5 py-1 rounded-xl inline-flex items-center gap-1.5 ${MODALITIES[activeModality]?.badgeClass || ''}`}>
-                  <span>{MODALITIES[activeModality]?.icon}</span>
-                  <span className="truncate">{MODALITIES[activeModality]?.name}</span>
-                </span>
-                <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 font-bold hidden sm:inline">
-                  ({stats.checked}/{stats.total} itens • {stats.percent}%)
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2 ml-auto">
-                <button
-                  type="button"
-                  onClick={() => setActiveMainTab('perfil')}
-                  className="px-3 py-1.5 bg-purple-600/10 hover:bg-purple-600/20 text-purple-700 dark:text-purple-300 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-purple-500/30 transition active:scale-95 shadow-xs"
-                  title="Acessar Perfil do Técnico para trocar de frente de trabalho ou ajustar opções de checagem"
-                >
-                  <User className="w-3.5 h-3.5 text-purple-500" />
-                  <span>Perfil do Técnico & Opções</span>
-                </button>
-              </div>
-            </div>
 
             {/* Stats Cards & Progress */}
             <StatsCards
