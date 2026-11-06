@@ -11,17 +11,19 @@ export default function MobileBottomBar({
   totalCount
 }) {
   return (
-    <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 w-full max-w-full bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 px-2 py-1.5 flex items-center justify-around shadow-2xl safe-area-bottom overflow-hidden">
+    <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 w-full max-w-full bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 px-3 py-2 flex items-center justify-around shadow-2xl safe-area-bottom">
       
       {/* Filter Button */}
       <button
+        type="button"
         onClick={onCycleFilter}
-        className="flex flex-col items-center justify-center p-1 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition"
+        className="flex flex-col items-center justify-center px-2 py-1 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 active:scale-95 transition"
+        title="Filtrar Lista"
       >
         <div className="relative">
           <ListFilter className="w-5 h-5" />
           {checkedCount > 0 && (
-            <span className="absolute -top-1 -right-2 text-[9px] font-extrabold px-1 rounded-full bg-blue-600 text-white">
+            <span className="absolute -top-1 -right-2.5 text-[9px] font-extrabold px-1.5 py-0.2 rounded-full bg-blue-600 text-white shadow-xs">
               {checkedCount}
             </span>
           )}
@@ -33,28 +35,36 @@ export default function MobileBottomBar({
 
       {/* Digitalizar Foto OCR Button */}
       <button
+        type="button"
         onClick={onOpenSerialScan}
-        className="flex flex-col items-center justify-center p-1 text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 transition"
+        className="flex flex-col items-center justify-center px-2 py-1 text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 active:scale-95 transition"
+        title="Leitura por Foto OCR"
       >
-        <Cpu className="w-5 h-5 animate-pulse" />
+        <Cpu className="w-5 h-5" />
         <span className="text-[10px] font-bold mt-0.5">
           Foto OCR
         </span>
       </button>
 
-      {/* Main Center Floating Scan Button (Thumb-friendly) */}
+      {/* Botão Principal de Captura / Bipar (Perfeitamente enquadrado dentro da barra) */}
       <button
+        type="button"
         onClick={onOpenScanner}
-        className="-mt-5 w-14 h-14 rounded-full bg-gradient-to-tr from-blue-600 via-indigo-600 to-blue-500 hover:from-blue-500 hover:to-indigo-400 text-white flex flex-col items-center justify-center shadow-lg shadow-blue-500/40 ring-4 ring-white dark:ring-slate-900 active:scale-90 transition-transform"
+        className="flex flex-col items-center justify-center px-4 py-1.5 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-blue-500 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg shadow-blue-500/30 border border-blue-400/30 active:scale-95 transition-all"
+        title="Abrir Câmera para Bipar"
       >
-        <Camera className="w-6 h-6 stroke-[2.5]" />
-        <span className="text-[8px] font-black uppercase tracking-tighter">BIPAR</span>
+        <Camera className="w-5 h-5 stroke-[2.5]" />
+        <span className="text-[9px] font-black uppercase tracking-wider mt-0.5">
+          BIPAR
+        </span>
       </button>
 
       {/* Install Mobile App / APK Button */}
       <button
+        type="button"
         onClick={onOpenInstall}
-        className="flex flex-col items-center justify-center p-1 text-slate-600 dark:text-slate-400 hover:text-emerald-500 dark:hover:text-emerald-400 transition"
+        className="flex flex-col items-center justify-center px-2 py-1 text-slate-600 dark:text-slate-400 hover:text-emerald-500 dark:hover:text-emerald-400 active:scale-95 transition"
+        title="Baixar Aplicativo Android / APK"
       >
         <Smartphone className="w-5 h-5 text-emerald-500" />
         <span className="text-[10px] font-extrabold mt-0.5 text-emerald-600 dark:text-emerald-400">
