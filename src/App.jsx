@@ -1727,7 +1727,7 @@ export default function App() {
       <MergeCalibrationsModal
         isOpen={isMergeModalOpen}
         onClose={() => setIsMergeModalOpen(false)}
-        equipments={equipments}
+        equipments={equipments || []}
         serviceConfig={serviceConfig}
         currentUser={currentUser}
         onApplyMerge={handleApplyMerge}

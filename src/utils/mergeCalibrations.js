@@ -1,5 +1,5 @@
-import { parseWorkbookBuffer } from './sheetParser';
-import { findBestEquipmentMatches, cleanAlphanumeric } from './fuzzyMatch';
+import { parseWorkbookBuffer } from './sheetParser.js';
+import { findBestEquipmentMatches, cleanAlphanumeric } from './fuzzyMatch.js';
 
 /**
  * Lê arquivo (XLSX, XLS, CSV ou PDF) e identifica bombas e calibrações correspondentes

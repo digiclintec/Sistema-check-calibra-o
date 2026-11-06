@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { 
   GitMerge, 
   Upload, 
@@ -17,9 +17,8 @@ import {
   ArrowRight,
   Info
 } from 'lucide-react';
-import confetti from 'canvas-confetti';
-import { parseFileForCalibrationMerge, mergeCalibrationsIntoEquipments } from '../utils/mergeCalibrations';
-import { MODALITIES } from '../utils/modalities';
+import { parseFileForCalibrationMerge, mergeCalibrationsIntoEquipments } from '../utils/mergeCalibrations.js';
+import { MODALITIES } from '../utils/modalities.js';
 
 export default function MergeCalibrationsModal({
   isOpen,
@@ -31,6 +30,10 @@ export default function MergeCalibrationsModal({
   hospitalName = '',
   planTitle = ''
 }) {
+  const safeEquipments = useMemo(() => {
+    return Array.isArray(equipments) ? equipments : [];
+  }, [equipments]);
+
   const [selectedFile, setSelectedFile] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [parseResult, setParseResult] = useState(null);
@@ -48,10 +51,23 @@ export default function MergeCalibrationsModal({
   });
   const [overwriteExisting, setOverwriteExisting] = useState(false);
   const [inspectorName, setInspectorName] = useState(() => {
-    return currentUser?.name ? `${currentUser.name} (${currentUser.email || ''})` : (currentUser?.email || 'Técnico Autorizado');
+    if (currentUser?.name) {
+      return `${currentUser.name}${currentUser.email ? ` (${currentUser.email})` : ''}`;
+    }
+    return currentUser?.email || 'Técnico Responsável';
   });
 
   const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      if (currentUser?.name) {
+        setInspectorName(`${currentUser.name}${currentUser.email ? ` (${currentUser.email})` : ''}`);
+      } else if (currentUser?.email) {
+        setInspectorName(currentUser.email);
+      }
+    }
+  }, [isOpen, currentUser]);
 
   if (!isOpen) return null;
 
@@ -75,7 +91,7 @@ export default function MergeCalibrationsModal({
     setIsProcessing(true);
     setErrorMessage('');
     try {
-      const res = await parseFileForCalibrationMerge(file, equipments);
+      const res = await parseFileForCalibrationMerge(file, safeEquipments);
       setParseResult(res);
       if (res.totalMatches === 0) {
         setErrorMessage('Nenhuma bomba deste arquivo correspondeu ao plano ativo. Verifique se o arquivo contém as Tags/IDECs ou Séries deste hospital.');
@@ -117,9 +133,9 @@ export default function MergeCalibrationsModal({
 
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
-        const tag = (m.targetEquipment.tag || '').toLowerCase();
-        const serie = (m.targetEquipment.serie || '').toLowerCase();
-        const eqName = (m.targetEquipment.equipamento || '').toLowerCase();
+        const tag = (m.targetEquipment?.tag || '').toLowerCase();
+        const serie = (m.targetEquipment?.serie || '').toLowerCase();
+        const eqName = (m.targetEquipment?.equipamento || '').toLowerCase();
         const reason = (m.matchReason || '').toLowerCase();
         return tag.includes(q) || serie.includes(q) || eqName.includes(q) || reason.includes(q);
       }
@@ -135,7 +151,7 @@ export default function MergeCalibrationsModal({
     if (!parseResult || selectedCount === 0) return;
 
     const { updatedEquipments, updatedCount } = mergeCalibrationsIntoEquipments(
-      equipments,
+      safeEquipments,
       parseResult.matches,
       {
         modalities: applyModalities,
@@ -151,47 +167,56 @@ export default function MergeCalibrationsModal({
       );
     }
 
-    confetti({
-      particleCount: 150,
-      spread: 80,
-      origin: { y: 0.6 }
-    });
+    try {
+      const { default: confetti } = await import('canvas-confetti');
+      confetti({
+        particleCount: 150,
+        spread: 80,
+        origin: { y: 0.6 }
+      });
+    } catch (e) {
+      // Ignora se confetti não estiver disponível
+    }
 
     onClose();
     handleReset();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/80 backdrop-blur-md"
+      onClick={() => { onClose(); handleReset(); }}
+    >
       <div 
-        className="w-full max-w-4xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col max-h-[94vh] overflow-hidden"
+        className="relative z-10 w-full max-w-3xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col max-h-[90vh] overflow-hidden text-slate-900 dark:text-slate-100"
         onClick={e => e.stopPropagation()}
       >
         
         {/* Header */}
         <div className="p-4 sm:p-5 bg-gradient-to-r from-blue-700 via-indigo-700 to-slate-900 text-white shrink-0 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-white/15 backdrop-blur-md flex items-center justify-center border border-white/20 shadow-inner">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-white/15 backdrop-blur-md flex items-center justify-center border border-white/20 shadow-inner shrink-0">
               <GitMerge className="w-5 h-5 sm:w-6 sm:h-6 text-blue-200" />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="font-extrabold text-base sm:text-lg tracking-tight">
+                <h3 className="font-extrabold text-base sm:text-lg tracking-tight truncate">
                   Mesclar Calibrações Feitas
                 </h3>
-                <span className="text-[10px] bg-white/20 text-white px-2 py-0.5 rounded-full font-bold">
+                <span className="text-[10px] bg-white/20 text-white px-2 py-0.5 rounded-full font-bold shrink-0">
                   XLS, XLSX, CSV ou PDF
                 </span>
               </div>
-              <p className="text-xs text-white/80 truncate">
-                {hospitalName} {planTitle ? `• ${planTitle}` : ''} • ({equipments.length} bombas no plano)
+              <p className="text-xs text-white/80 truncate mt-0.5">
+                {hospitalName || 'Hospital'} {planTitle ? `• ${planTitle}` : ''} • ({safeEquipments.length} bombas no plano)
               </p>
             </div>
           </div>
 
           <button
+            type="button"
             onClick={() => { onClose(); handleReset(); }}
-            className="p-1.5 rounded-full text-white/70 hover:text-white hover:bg-white/10 transition"
+            className="p-1.5 rounded-full text-white/70 hover:text-white hover:bg-white/10 transition shrink-0"
             title="Fechar"
           >
             <X className="w-5 h-5" />
@@ -225,10 +250,10 @@ export default function MergeCalibrationsModal({
             <div className="space-y-4">
               <div 
                 onClick={() => !isProcessing && fileInputRef.current?.click()}
-                className={`border-2 border-dashed rounded-3xl p-8 sm:p-12 text-center transition cursor-pointer flex flex-col items-center justify-center gap-3 ${
+                className={`border-2 border-dashed rounded-3xl p-6 sm:p-10 text-center transition cursor-pointer flex flex-col items-center justify-center gap-3 ${
                   isProcessing 
                     ? 'border-blue-400 bg-blue-50/50 dark:bg-blue-950/20 cursor-wait'
-                    : 'border-slate-300 dark:border-slate-700 hover:border-blue-500 hover:bg-blue-50/30 dark:hover:bg-blue-950/20 bg-slate-50/50 dark:bg-slate-900/40'
+                    : 'border-slate-300 dark:border-slate-700 hover:border-blue-500 hover:bg-blue-50/30 dark:hover:bg-blue-950/20 bg-slate-50/70 dark:bg-slate-800/40'
                 }`}
               >
                 <div className="w-16 h-16 rounded-3xl bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-300 flex items-center justify-center shadow-inner">
@@ -241,7 +266,7 @@ export default function MergeCalibrationsModal({
 
                 <div>
                   <h4 className="font-extrabold text-slate-900 dark:text-white text-base sm:text-lg">
-                    {isProcessing ? 'Cruzando bombas com seu plano ativo...' : 'Selecione ou arraste a lista de calibrações'}
+                    {isProcessing ? 'Cruzando bombas com seu plano ativo...' : 'Selecione a lista de calibrações'}
                   </h4>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
                     {isProcessing 
@@ -252,11 +277,11 @@ export default function MergeCalibrationsModal({
 
                 {!isProcessing && (
                   <div className="flex items-center gap-3 mt-2 flex-wrap justify-center">
-                    <span className="px-3 py-1 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 shadow-xs">
+                    <span className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 shadow-sm">
                       <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
                       <span>Planilha Excel / CSV</span>
                     </span>
-                    <span className="px-3 py-1 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 shadow-xs">
+                    <span className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 shadow-sm">
                       <FileText className="w-4 h-4 text-rose-500" />
                       <span>Relatório em PDF</span>
                     </span>
@@ -312,7 +337,7 @@ export default function MergeCalibrationsModal({
                 <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/80 text-center">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Já Calibradas</span>
                   <div className="text-lg font-black text-slate-700 dark:text-slate-300">
-                    {parseResult.matches.filter(m => m.isAlreadyChecked).length}
+                    {(parseResult.matches || []).filter(m => m.isAlreadyChecked).length}
                   </div>
                   <span className="text-[10px] text-slate-500 font-bold">
                     já estavam OK
@@ -388,14 +413,14 @@ export default function MergeCalibrationsModal({
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                      Bombas para Mesclar ({selectedCount} de {parseResult.matches.length}):
+                      Bombas para Mesclar ({selectedCount} de {(parseResult.matches || []).length}):
                     </span>
                     <button
                       type="button"
                       onClick={handleToggleSelectAll}
                       className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline"
                     >
-                      {parseResult.matches.every(m => m.selected) ? 'Desmarcar Todas' : 'Marcar Todas'}
+                      {(parseResult.matches || []).every(m => m.selected) ? 'Desmarcar Todas' : 'Marcar Todas'}
                     </button>
                   </div>
 
@@ -417,7 +442,7 @@ export default function MergeCalibrationsModal({
                       onChange={e => setFilterMode(e.target.value)}
                       className="px-2 py-1 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium"
                     >
-                      <option value="all">Todas ({parseResult.matches.length})</option>
+                      <option value="all">Todas ({(parseResult.matches || []).length})</option>
                       <option value="pending_only">Somente Pendentes ({newCalibrationsCount})</option>
                       <option value="already_checked">Já Calibradas</option>
                     </select>
@@ -445,7 +470,7 @@ export default function MergeCalibrationsModal({
                         </tr>
                       ) : (
                         filteredMatches.map((m, idx) => {
-                          const eq = m.targetEquipment;
+                          const eq = m.targetEquipment || {};
                           return (
                             <tr 
                               key={eq.id || idx}
@@ -464,7 +489,7 @@ export default function MergeCalibrationsModal({
                               </td>
                               <td className="py-2.5 px-3">
                                 <div className="font-bold text-slate-900 dark:text-white truncate max-w-[200px]">
-                                  {eq.equipamento}
+                                  {eq.equipamento || 'Equipamento'}
                                 </div>
                                 <div className="text-[10px] text-slate-400">
                                   {eq.fabricante} {eq.modelo}
@@ -540,4 +565,3 @@ export default function MergeCalibrationsModal({
     </div>
   );
 }
-
