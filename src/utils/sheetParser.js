@@ -87,6 +87,48 @@ export function parseCheckValue(val) {
 }
 
 /**
+ * Detecta se um texto ou célula indica Manutenção (em manutenção, manutenção externa, conserto, reparo, oficina, etc.)
+ */
+export function isMaintenanceExternalText(rawVal) {
+  if (!rawVal) return false;
+  const s = String(rawVal)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+  if (!s) return false;
+
+  // Exclui preventiva explícita (ex: "Manutenção Preventiva", "MP")
+  if (s.includes('preventiv') || s === 'mp') return false;
+
+  // Termos diretos que caracterizam Manutenção / Manutenção Externa
+  if (
+    s === 'manutencao' ||
+    s === 'em manutencao' ||
+    s.includes('em manut') ||
+    s.includes('extern') ||
+    s.includes('terceir') ||
+    s.includes('conserto') ||
+    s.includes('reparo') ||
+    s.includes('assistenc') ||
+    s.includes('oficina') ||
+    s.includes('bancada') ||
+    s.includes('recolhid') ||
+    s.includes('defeito') ||
+    s.includes('quebrad') ||
+    s.includes('avariad') ||
+    s.includes('aguardando') ||
+    s.includes('fora de uso') ||
+    s.includes('fora da unidade') ||
+    s.includes('fora do hosp')
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Converte valor de data (texto BR, ISO ou Date) para formato ISO
  */
 export function parseDateValue(val) {
@@ -265,10 +307,20 @@ export function identifyColumns(headers, sampleRows = []) {
     )) {
       mapping.motivoExterna = h;
     }
-    // Check / Status de manutenção externa (ex: "MANUT. EXTERNA", "EXTERNA", "TERCEIRIZADA", "CHECK EXTERNA", "STATUS EXTERNA")
-    else if (!mapping.checkExterna && (
-      (norm.includes('extern') || norm.includes('terceir')) &&
-      (norm.includes('status') || norm.includes('check') || norm.includes('situacao') || norm.includes('ok') || norm.includes('manut') || norm === 'externa' || norm === 'manutencaoexterna' || norm === 'manutexterna')
+    // Check / Status de manutenção (ex: "MANUTENÇÃO", "EM MANUTENÇÃO", "MANUT", "MANUT. EXTERNA", "EXTERNA", "TERCEIRIZADA", "CONSERTO", "CHECK EXTERNA")
+    else if (!mapping.checkExterna && !norm.includes('preventiv') && (
+      norm === 'manutencao' ||
+      norm === 'emmanutencao' ||
+      norm === 'manut' ||
+      norm === 'emmanut' ||
+      norm === 'externa' ||
+      norm === 'manutencaoexterna' ||
+      norm === 'manutexterna' ||
+      norm === 'conserto' ||
+      norm === 'reparo' ||
+      norm.includes('extern') ||
+      norm.includes('terceir') ||
+      (norm.includes('manut') && (norm.includes('status') || norm.includes('check') || norm.includes('situacao') || norm.includes('ok') || norm.includes('em')))
     )) {
       mapping.checkExterna = h;
     }
@@ -545,7 +597,7 @@ export function normalizeRows(rows, mapping) {
     
     // Status Geral ou Legado
     const rawChecadoGeral = mapping.checadoGeral ? row[mapping.checadoGeral] : false;
-    const isChecadoGeral = parseCheckValue(rawChecadoGeral);
+    let isChecadoGeral = parseCheckValue(rawChecadoGeral);
 
     // FRENTE 1: CALIBRAÇÃO
     const hasCalCol = Boolean(mapping.checkCalibracao);
@@ -583,39 +635,42 @@ export function normalizeRows(rows, mapping) {
     // FRENTE 4: MANUTENÇÃO EXTERNA / TERCEIRIZADA
     const hasExtCol = Boolean(mapping.checkExterna);
     const rawCheckExt = hasExtCol ? row[mapping.checkExterna] : null;
-    let isExtChecked = hasExtCol ? parseCheckValue(rawCheckExt) : false;
+    let isExtChecked = hasExtCol ? (parseCheckValue(rawCheckExt) || isMaintenanceExternalText(rawCheckExt)) : false;
 
     // Detecção inteligente em colunas de status, tipo ou observações
-    const textHasExternalTerm = (val) => {
-      if (!val) return false;
-      const s = String(val).toLowerCase().trim();
-      return (
-        s.includes('extern') || 
-        s.includes('terceir') || 
-        s.includes('conserto ext') || 
-        s.includes('fora do hosp') ||
-        s.includes('fora da unidade') ||
-        s.includes('recolhida externa') ||
-        s.includes('em manutencao externa') ||
-        s.includes('em manutenção externa')
-      );
-    };
-
     if (!isExtChecked) {
       if (
-        textHasExternalTerm(rawStatus) ||
-        textHasExternalTerm(rawChecadoGeral) ||
-        textHasExternalTerm(row['Status']) ||
-        textHasExternalTerm(row['Situação']) ||
-        textHasExternalTerm(row['Situacao']) ||
-        textHasExternalTerm(row['Tipo']) ||
-        textHasExternalTerm(row['Tipo Manutenção']) ||
-        textHasExternalTerm(row['Tipo Manutencao']) ||
-        textHasExternalTerm(row['Serviço']) ||
-        textHasExternalTerm(row['Servico']) ||
-        textHasExternalTerm(row['Destino'])
+        isMaintenanceExternalText(rawStatus) ||
+        isMaintenanceExternalText(rawChecadoGeral) ||
+        isMaintenanceExternalText(row['Status']) ||
+        isMaintenanceExternalText(row['Situação']) ||
+        isMaintenanceExternalText(row['Situacao']) ||
+        isMaintenanceExternalText(row['Tipo']) ||
+        isMaintenanceExternalText(row['Tipo Manutenção']) ||
+        isMaintenanceExternalText(row['Tipo Manutencao']) ||
+        isMaintenanceExternalText(row['Serviço']) ||
+        isMaintenanceExternalText(row['Servico']) ||
+        isMaintenanceExternalText(row['Destino']) ||
+        isMaintenanceExternalText(row['Obs']) ||
+        isMaintenanceExternalText(row['Observação']) ||
+        isMaintenanceExternalText(row['Observacao']) ||
+        isMaintenanceExternalText(row['MANUTENÇÃO']) ||
+        isMaintenanceExternalText(row['Manutenção']) ||
+        isMaintenanceExternalText(row['Manutencao']) ||
+        isMaintenanceExternalText(row['EM MANUTENÇÃO']) ||
+        isMaintenanceExternalText(row['Em Manutenção'])
       ) {
         isExtChecked = true;
+      }
+
+      // Varredura de fallback em todos os valores da linha
+      if (!isExtChecked) {
+        for (const [k, v] of Object.entries(row)) {
+          if (isMaintenanceExternalText(v)) {
+            isExtChecked = true;
+            break;
+          }
+        }
       }
     }
 
@@ -631,9 +686,10 @@ export function normalizeRows(rows, mapping) {
       ? String(row[mapping.motivoExterna]).trim()
       : 'Calibração e conserto por equipe externa terceirizada';
 
-    // Se estiver em Manutenção Externa e a calibração não veio explicitamente marcada como OK
-    if (isExtChecked && !hasCalCol) {
+    // Se estiver em Manutenção, não pode constar como calibração
+    if (isExtChecked) {
       isCalChecked = false;
+      isChecadoGeral = false;
     }
 
     // Observações, OS e Certificados

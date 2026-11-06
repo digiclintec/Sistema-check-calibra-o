@@ -1,5 +1,67 @@
-import { parseWorkbookBuffer } from './sheetParser.js';
+import { parseWorkbookBuffer, isMaintenanceExternalText } from './sheetParser.js';
 import { findBestEquipmentMatches, cleanAlphanumeric } from './fuzzyMatch.js';
+
+/**
+ * Avalia se um item ou linha importada corresponde à Manutenção / Manutenção Externa
+ */
+export function checkIfItemIsMaintenance(item) {
+  if (!item) return false;
+  if (item.check_externa) return true;
+
+  // 1. Campos diretos mapeados no item
+  const fieldsToCheck = [
+    item.status,
+    item.statusCalibracao,
+    item.situacao,
+    item.tipo,
+    item.servico,
+    item.observacao,
+    item.destino,
+    item.motivo_externa,
+    item.setor,
+    item.setor_retirada
+  ];
+
+  for (const val of fieldsToCheck) {
+    if (isMaintenanceExternalText(val)) return true;
+  }
+
+  // 2. Colunas e valores da linha original do arquivo
+  if (item._originalRow && typeof item._originalRow === 'object') {
+    for (const [key, val] of Object.entries(item._originalRow)) {
+      const cleanKey = String(key)
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim();
+
+      // Se a coluna é sobre manutenção (ex: "MANUTENÇÃO", "EM MANUTENÇÃO", "MANUT", "CONSERTO", etc.)
+      if (
+        !cleanKey.includes('preventiv') &&
+        (
+          cleanKey.includes('manut') || 
+          cleanKey.includes('conserto') || 
+          cleanKey.includes('reparo') || 
+          cleanKey.includes('extern') || 
+          cleanKey.includes('terceir') ||
+          cleanKey.includes('assistenc')
+        )
+      ) {
+        const sVal = String(val ?? '').trim().toLowerCase();
+        if (sVal && sVal !== 'nao' && sVal !== 'não' && sVal !== 'false' && sVal !== '0') {
+          return true;
+        }
+      }
+
+      // Se o valor de QUALQUER célula desta linha contém "manutenção", "em manutenção", etc.
+      if (isMaintenanceExternalText(val)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
 
 /**
  * Lê arquivo (XLSX, XLS, CSV ou PDF) e identifica bombas e calibrações correspondentes
@@ -56,19 +118,8 @@ async function parseExcelFileForMerge(file, currentEquipments = []) {
           if (bestMatch && !matchedEqIds.has(bestMatch.equipment.id)) {
             matchedEqIds.add(bestMatch.equipment.id);
 
-            // Detecção robusta se este item da planilha importada é Manutenção Externa
-            const isFileExterna = Boolean(
-              item.check_externa ||
-              String(item.status || '').toLowerCase().includes('extern') ||
-              String(item.statusCalibracao || '').toLowerCase().includes('extern') ||
-              String(item.observacao || '').toLowerCase().includes('extern') ||
-              String(item.servico || '').toLowerCase().includes('extern') ||
-              String(item.tipo || '').toLowerCase().includes('extern') ||
-              String(item.situacao || '').toLowerCase().includes('extern') ||
-              String(item.destino || '').toLowerCase().includes('extern') ||
-              String(item.status || '').toLowerCase().includes('terceir') ||
-              String(item.observacao || '').toLowerCase().includes('terceir')
-            );
+            // Detecção robusta se este item da planilha importada é Manutenção / Manutenção Externa
+            const isFileExterna = checkIfItemIsMaintenance(item);
 
             const isAlreadyExterna = Boolean(bestMatch.equipment.check_externa);
             const isAlreadyCalibrated = Boolean(
@@ -186,15 +237,11 @@ async function parsePdfFileForMerge(file, currentEquipments = []) {
           if (found && !matchedEqIds.has(eq.id)) {
             matchedEqIds.add(eq.id);
 
-            // Verifica se o contexto deste PDF ou linhas próximas indicam Manutenção Externa
-            const fullLower = fullText.toLowerCase();
-            const isDocExterna = (fullLower.includes('manuten') || fullLower.includes('conserto') || fullLower.includes('calibra')) && 
-              (fullLower.includes('extern') || fullLower.includes('terceir'));
-            
+            // Verifica se o contexto deste PDF ou linhas próximas indicam Manutenção / Manutenção Externa
             const targetToken = (serial || tag || barcode || '').toLowerCase();
             const nearbyLines = lines.filter(l => l.toLowerCase().includes(targetToken));
-            const nearbyText = nearbyLines.join(' ').toLowerCase();
-            const isItemExterna = isDocExterna || nearbyText.includes('extern') || nearbyText.includes('terceir');
+            const nearbyText = nearbyLines.join(' ');
+            const isItemExterna = isMaintenanceExternalText(nearbyText) || isMaintenanceExternalText(fullText);
 
             const isAlreadyExterna = Boolean(eq.check_externa);
             const isAlreadyCalibrated = Boolean(eq.check_calibracao || eq.check_preventiva || eq.check_seguranca);
