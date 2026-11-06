@@ -25,13 +25,19 @@ export default function SectorColorModal({
   onSaveSectorColors,
   isDark = false
 }) {
-  if (!isOpen) return null;
-
   // Local draft of sector colors: { [normalizedKey]: hex }
   const [draftColors, setDraftColors] = useState(() => ({ ...(sectorColors || {}) }));
   const [searchQuery, setSearchQuery] = useState('');
   const [saving, setSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setDraftColors({ ...(sectorColors || {}) });
+      setSearchQuery('');
+      setSavedSuccess(false);
+    }
+  }, [isOpen, sectorColors]);
 
   // Extract all unique sectors from equipments (both registered and collected sectors)
   const sectorsList = useMemo(() => {
@@ -129,6 +135,8 @@ export default function SectorColorModal({
       setSaving(false);
     }
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in">

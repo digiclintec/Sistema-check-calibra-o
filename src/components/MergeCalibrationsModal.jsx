@@ -69,8 +69,6 @@ export default function MergeCalibrationsModal({
     }
   }, [isOpen, currentUser]);
 
-  if (!isOpen) return null;
-
   const handleReset = () => {
     setSelectedFile(null);
     setIsProcessing(false);
@@ -181,6 +179,8 @@ export default function MergeCalibrationsModal({
     onClose();
     handleReset();
   };
+
+  if (!isOpen) return null;
 
   return (
     <div 

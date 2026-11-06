@@ -1724,16 +1724,18 @@ export default function App() {
       />
 
       {/* Modal de Mesclagem de Calibrações Feitas (XLS, XLSX, CSV ou PDF) */}
-      <MergeCalibrationsModal
-        isOpen={isMergeModalOpen}
-        onClose={() => setIsMergeModalOpen(false)}
-        equipments={equipments || []}
-        serviceConfig={serviceConfig}
-        currentUser={currentUser}
-        onApplyMerge={handleApplyMerge}
-        hospitalName={activeHospital?.name}
-        planTitle={activeSheetName}
-      />
+      {isMergeModalOpen && (
+        <MergeCalibrationsModal
+          isOpen={isMergeModalOpen}
+          onClose={() => setIsMergeModalOpen(false)}
+          equipments={equipments || []}
+          serviceConfig={serviceConfig}
+          currentUser={currentUser}
+          onApplyMerge={handleApplyMerge}
+          hospitalName={activeHospital?.name}
+          planTitle={activeSheetName}
+        />
+      )}
 
       {/* Modal de Configuração de Serviços e Modo de Bipagem da Planilha */}
       <SheetServicesConfigModal
