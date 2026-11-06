@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { parseFileForCalibrationMerge, mergeCalibrationsIntoEquipments } from '../utils/mergeCalibrations.js';
 import { MODALITIES } from '../utils/modalities.js';
+import AbruptChangeConfirmModal from './AbruptChangeConfirmModal.jsx';
 
 export default function MergeCalibrationsModal({
   isOpen,
@@ -42,6 +43,7 @@ export default function MergeCalibrationsModal({
   const [isProcessing, setIsProcessing] = useState(false);
   const [parseResult, setParseResult] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
+  const [showAbruptConfirm, setShowAbruptConfirm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMode, setFilterMode] = useState('all'); // 'all' | 'pending_only' | 'externa_only' | 'calibracao_only' | 'already_checked'
   
@@ -82,6 +84,7 @@ export default function MergeCalibrationsModal({
     setIsProcessing(false);
     setParseResult(null);
     setErrorMessage('');
+    setShowAbruptConfirm(false);
     setSearchQuery('');
     setTargetMode('auto');
   };
@@ -227,8 +230,19 @@ export default function MergeCalibrationsModal({
       // Ignora se confetti não estiver disponível
     }
 
+    setShowAbruptConfirm(false);
     onClose();
     handleReset();
+  };
+
+  // Dispara a aplicação: se for uma alteração em massa (>= 5 bombas), exibe o alerta de alteração abrupta
+  const handleClickApply = () => {
+    if (!parseResult || selectedCount === 0) return;
+    if (selectedCount >= 5) {
+      setShowAbruptConfirm(true);
+    } else {
+      handleConfirmMerge();
+    }
   };
 
   if (!isOpen) return null;
@@ -707,7 +721,7 @@ export default function MergeCalibrationsModal({
           {parseResult && parseResult.totalMatches > 0 && (
             <button
               type="button"
-              onClick={handleConfirmMerge}
+              onClick={handleClickApply}
               disabled={selectedCount === 0}
               className={`py-2.5 px-5 rounded-xl font-extrabold text-white text-xs sm:text-sm flex items-center gap-2 shadow-lg transition active:scale-95 ${
                 selectedCount === 0
@@ -725,6 +739,29 @@ export default function MergeCalibrationsModal({
         </div>
 
       </div>
+
+      {/* Alerta de Confirmação para Alteração em Massa / Abrupta */}
+      <AbruptChangeConfirmModal
+        isOpen={showAbruptConfirm}
+        onClose={() => setShowAbruptConfirm(false)}
+        onConfirm={handleConfirmMerge}
+        title="⚠️ Atenção: Alteração em Massa Detectada!"
+        subtitle={`Você está prestes a aplicar a mesclagem em ${selectedCount} bombas de uma só vez.`}
+        affectedCount={selectedCount}
+        affectedLabel="bombas de infusão"
+        operationType="merge"
+        hospitalName={hospitalName}
+        planTitle={planTitle}
+        details={[
+          { label: 'Arquivo da Mesclagem', value: parseResult?.fileName || 'Planilha/PDF' },
+          { label: 'Total no Plano do Hospital', value: `${safeEquipments.length} bombas` },
+          { label: 'Calibrações a Registrar', value: `${selectedCount - newExternaCount} bombas`, color: 'text-emerald-500 font-extrabold' },
+          { label: 'Manutenções Externas', value: `${newExternaCount} bombas`, color: 'text-purple-500 font-extrabold' },
+          { label: 'Já Estavam Validadas', value: `${alreadyCheckedCount} bombas`, color: 'text-slate-400' }
+        ]}
+        confirmText={`Sim, Confirmar e Aplicar (${selectedCount} bombas)`}
+        cancelText="Voltar e Revisar"
+      />
     </div>
   );
 }

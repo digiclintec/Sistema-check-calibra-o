@@ -17,7 +17,8 @@ import {
   PlusCircle,
   MoreVertical,
   ChevronDown,
-  GitMerge
+  GitMerge,
+  RotateCcw
 } from 'lucide-react';
 
 export default function Navbar({ 
@@ -44,7 +45,9 @@ export default function Navbar({
   activePlanId,
   onSwitchPlan,
   activeModality = 'calibracao',
-  onChangeModality
+  onChangeModality,
+  undoCheckpoint = null,
+  onUndo = null
 }) {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const moreMenuRef = useRef(null);
@@ -274,6 +277,18 @@ export default function Navbar({
               <span className="hidden md:inline">Ler Código</span>
               <span className="md:hidden">Bipar</span>
             </button>
+
+            {/* Botão Rápido Desfazer Alteração Recente / em Massa */}
+            {undoCheckpoint && onUndo && (
+              <button
+                onClick={onUndo}
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-black bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 shadow-md shadow-amber-500/25 transition active:scale-95 shrink-0 border border-amber-400"
+                title={`Desfazer última alteração: ${undoCheckpoint.actionDesc}`}
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Desfazer</span>
+              </button>
+            )}
 
             {/* Menu "Mais Opções" (Dropdown unificado para ferramentas secundárias) */}
             <div className="relative" ref={moreMenuRef}>

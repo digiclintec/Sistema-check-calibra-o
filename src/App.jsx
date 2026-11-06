@@ -18,7 +18,8 @@ import {
   Link2,
   Unlink,
   ExternalLink,
-  GitMerge
+  GitMerge,
+  RotateCcw
 } from 'lucide-react';
 
 import LoginScreen from './components/LoginScreen';
@@ -43,10 +44,11 @@ import SheetServicesConfigModal from './components/SheetServicesConfigModal';
 import ManualCheckPasswordModal from './components/ManualCheckPasswordModal';
 import ModalityBar from './components/ModalityBar';
 import SectorColorModal from './components/SectorColorModal';
+import AbruptChangeConfirmModal from './components/AbruptChangeConfirmModal';
 
 import { parseSpreadsheetFile, exportToExcel } from './utils/sheetParser';
 import { SAMPLE_EQUIPMENT } from './utils/sampleData';
-import { playSuccessSound, playWarningSound, playErrorSound, playManualCheckSound, playUncheckSound } from './utils/audio';
+import { playSuccessSound, playWarningSound, playErrorSound, playManualCheckSound, playUncheckSound, playUndoSound } from './utils/audio';
 import { findBestEquipmentMatches } from './utils/fuzzyMatch';
 import { MODALITIES, normalizeEquipmentModalities, isEquipmentChecked, isEquipmentFullyChecked } from './utils/modalities';
 
@@ -201,14 +203,24 @@ export default function App() {
     showToast('success', `Opções atualizadas: ${newConfig.executionMode === 'all_at_once' ? '⚡ Bipar Tudo de Uma Vez' : '🎯 Bipar Separado'}`);
   };
 
-  const handleApplyMerge = async (updatedEquipments, actionDesc) => {
-    await pushServerUpdate(updatedEquipments, activeSheetName, actionDesc);
-    showToast('success', actionDesc);
-  };
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [lastScannedId, setLastScannedId] = useState(null);
   const [toast, setToast] = useState(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const [undoCheckpoint, setUndoCheckpoint] = useState(null);
+  const [abruptConfirmModal, setAbruptConfirmModal] = useState({
+    isOpen: false,
+    title: '',
+    subtitle: '',
+    affectedCount: 0,
+    affectedLabel: 'equipamentos',
+    operationType: 'bulk',
+    details: [],
+    severity: 'warning',
+    confirmText: 'Confirmar',
+    cancelText: 'Cancelar',
+    onConfirm: null
+  });
 
   const fileInputRef = useRef(null);
   const lastUpdatedServerRef = useRef(0);
@@ -494,15 +506,16 @@ export default function App() {
     localStorage.setItem(MODALITY_KEY, activeModality);
   }, [activeModality]);
 
-  // Toast auto-dismiss
+  // Toast auto-dismiss (duração prolongada para 8s se houver botão de ação/desfazer)
   useEffect(() => {
     if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 4000);
+    const duration = toast.action ? 8000 : 4000;
+    const timer = setTimeout(() => setToast(null), duration);
     return () => clearTimeout(timer);
   }, [toast]);
 
-  const showToast = (type, message) => {
-    setToast({ type, message });
+  const showToast = (type, message, action = null) => {
+    setToast({ type, message, action });
   };
 
   // Sync with Server API (Shared real-time state for hospital)
@@ -598,6 +611,69 @@ export default function App() {
     } catch (err) {
       console.warn('API sync offline:', err);
     }
+  };
+
+  // Snapshot para desfazer alterações abruptas ou em massa
+  const recordUndoCheckpoint = (actionDesc, prevEquips = equipments, prevSheet = activeSheetName, prevUrl = googleSheetUrl) => {
+    const snapshot = {
+      id: `undo_${Date.now()}`,
+      actionDesc,
+      equipments: JSON.parse(JSON.stringify(prevEquips || [])),
+      activeSheetName: prevSheet || '',
+      googleSheetUrl: prevUrl || '',
+      timestamp: Date.now(),
+      hospitalId: activeHospitalId
+    };
+    setUndoCheckpoint(snapshot);
+    return snapshot;
+  };
+
+  // Reverte para o estado anterior registrado no snapshot
+  const handleUndoAction = async () => {
+    if (!undoCheckpoint) return;
+    if (undoCheckpoint.hospitalId && undoCheckpoint.hospitalId !== activeHospitalId) {
+      showToast('warning', 'O ponto de restauração pertence a outro hospital.');
+      return;
+    }
+
+    const { equipments: prevEquipments, activeSheetName: prevSheetName, googleSheetUrl: prevGUrl, actionDesc } = undoCheckpoint;
+    
+    if (soundEnabled) playUndoSound();
+
+    await pushServerUpdate(
+      prevEquipments, 
+      prevSheetName, 
+      `↩️ Desfeita: ${actionDesc}`, 
+      prevGUrl
+    );
+
+    setUndoCheckpoint(null);
+    showToast('info', `↩️ Alteração desfeita com sucesso! Estado anterior restaurado.`);
+  };
+
+  // Suporte a atalho Ctrl+Z / Cmd+Z para desfazer
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target?.tagName)) return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+        if (undoCheckpoint && undoCheckpoint.hospitalId === activeHospitalId) {
+          e.preventDefault();
+          handleUndoAction();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undoCheckpoint, activeHospitalId, soundEnabled]);
+
+  // Aplicar mesclagem de calibrações com ponto de restauração gravado
+  const handleApplyMerge = async (updatedEquipments, actionDesc) => {
+    recordUndoCheckpoint(actionDesc, equipments, activeSheetName, googleSheetUrl);
+    await pushServerUpdate(updatedEquipments, activeSheetName, actionDesc);
+    showToast('success', actionDesc, {
+      label: 'Desfazer',
+      onClick: handleUndoAction
+    });
   };
 
   // Sincronização com Google Sheets via Link Compartilhado (Merge Inteligente sem perda de checks)
@@ -1037,6 +1113,15 @@ export default function App() {
     } catch (e) {}
 
     const modLabels = targetMods.map(m => MODALITIES[m]?.shortName || m).join(' + ');
+    if (checkedCount >= 5) {
+      recordUndoCheckpoint(
+        `Check em Lote [${modLabels}]: ${checkedCount} bombas`,
+        equipments,
+        activeSheetName,
+        googleSheetUrl
+      );
+    }
+
     await pushServerUpdate(
       updated, 
       activeSheetName, 
@@ -1044,7 +1129,11 @@ export default function App() {
     );
 
     if (soundEnabled) playSuccessSound();
-    showToast('success', `🎉 ${checkedCount} equipamentos conferidos para [${modLabels}]!`);
+    showToast(
+      'success', 
+      `🎉 ${checkedCount} equipamentos conferidos para [${modLabels}]!`, 
+      checkedCount >= 5 ? { label: 'Desfazer', onClick: handleUndoAction } : null
+    );
   };
 
   // Ações em Massa com Senha (Marcar / Desmarcar em Lote) com suporte inteligente multi-modalidade e técnico
@@ -1074,6 +1163,16 @@ export default function App() {
       };
     }
 
+    if (equipments && equipments.length > 0) {
+      const isCheck = (payload.action === 'check_all');
+      recordUndoCheckpoint(
+        isCheck ? 'Marcar Todos em Lote' : 'Desmarcar Todos em Lote',
+        equipments,
+        activeSheetName,
+        googleSheetUrl
+      );
+    }
+
     try {
       const res = await fetch('/api/mass-check', {
         method: 'POST',
@@ -1100,10 +1199,16 @@ export default function App() {
           spread: 80,
           origin: { y: 0.5 }
         });
-        showToast('success', data.message || `Equipamentos marcados com sucesso!`);
+        showToast('success', data.message || `Equipamentos marcados com sucesso!`, {
+          label: 'Desfazer',
+          onClick: handleUndoAction
+        });
       } else {
         if (soundEnabled) playWarningSound();
-        showToast('info', data.message || `Equipamentos desmarcados.`);
+        showToast('info', data.message || `Equipamentos desmarcados.`, {
+          label: 'Desfazer',
+          onClick: handleUndoAction
+        });
       }
 
       loadMonthlyPlans(activeHospitalId);
@@ -1265,22 +1370,57 @@ export default function App() {
     e.target.value = '';
   };
 
+  const executeApplyNewPlan = async (result) => {
+    if (equipments && equipments.length > 0) {
+      recordUndoCheckpoint('Substituição de Planilha', equipments, activeSheetName, googleSheetUrl);
+    }
+    // Arquivo local (.xlsx, .csv) - Opera como arquivo local seguro
+    setGoogleSheetUrl('');
+    localStorage.removeItem(`calibracheck_google_url_${activeHospitalId}`);
+    await pushServerUpdate(result.equipments, result.fileName, `Planilha carregada: ${result.fileName}`, '');
+    const checkedCount = (result.equipments || []).filter(e => e.checado).length;
+    if (checkedCount > 0) {
+      showToast('success', `Planilha "${result.fileName}" carregada com ${result.total} itens (${checkedCount} já validados da planilha)!`, {
+        label: 'Desfazer',
+        onClick: handleUndoAction
+      });
+    } else {
+      showToast('success', `Planilha "${result.fileName}" carregada no ${activeHospital?.name || 'hospital'} com ${result.total} itens!`, {
+        label: 'Desfazer',
+        onClick: handleUndoAction
+      });
+    }
+    loadHospitals();
+    // Solicita configuração do serviço (somente calibração ou todos os parâmetros, tudo de uma vez ou separado)
+    setServiceConfigModal({ isOpen: true, isInitialSetup: true });
+  };
+
   const processFile = async (file) => {
     try {
       const result = await parseSpreadsheetFile(file);
-      // Arquivo local (.xlsx, .csv) - Opera como arquivo local seguro
-      setGoogleSheetUrl('');
-      localStorage.removeItem(`calibracheck_google_url_${activeHospitalId}`);
-      await pushServerUpdate(result.equipments, result.fileName, `Planilha carregada: ${result.fileName}`, '');
-      const checkedCount = (result.equipments || []).filter(e => e.checado).length;
-      if (checkedCount > 0) {
-        showToast('success', `Planilha "${result.fileName}" carregada com ${result.total} itens (${checkedCount} já validados da planilha)!`);
-      } else {
-        showToast('success', `Planilha "${result.fileName}" carregada no ${activeHospital?.name || 'hospital'} com ${result.total} itens!`);
+      if (equipments && equipments.length >= 5) {
+        setAbruptConfirmModal({
+          isOpen: true,
+          title: '⚠️ Atenção: Substituir Planilha Atual?',
+          subtitle: `O hospital "${activeHospital?.name}" já possui ${equipments.length} equipamentos cadastrados. Ao carregar o novo arquivo, a planilha atual será substituída.`,
+          affectedCount: equipments.length,
+          affectedLabel: 'equipamentos atuais',
+          operationType: 'replace',
+          severity: 'warning',
+          details: [
+            { label: 'Planilha Atual', value: activeSheetName || 'Planilha Atual' },
+            { label: 'Novo Arquivo', value: `${result.fileName} (${result.total} itens)` },
+            { label: 'Conferências Atuais', value: `${equipments.filter(e => e.checado).length} validadas`, color: 'text-amber-500 font-bold' }
+          ],
+          confirmText: 'Sim, Substituir Planilha',
+          cancelText: 'Cancelar',
+          onConfirm: async () => {
+            await executeApplyNewPlan(result);
+          }
+        });
+        return;
       }
-      loadHospitals();
-      // Solicita configuração do serviço (somente calibração ou todos os parâmetros, tudo de uma vez ou separado)
-      setServiceConfigModal({ isOpen: true, isInitialSetup: true });
+      await executeApplyNewPlan(result);
     } catch (err) {
       console.error(err);
       showToast('error', `Erro ao ler planilha: ${err.message}`);
@@ -1307,7 +1447,10 @@ export default function App() {
   };
 
   // Google Sheets import (com suporte a link ao vivo e sincronização automática)
-  const handleGoogleDataImport = async (data) => {
+  const executeGoogleDataImport = async (data) => {
+    if (equipments && equipments.length > 0) {
+      recordUndoCheckpoint('Importação de Planilha Google', equipments, activeSheetName, googleSheetUrl);
+    }
     const gUrl = data.googleSheetUrl || '';
     setGoogleSheetUrl(gUrl);
     if (gUrl) {
@@ -1317,49 +1460,122 @@ export default function App() {
     const checkedCount = (data.equipments || []).filter(e => e.checado).length;
     if (gUrl) {
       if (checkedCount > 0) {
-        showToast('success', `Planilha Google conectada com ${data.total} equipamentos (${checkedCount} já validados). Sincronização em tempo real ativada!`);
+        showToast('success', `Planilha Google conectada com ${data.total} equipamentos (${checkedCount} já validados). Sincronização em tempo real ativada!`, {
+          label: 'Desfazer',
+          onClick: handleUndoAction
+        });
       } else {
-        showToast('success', `Planilha Google conectada com ${data.total} equipamentos! Sincronização em tempo real ativada.`);
+        showToast('success', `Planilha Google conectada com ${data.total} equipamentos! Sincronização em tempo real ativada.`, {
+          label: 'Desfazer',
+          onClick: handleUndoAction
+        });
       }
     } else {
       if (checkedCount > 0) {
-        showToast('success', `Planilha importada com ${data.total} equipamentos (${checkedCount} já validados da planilha)!`);
+        showToast('success', `Planilha importada com ${data.total} equipamentos (${checkedCount} já validados da planilha)!`, {
+          label: 'Desfazer',
+          onClick: handleUndoAction
+        });
       } else {
-        showToast('success', `Planilha importada com ${data.total} equipamentos!`);
+        showToast('success', `Planilha importada com ${data.total} equipamentos!`, {
+          label: 'Desfazer',
+          onClick: handleUndoAction
+        });
       }
     }
     loadHospitals();
     setServiceConfigModal({ isOpen: true, isInitialSetup: true });
+  };
+
+  const handleGoogleDataImport = async (data) => {
+    if (equipments && equipments.length >= 5) {
+      setAbruptConfirmModal({
+        isOpen: true,
+        title: '⚠️ Atenção: Conectar Nova Planilha Google?',
+        subtitle: `O hospital "${activeHospital?.name}" já possui ${equipments.length} equipamentos cadastrados. Ao importar, a lista atual será substituída.`,
+        affectedCount: equipments.length,
+        affectedLabel: 'equipamentos atuais',
+        operationType: 'replace',
+        severity: 'warning',
+        details: [
+          { label: 'Planilha Atual', value: activeSheetName || 'Planilha Atual' },
+          { label: 'Nova Planilha Google', value: `${data.fileName} (${data.total} itens)` },
+          { label: 'Conferências Atuais', value: `${equipments.filter(e => e.checado).length} validadas`, color: 'text-amber-500 font-bold' }
+        ],
+        confirmText: 'Sim, Conectar Google Sheets',
+        cancelText: 'Cancelar',
+        onConfirm: async () => {
+          await executeGoogleDataImport(data);
+        }
+      });
+      return;
+    }
+    await executeGoogleDataImport(data);
   };
 
   // Load sample data
   const handleLoadSample = async () => {
+    if (equipments && equipments.length > 0) {
+      recordUndoCheckpoint('Carregamento de Exemplo', equipments, activeSheetName, googleSheetUrl);
+    }
     setGoogleSheetUrl('');
     localStorage.removeItem(`calibracheck_google_url_${activeHospitalId}`);
     await pushServerUpdate(SAMPLE_EQUIPMENT, 'Exemplo_Calibracao_Padrao.xlsx', 'Exemplo carregado', '');
-    showToast('success', '10 equipamentos de exemplo carregados para teste imediato!');
+    showToast('success', '10 equipamentos de exemplo carregados para teste imediato!', {
+      label: 'Desfazer',
+      onClick: handleUndoAction
+    });
     loadHospitals();
     setServiceConfigModal({ isOpen: true, isInitialSetup: true });
   };
 
-  // Reset / Clear hospital data
+  // Reset / Clear hospital data com Alerta de Alteração Abrupta e Ponto de Restauração
   const handleResetData = async () => {
-    if (window.confirm(`Deseja limpar todos os dados da planilha atual do "${activeHospital?.name || 'hospital atual'}"?`)) {
-      setGoogleSheetUrl('');
-      localStorage.removeItem(`calibracheck_google_url_${activeHospitalId}`);
-      await pushServerUpdate([], '', 'Planilha limpa', '');
-      try {
-        await fetch('/api/reset', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ hospitalId: activeHospitalId })
-        });
-      } catch (e) {}
-      localStorage.removeItem(STORAGE_KEY);
-      localStorage.removeItem(SHEET_NAME_KEY);
-      showToast('warning', 'Dados do hospital resetados com sucesso.');
-      loadHospitals();
+    if (!equipments || equipments.length === 0) {
+      showToast('info', 'Não há dados para limpar neste hospital.');
+      return;
     }
+
+    const totalCount = equipments.length;
+    const checkedCount = equipments.filter(e => e.checado).length;
+
+    setAbruptConfirmModal({
+      isOpen: true,
+      title: '🚨 Atenção: Limpeza Total da Planilha!',
+      subtitle: `Você está prestes a excluir todos os registros do "${activeHospital?.name || 'hospital atual'}".`,
+      affectedCount: totalCount,
+      affectedLabel: 'equipamentos',
+      operationType: 'reset',
+      severity: 'danger',
+      details: [
+        { label: 'Hospital', value: activeHospital?.name || 'Hospital Ativo' },
+        { label: 'Planilha Ativa', value: activeSheetName || 'Planilha Atual' },
+        { label: 'Total de Equipamentos', value: `${totalCount} itens`, color: 'text-rose-500 font-extrabold' },
+        { label: 'Conferências Realizadas', value: `${checkedCount} itens checados`, color: 'text-amber-500 font-bold' }
+      ],
+      confirmText: 'Sim, Limpar Tudo',
+      cancelText: 'Cancelar e Manter Dados',
+      onConfirm: async () => {
+        recordUndoCheckpoint('Limpeza Total da Planilha', equipments, activeSheetName, googleSheetUrl);
+        setGoogleSheetUrl('');
+        localStorage.removeItem(`calibracheck_google_url_${activeHospitalId}`);
+        await pushServerUpdate([], '', 'Planilha limpa', '');
+        try {
+          await fetch('/api/reset', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ hospitalId: activeHospitalId })
+          });
+        } catch (e) {}
+        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(SHEET_NAME_KEY);
+        showToast('warning', 'Dados do hospital resetados com sucesso.', {
+          label: 'Desfazer',
+          onClick: handleUndoAction
+        });
+        loadHospitals();
+      }
+    });
   };
 
   // Export to Excel com suporte a multiequipes (todas as frentes)
@@ -1443,7 +1659,19 @@ export default function App() {
               )}
               <span>{toast.message}</span>
             </div>
-            <button onClick={() => setToast(null)} className="opacity-80 hover:opacity-100">
+            {toast.action && (
+              <button
+                onClick={() => {
+                  toast.action.onClick?.();
+                  setToast(null);
+                }}
+                className="ml-2 px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white font-black rounded-xl text-xs flex items-center gap-1.5 transition active:scale-95 shadow-sm shrink-0 border border-white/25 cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>{toast.action.label || 'Desfazer'}</span>
+              </button>
+            )}
+            <button onClick={() => setToast(null)} className="opacity-80 hover:opacity-100 shrink-0 ml-1">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -1476,10 +1704,54 @@ export default function App() {
         onOpenMergeModal={() => setIsMergeModalOpen(true)}
         activeModality={activeModality}
         onChangeModality={setActiveModality}
+        undoCheckpoint={undoCheckpoint?.hospitalId === activeHospitalId ? undoCheckpoint : null}
+        onUndo={handleUndoAction}
       />
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-24 sm:pb-6 overflow-hidden">
+        
+        {/* Banner Flutuante de Desfazer Alteração em Massa / Abrupta */}
+        {undoCheckpoint && undoCheckpoint.hospitalId === activeHospitalId && (
+          <div className="mb-4 bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-indigo-500/15 border border-amber-500/40 dark:border-amber-500/30 rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md animate-in slide-in-from-top-3 duration-200">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/30">
+                <RotateCcw className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">
+                    Alteração Recente Realizada:
+                  </span>
+                  <span className="text-[11px] font-bold text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/60 px-2.5 py-0.5 rounded-full border border-amber-300 dark:border-amber-800 truncate max-w-xs sm:max-w-md">
+                    {undoCheckpoint.actionDesc}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
+                  Deseja reverter esta alteração? Clique no botão ao lado para restaurar imediatamente os dados anteriores.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+              <button
+                onClick={handleUndoAction}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs sm:text-sm flex items-center gap-1.5 shadow-md shadow-amber-500/20 transition active:scale-95"
+                title="Restaurar dados imediatamente"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>↩️ Desfazer Alteração</span>
+              </button>
+              <button
+                onClick={() => setUndoCheckpoint(null)}
+                className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition"
+                title="Dispensar aviso"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
         
         {activeMainTab === 'auditoria' ? (
           <SpreadsheetAuditView
@@ -1797,6 +2069,24 @@ export default function App() {
         isOpen={isInstallModalOpen}
         onClose={() => setIsInstallModalOpen(false)}
         deferredPrompt={deferredPrompt}
+      />
+
+      {/* Modal de Confirmação para Alteração Abrupta / Exclusão / Substituição */}
+      <AbruptChangeConfirmModal
+        isOpen={abruptConfirmModal.isOpen}
+        onClose={() => setAbruptConfirmModal(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={abruptConfirmModal.onConfirm || (() => {})}
+        title={abruptConfirmModal.title}
+        subtitle={abruptConfirmModal.subtitle}
+        affectedCount={abruptConfirmModal.affectedCount}
+        affectedLabel={abruptConfirmModal.affectedLabel}
+        operationType={abruptConfirmModal.operationType}
+        severity={abruptConfirmModal.severity}
+        details={abruptConfirmModal.details}
+        confirmText={abruptConfirmModal.confirmText}
+        cancelText={abruptConfirmModal.cancelText}
+        hospitalName={activeHospital?.name}
+        planTitle={activeSheetName}
       />
 
       {/* Floating Mobile Bottom Action Bar (Thumb-friendly for Android & iOS) */}
