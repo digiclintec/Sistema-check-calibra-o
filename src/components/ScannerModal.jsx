@@ -31,10 +31,19 @@ import {
   Columns2,
   Rows2,
   Lock,
-  Package
+  Package,
+  Check
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { playSuccessSound, playWarningSound, playErrorSound } from '../utils/audio';
+import { 
+  playSuccessSound, 
+  playWarningSound, 
+  playErrorSound,
+  playAlreadyCheckedSound,
+  playMaintenanceAlertSound,
+  speakVoiceAlert,
+  triggerHapticAlert
+} from '../utils/audio';
 import { findBestEquipmentMatches } from '../utils/fuzzyMatch';
 import { parseCompositeBarcode } from '../utils/gs1Parser';
 import { processPhotoTextWithAgent } from '../utils/serialAgent';
@@ -1135,19 +1144,45 @@ export default function ScannerModal({
     const bestMatch = matches[0];
     const targetEq = bestMatch.equipment;
 
-    // SEGURANÇA INTELIGENTE: Bloqueia se TODAS as modalidades selecionadas já estiverem concluídas!
+    // SEGURANÇA INTELIGENTE: Bloqueia se a bomba estiver em Manutenção Externa ou com modalidades concluídas!
     const effectiveMods = selectedModalities.length > 0 ? selectedModalities : configuredStandardModalities;
+
+    // 1. PRIORIDADE MÁXIMA: Equipamento em MANUTENÇÃO EXTERNA (Terceirizada)
+    if (Boolean(targetEq.check_externa) && !effectiveMods.includes('externa')) {
+      if (soundEnabled) {
+        playMaintenanceAlertSound();
+        speakVoiceAlert("Atenção! Esta bomba está em manutenção externa!", soundEnabled);
+      }
+      triggerHapticAlert('maintenance');
+
+      const meta = getCheckMeta(targetEq, 'externa');
+      const whoSent = meta.user ? `por ${meta.user}` : '';
+      const whenSent = meta.date ? ` em ${new Date(meta.date).toLocaleDateString('pt-BR')}` : '';
+
+      setLastScannedFeedback({
+        status: 'in_maintenance',
+        code: cleanCode,
+        match: bestMatch,
+        equipment: targetEq,
+        meta,
+        modalities: ['externa'],
+        message: `📦 ATENÇÃO: Esta bomba já foi recolhida e está em MANUTENÇÃO EXTERNA ${whoSent}${whenSent}! Bip bloqueado para não misturar com as bombas calibradas.`,
+        timestamp: new Date().toLocaleTimeString('pt-BR')
+      });
+      return;
+    }
+
+    // 2. SEGURANÇA: Bloqueia se TODAS as modalidades selecionadas já estiverem concluídas!
     const uncompletedMods = effectiveMods.filter(m => !isEquipmentChecked(targetEq, m, serviceConfig));
     const isAlreadyCheckedAll = uncompletedMods.length === 0;
     const modLabels = effectiveMods.map(m => MODALITIES[m]?.shortName || m).join(' + ');
 
     if (isAlreadyCheckedAll) {
       if (soundEnabled) {
-        playWarningSound();
+        playAlreadyCheckedSound();
+        speakVoiceAlert("Atenção! Bomba já foi checada!", soundEnabled);
       }
-      if (navigator.vibrate) {
-        navigator.vibrate([100, 50, 100]);
-      }
+      triggerHapticAlert('already_checked');
 
       const meta = getCheckMeta(targetEq, effectiveMods[0]);
       const whoChecked = meta.user ? `por ${meta.user}` : '';
@@ -1817,6 +1852,68 @@ export default function ScannerModal({
             </div>
           </div>
 
+          {/* HUD FLOATING ALERT BANNER DIRETO SOBRE A CÂMERA (IMPOSSÍVEL DE NÃO VER PELO OPERADOR) */}
+          {lastScannedFeedback && (lastScannedFeedback.status === 'already_checked' || lastScannedFeedback.status === 'in_maintenance') && (
+            <div className="absolute top-14 left-2.5 right-2.5 z-30 animate-in zoom-in-95 duration-200">
+              <div className={`p-3 rounded-2xl border-2 shadow-2xl backdrop-blur-md flex items-center justify-between gap-2.5 ${
+                lastScannedFeedback.status === 'in_maintenance'
+                  ? 'bg-purple-950/95 border-purple-400 text-purple-100 shadow-purple-950/70'
+                  : 'bg-amber-950/95 border-amber-400 text-amber-100 shadow-amber-950/70'
+              }`}>
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-inner ${
+                    lastScannedFeedback.status === 'in_maintenance'
+                      ? 'bg-purple-500/20 text-purple-300 border border-purple-400/50'
+                      : 'bg-amber-500/20 text-amber-300 border border-amber-400/50'
+                  }`}>
+                    {lastScannedFeedback.status === 'in_maintenance' ? (
+                      <Package className="w-5 h-5 text-purple-300 animate-pulse" />
+                    ) : (
+                      <AlertTriangle className="w-5 h-5 text-amber-300 animate-pulse" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                        lastScannedFeedback.status === 'in_maintenance'
+                          ? 'bg-purple-500 text-white'
+                          : 'bg-amber-500 text-slate-950'
+                      }`}>
+                        {lastScannedFeedback.status === 'in_maintenance'
+                          ? '📦 EM MANUTENÇÃO EXTERNA'
+                          : '⚠️ BOMBA JÁ CHECADA'}
+                      </span>
+                      <span className="text-[10px] opacity-75 font-mono">
+                        {lastScannedFeedback.timestamp}
+                      </span>
+                    </div>
+                    <div className="text-xs font-black text-white truncate mt-0.5">
+                      {lastScannedFeedback.equipment?.equipamento || 'Bomba de Infusão'}
+                    </div>
+                    <div className="text-[10px] opacity-90 truncate font-mono">
+                      🏷️ IDEC: <strong>{lastScannedFeedback.equipment?.tag || 'S/N'}</strong> • S/N: {lastScannedFeedback.equipment?.serie || 'N/A'} • {
+                        lastScannedFeedback.status === 'in_maintenance'
+                          ? (lastScannedFeedback.equipment?.motivo_externa || 'Terceirizada')
+                          : `Por: ${lastScannedFeedback.meta?.user || 'Técnico'}`
+                      }
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setLastScannedFeedback(null)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black shrink-0 transition shadow-md active:scale-95 ${
+                    lastScannedFeedback.status === 'in_maintenance'
+                      ? 'bg-purple-500 hover:bg-purple-400 text-white shadow-purple-500/40'
+                      : 'bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-amber-400/40'
+                  }`}
+                >
+                  Entendido
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Barra Inferior do Viewfinder: Foco de Perto + Indicador Google AI */}
           {scanning && !cameraError && (
             <div className="absolute bottom-2.5 left-2.5 right-2.5 z-20 flex items-center justify-between pointer-events-none gap-1.5">
@@ -1874,9 +1971,114 @@ export default function ScannerModal({
           ============================================================ */}
           <div className="flex-1 flex flex-col bg-slate-950/60 min-h-0 overflow-hidden w-full md:w-7/12 lg:w-7/12 md:h-full">
 
-            {/* Banner do Último Item Bipado ou Card Completo de Já Calibrada */}
+            {/* Banner do Último Item Bipado ou Card Completo de Já Calibrada / Em Manutenção */}
             {lastScannedFeedback && (
-              lastScannedFeedback.status === 'already_checked' ? (
+              lastScannedFeedback.status === 'in_maintenance' ? (
+                /* CARD COMPLETO E 100% LEGÍVEL PARA EQUIPAMENTO EM MANUTENÇÃO EXTERNA */
+                <div className="p-3 sm:p-3.5 bg-gradient-to-r from-purple-950/95 via-slate-900 to-purple-950/85 border-b border-purple-500/50 text-purple-100 shadow-xl shrink-0 animate-in fade-in duration-200">
+                  <div className="flex items-start justify-between gap-2.5">
+                    <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                      <div className="w-9 h-9 rounded-xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-300 shrink-0 mt-0.5 shadow-inner">
+                        <Package className="w-5 h-5 text-purple-400 animate-pulse" />
+                      </div>
+                      
+                      <div className="flex-1 min-w-0 space-y-1.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-purple-500 text-white uppercase tracking-wide shadow-xs">
+                            📦 BOMBA EM MANUTENÇÃO EXTERNA
+                          </span>
+                          <span className="text-[11px] font-mono text-purple-200/90 font-bold">
+                            Lido: {lastScannedFeedback.code}
+                          </span>
+                          <span className="text-[10px] text-purple-300/70 font-mono ml-auto">
+                            {lastScannedFeedback.timestamp}
+                          </span>
+                        </div>
+
+                        <div>
+                          <h4 className="font-extrabold text-sm sm:text-base text-white leading-tight">
+                            {lastScannedFeedback.equipment?.equipamento || 'Bomba de Infusão'}
+                          </h4>
+                          <p className="text-xs text-slate-400">
+                            {lastScannedFeedback.equipment?.fabricante} {lastScannedFeedback.equipment?.modelo}
+                          </p>
+                        </div>
+
+                        {/* Dados Completos de Identificação: IDEC, Série, Setor */}
+                        <div className="flex items-center gap-1.5 flex-wrap text-xs pt-0.5">
+                          {lastScannedFeedback.equipment?.tag && (
+                            <span className="font-mono font-bold px-2 py-0.5 rounded-lg bg-blue-500/20 text-blue-300 border border-blue-500/40">
+                              🏷️ IDEC: {lastScannedFeedback.equipment.tag}
+                            </span>
+                          )}
+                          {lastScannedFeedback.equipment?.serie && (
+                            <span className="font-mono px-2 py-0.5 rounded-lg bg-slate-800 text-slate-200 border border-slate-700">
+                              🔢 S/N: {lastScannedFeedback.equipment.serie}
+                            </span>
+                          )}
+                          {(lastScannedFeedback.equipment?.setor_retirada || lastScannedFeedback.equipment?.setor) && (
+                            <span className="px-2 py-0.5 rounded-lg bg-teal-950/60 text-teal-300 border border-teal-800/80 flex items-center gap-1">
+                              <MapPin className="w-3 h-3 text-teal-400 shrink-0" />
+                              <span>{lastScannedFeedback.equipment.setor_retirada || lastScannedFeedback.equipment.setor}</span>
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Detalhes de Auditoria da Manutenção */}
+                        <div className="p-2.5 rounded-xl bg-slate-950/80 border border-purple-500/30 text-xs text-purple-100/90 space-y-1 mt-1">
+                          <div className="flex items-center gap-1.5 font-bold text-purple-300">
+                            <Package className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                            <span>Registro de Saída para Manutenção Terceirizada:</span>
+                          </div>
+                          <div className="text-[11px] leading-relaxed text-slate-200 break-words">
+                            👤 <strong>Responsável:</strong> {
+                              lastScannedFeedback.meta?.user || 
+                              lastScannedFeedback.equipment?.usuario_externa || 
+                              'Equipe Externa'
+                            }
+                          </div>
+                          <div className="text-[11px] leading-relaxed text-slate-300 break-words">
+                            📅 <strong>Data de Envio:</strong> {
+                              (lastScannedFeedback.meta?.date || lastScannedFeedback.equipment?.data_externa)
+                                ? new Date(lastScannedFeedback.meta?.date || lastScannedFeedback.equipment?.data_externa).toLocaleString('pt-BR')
+                                : 'Registrado no plano ativo'
+                            }
+                          </div>
+                          <div className="text-[11px] leading-relaxed text-slate-300 break-words">
+                            📝 <strong>Motivo:</strong> {
+                              lastScannedFeedback.equipment?.motivo_externa || 'Calibração e conserto por equipe externa terceirizada'
+                            }
+                          </div>
+                          <div className="text-[10px] text-amber-300/90 pt-1 font-semibold">
+                            ⚠️ Esta bomba deve ser mantida separada das bombas liberadas para uso hospitalar.
+                          </div>
+                        </div>
+
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col items-end gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setLastScannedFeedback(null)}
+                        className="p-1.5 text-purple-300/70 hover:text-white rounded-lg hover:bg-white/10 transition"
+                        title="Fechar aviso"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setLastScannedFeedback(null)}
+                        className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-black text-xs transition shadow-sm active:scale-95 flex items-center gap-1 shrink-0"
+                      >
+                        <Check className="w-3.5 h-3.5 stroke-[3]" />
+                        <span>Entendido</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : lastScannedFeedback.status === 'already_checked' ? (
                 /* CARD COMPLETO E 100% LEGÍVEL PARA EQUIPAMENTO JÁ CALIBRADO */
                 <div className="p-3 sm:p-3.5 bg-gradient-to-r from-amber-950/95 via-slate-900 to-amber-950/85 border-b border-amber-500/50 text-amber-100 shadow-xl shrink-0 animate-in fade-in duration-200">
                   <div className="flex items-start justify-between gap-2.5">

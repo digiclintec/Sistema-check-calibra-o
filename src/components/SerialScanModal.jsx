@@ -500,9 +500,13 @@ export default function SerialScanModal({
                                 <span className="font-bold text-slate-900 dark:text-white text-sm">
                                   {eq.equipamento || 'Equipamento Hospitalar'}
                                 </span>
-                                {matchItem.alreadyChecked ? (
-                                  <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-full font-semibold">
-                                    Já Conferido
+                                {matchItem.isExterna ? (
+                                  <span className="text-[10px] bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 px-2 py-0.5 rounded-full font-bold border border-purple-200 dark:border-purple-800">
+                                    📦 Manut. Externa
+                                  </span>
+                                ) : matchItem.alreadyChecked ? (
+                                  <span className="text-[10px] bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 px-2 py-0.5 rounded-full font-bold border border-amber-200 dark:border-amber-800">
+                                    ⚠️ Já Bipada / OK
                                   </span>
                                 ) : (
                                   <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 px-2 py-0.5 rounded-full font-semibold">

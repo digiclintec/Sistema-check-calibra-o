@@ -45,12 +45,24 @@ import ManualCheckPasswordModal from './components/ManualCheckPasswordModal';
 import ModalityBar from './components/ModalityBar';
 import SectorColorModal from './components/SectorColorModal';
 import AbruptChangeConfirmModal from './components/AbruptChangeConfirmModal';
+import AlreadyScannedAlertModal from './components/AlreadyScannedAlertModal';
 
 import { parseSpreadsheetFile, exportToExcel } from './utils/sheetParser';
 import { SAMPLE_EQUIPMENT } from './utils/sampleData';
-import { playSuccessSound, playWarningSound, playErrorSound, playManualCheckSound, playUncheckSound, playUndoSound } from './utils/audio';
+import { 
+  playSuccessSound, 
+  playWarningSound, 
+  playErrorSound, 
+  playManualCheckSound, 
+  playUncheckSound, 
+  playUndoSound,
+  playAlreadyCheckedSound,
+  playMaintenanceAlertSound,
+  speakVoiceAlert,
+  triggerHapticAlert
+} from './utils/audio';
 import { findBestEquipmentMatches } from './utils/fuzzyMatch';
-import { MODALITIES, normalizeEquipmentModalities, isEquipmentChecked, isEquipmentFullyChecked } from './utils/modalities';
+import { MODALITIES, normalizeEquipmentModalities, isEquipmentChecked, isEquipmentFullyChecked, getCheckMeta } from './utils/modalities';
 
 export default function App() {
   // LocalStorage keys
@@ -208,6 +220,7 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [undoCheckpoint, setUndoCheckpoint] = useState(null);
+  const [alreadyScannedAlert, setAlreadyScannedAlert] = useState(null);
   const [abruptConfirmModal, setAbruptConfirmModal] = useState({
     isOpen: false,
     title: '',
@@ -1271,12 +1284,62 @@ export default function App() {
 
     setLastScannedId(targetItem.id);
 
-    // Verifica se já está conferido para todas as modalidades alvo
+    // 1. PRIORIDADE MÁXIMA: Equipamento em MANUTENÇÃO EXTERNA (Terceirizada)
+    if (Boolean(targetItem.check_externa) && !targetMods.includes('externa')) {
+      if (soundEnabled) {
+        playMaintenanceAlertSound();
+        speakVoiceAlert("Atenção! Esta bomba está em manutenção externa!", soundEnabled);
+      }
+      triggerHapticAlert('maintenance');
+
+      const meta = getCheckMeta(targetItem, 'externa');
+      const whoSent = meta.user ? `por ${meta.user}` : '';
+      const whenSent = meta.date ? ` em ${new Date(meta.date).toLocaleDateString('pt-BR')}` : '';
+
+      setAlreadyScannedAlert({
+        type: 'maintenance',
+        equipment: targetItem,
+        match: bestMatch,
+        meta,
+        title: '📦 BOMBA EM MANUTENÇÃO EXTERNA',
+        message: `Esta bomba já foi recolhida e registrada para MANUTENÇÃO EXTERNA ${whoSent}${whenSent}!`,
+        timestamp: new Date().toLocaleTimeString('pt-BR')
+      });
+
+      showToast('warning', `📦 EM MANUTENÇÃO EXTERNA: ${targetItem.equipamento} (${targetItem.tag || targetItem.serie}) já separada para conserto!`);
+      return {
+        status: 'in_maintenance',
+        equipment: targetItem,
+        match: bestMatch,
+        message: `Bomba já em Manutenção Externa: ${targetItem.equipamento}`
+      };
+    }
+
+    // 2. SEGURANÇA INTELIGENTE: Verifica se já está conferido para todas as modalidades alvo
     const allAlreadyChecked = targetMods.every(m => isEquipmentChecked(targetItem, m));
 
     if (allAlreadyChecked) {
-      if (soundEnabled) playWarningSound();
-      showToast('warning', `Equipamento já possui [${appliedLabels}] conferido: ${targetItem.equipamento} (${targetItem.tag || targetItem.serie})`);
+      if (soundEnabled) {
+        playAlreadyCheckedSound();
+        speakVoiceAlert("Atenção! Bomba já foi checada!", soundEnabled);
+      }
+      triggerHapticAlert('already_checked');
+
+      const meta = getCheckMeta(targetItem, targetMods[0]);
+      const whoChecked = meta.user ? `por ${meta.user}` : '';
+      const whenChecked = meta.date ? ` em ${new Date(meta.date).toLocaleDateString('pt-BR')}` : '';
+
+      setAlreadyScannedAlert({
+        type: 'already_checked',
+        equipment: targetItem,
+        match: bestMatch,
+        meta,
+        title: '⚠️ BOMBA JÁ BIPADA E CONFERIDA',
+        message: `Esta bomba já possui [${appliedLabels}] concluída ${whoChecked}${whenChecked}! Bip bloqueado para evitar duplicação.`,
+        timestamp: new Date().toLocaleTimeString('pt-BR')
+      });
+
+      showToast('warning', `⚠️ JÁ CONFERIDO: ${targetItem.equipamento} (${targetItem.tag || targetItem.serie}) já possui [${appliedLabels}] OK ${whoChecked}!`);
       return {
         status: 'already_checked',
         equipment: targetItem,
@@ -2087,6 +2150,20 @@ export default function App() {
         cancelText={abruptConfirmModal.cancelText}
         hospitalName={activeHospital?.name}
         planTitle={activeSheetName}
+      />
+
+      {/* Modal Inteligente de Certeza do Operador (Já Bipada ou Em Manutenção) */}
+      <AlreadyScannedAlertModal
+        isOpen={Boolean(alreadyScannedAlert)}
+        onClose={() => setAlreadyScannedAlert(null)}
+        alertData={alreadyScannedAlert}
+        onLocateInTable={(id) => {
+          setLastScannedId(id);
+          const el = document.getElementById(`eq-row-${id}`);
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }}
       />
 
       {/* Floating Mobile Bottom Action Bar (Thumb-friendly for Android & iOS) */}

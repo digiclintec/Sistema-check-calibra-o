@@ -177,8 +177,11 @@ export function processPhotoTextWithAgent(rawText, equipments = [], targetModali
       if (!seenEquipmentIds.has(eqId)) {
         seenEquipmentIds.add(eqId);
 
+        const isExterna = Boolean(match.equipment.check_externa);
         let isAlreadyChecked = false;
-        if (targetModality === 'preventiva') {
+        if (isExterna) {
+          isAlreadyChecked = true;
+        } else if (targetModality === 'preventiva') {
           isAlreadyChecked = Boolean(match.equipment.check_preventiva);
         } else if (targetModality === 'seguranca') {
           isAlreadyChecked = Boolean(match.equipment.check_seguranca);
@@ -194,7 +197,8 @@ export function processPhotoTextWithAgent(rawText, equipments = [], targetModali
           matchScore: match.score,
           matchingDigits: match.matchingDigits,
           reason: match.reason,
-          alreadyChecked: isAlreadyChecked
+          alreadyChecked: isAlreadyChecked,
+          isExterna
         });
       }
     } else {

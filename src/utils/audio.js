@@ -270,3 +270,143 @@ export function playUndoSound() {
     console.warn('Audio feedback failed:', e);
   }
 }
+
+/**
+ * Som de Equipamento Já Bipado / Já Calibrado
+ * Tom: Duplo acorde afirmativo em tom de alerta dourado (G5 784Hz -> B5 987Hz)
+ */
+export function playAlreadyCheckedSound() {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+
+    // Tom 1: 784 Hz (G5)
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = 'triangle';
+    osc1.frequency.setValueAtTime(783.99, now);
+    gain1.gain.setValueAtTime(0.001, now);
+    gain1.gain.linearRampToValueAtTime(0.18, now + 0.006);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.12);
+
+    // Tom 2: 987.77 Hz (B5) com harmônico de atenção
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(987.77, now + 0.07);
+    gain2.gain.setValueAtTime(0.001, now + 0.07);
+    gain2.gain.linearRampToValueAtTime(0.20, now + 0.076);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(now + 0.07);
+    osc2.stop(now + 0.24);
+
+  } catch (e) {
+    console.warn('Audio feedback failed:', e);
+  }
+}
+
+/**
+ * Som de Equipamento em Manutenção Externa (Terceirizada)
+ * Tom: Tríade com ressonância profunda (A4 440Hz -> C#5 554Hz -> E5 659Hz)
+ * Inconfundível no hospital para avisar que a bomba foi recolhida
+ */
+export function playMaintenanceAlertSound() {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+
+    // Nota 1: A4 (440 Hz)
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(440, now);
+    gain1.gain.setValueAtTime(0.001, now);
+    gain1.gain.linearRampToValueAtTime(0.16, now + 0.005);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.10);
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.10);
+
+    // Nota 2: C#5 (554.37 Hz)
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'triangle';
+    osc2.frequency.setValueAtTime(554.37, now + 0.06);
+    gain2.gain.setValueAtTime(0.001, now + 0.06);
+    gain2.gain.linearRampToValueAtTime(0.18, now + 0.066);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(now + 0.06);
+    osc2.stop(now + 0.16);
+
+    // Nota 3: E5 (659.25 Hz)
+    const osc3 = ctx.createOscillator();
+    const gain3 = ctx.createGain();
+    osc3.type = 'sine';
+    osc3.frequency.setValueAtTime(659.25, now + 0.12);
+    gain3.gain.setValueAtTime(0.001, now + 0.12);
+    gain3.gain.linearRampToValueAtTime(0.22, now + 0.126);
+    gain3.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+    osc3.connect(gain3);
+    gain3.connect(ctx.destination);
+    osc3.start(now + 0.12);
+    osc3.stop(now + 0.28);
+
+  } catch (e) {
+    console.warn('Audio feedback failed:', e);
+  }
+}
+
+/**
+ * Síntese de Voz Nativa em Português (SpeechSynthesis)
+ * Avisa o operador em voz alta pelo alto-falante do celular / tablet
+ */
+export function speakVoiceAlert(text, isSoundEnabled = true) {
+  if (!isSoundEnabled) return;
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+  try {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'pt-BR';
+    utterance.rate = 1.15;
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
+    window.speechSynthesis.speak(utterance);
+  } catch (e) {
+    console.warn('Speech synthesis feedback failed:', e);
+  }
+}
+
+/**
+ * Vibração Tátil no Celular / Tablet (Vibration API)
+ */
+export function triggerHapticAlert(type = 'warning') {
+  if (typeof navigator === 'undefined' || !navigator.vibrate) return;
+  try {
+    if (type === 'maintenance') {
+      // 3 pulsos fortes e chamativos
+      navigator.vibrate([200, 100, 200, 100, 300]);
+    } else if (type === 'already_checked') {
+      // 2 pulsos médios de atenção
+      navigator.vibrate([150, 80, 150]);
+    } else if (type === 'error') {
+      navigator.vibrate([300]);
+    } else {
+      navigator.vibrate([60]);
+    }
+  } catch (e) {
+    // Ignore vibration failure
+  }
+}
