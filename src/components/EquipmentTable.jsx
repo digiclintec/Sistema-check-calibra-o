@@ -29,7 +29,8 @@ import {
   LayoutGrid,
   Settings,
   Palette,
-  Package
+  Package,
+  Pencil
 } from 'lucide-react';
 import { extractCleanSerialNumber, parseCompositeBarcode } from '../utils/gs1Parser';
 import { MODALITIES, isEquipmentChecked, getCheckMeta } from '../utils/modalities';
@@ -49,7 +50,8 @@ export default function EquipmentTable({
   serviceConfig = null,
   onOpenServiceConfig = null,
   sectorColors = {},
-  onOpenSectorColors = null
+  onOpenSectorColors = null,
+  onEditEquipment = null
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSector, setSelectedSector] = useState('ALL');
@@ -426,15 +428,31 @@ export default function EquipmentTable({
               >
                 {/* Top header row */}
                 <div className="flex items-start justify-between gap-2 mb-2">
-                  <div>
-                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                      {item.tag || item.codigoBarras}
-                    </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                        {item.tag || item.codigoBarras}
+                      </span>
+                      {onEditEquipment && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onEditEquipment(item);
+                          }}
+                          className="px-1.5 py-0.5 rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition active:scale-95 inline-flex items-center gap-1 text-[10px] font-semibold border border-transparent hover:border-blue-200 dark:hover:border-blue-800"
+                          title="Editar Tag, Série e Código de Barras (Requer Senha)"
+                        >
+                          <Pencil className="w-3 h-3 text-slate-400 hover:text-blue-500" />
+                          <span>Editar</span>
+                        </button>
+                      )}
+                    </div>
                     <h4 className="text-sm font-bold text-slate-900 dark:text-white mt-1 leading-snug">
                       {item.equipamento}
                     </h4>
                   </div>
-                  <div className="flex flex-col items-end gap-1">
+                  <div className="flex flex-col items-end gap-1 shrink-0">
                     {isExtOk && (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 dark:bg-purple-950/70 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
                         📦 Manut. Externa
@@ -735,7 +753,22 @@ export default function EquipmentTable({
                     </td>
 
                     <td className="py-3 px-4 hidden md:table-cell font-mono">
-                      <div className="text-slate-800 dark:text-slate-200 font-bold">{item.tag}</div>
+                      <div className="flex items-center justify-between gap-1.5">
+                        <div className="text-slate-800 dark:text-slate-200 font-bold truncate">{item.tag}</div>
+                        {onEditEquipment && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onEditEquipment(item);
+                            }}
+                            className="p-1 rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition opacity-70 group-hover:opacity-100"
+                            title="Editar Tag, Série e Código de Barras (Requer Senha)"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                       <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
                         <Barcode className="w-3 h-3 text-slate-400" />
                         {item.codigoBarras}

@@ -1,11 +1,12 @@
 import React, { useEffect } from 'react';
-import { AlertTriangle, Package, CheckCircle2, X, MapPin, Tag, Hash, User, Calendar, FileText, Check } from 'lucide-react';
+import { AlertTriangle, Package, CheckCircle2, X, MapPin, Tag, Hash, User, Calendar, FileText, Check, Pencil } from 'lucide-react';
 
 export default function AlreadyScannedAlertModal({
   isOpen,
   onClose,
   alertData, // { type: 'already_checked' | 'maintenance', equipment, meta, message, timestamp }
-  onLocateInTable
+  onLocateInTable,
+  onEditEquipment = null
 }) {
   useEffect(() => {
     if (!isOpen) return;
@@ -228,16 +229,33 @@ export default function AlreadyScannedAlertModal({
 
         {/* Modal Footer Actions */}
         <div className="p-3.5 sm:p-4 bg-slate-950 border-t border-slate-800 flex items-center justify-between gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() => {
-              if (onLocateInTable) onLocateInTable(eq.id);
-              onClose();
-            }}
-            className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition flex items-center gap-1.5 active:scale-95"
-          >
-            <span>🔍 Destacar na Lista</span>
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => {
+                if (onLocateInTable) onLocateInTable(eq.id);
+                onClose();
+              }}
+              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition flex items-center gap-1.5 active:scale-95"
+            >
+              <span>🔍 Destacar na Lista</span>
+            </button>
+
+            {onEditEquipment && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onEditEquipment(eq);
+                }}
+                className="px-3 py-2 rounded-xl bg-blue-950/60 border border-blue-800/80 hover:bg-blue-900/60 text-blue-300 hover:text-white text-xs font-bold transition flex items-center gap-1.5 active:scale-95"
+                title="Corrigir número de série, tag ou código de barras com senha"
+              >
+                <Pencil className="w-3.5 h-3.5 text-blue-400" />
+                <span>Corrigir Série / Tag</span>
+              </button>
+            )}
+          </div>
 
           <button
             type="button"
