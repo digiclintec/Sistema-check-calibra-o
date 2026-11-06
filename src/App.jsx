@@ -1971,6 +1971,7 @@ export default function App() {
             equipments={equipments}
             hospitalName={activeHospital?.name}
             planTitle={activeSheetName}
+            planId={activePlanId}
             sectorColors={sectorColors}
             onOpenScanner={() => setIsScannerOpen(true)}
           />
