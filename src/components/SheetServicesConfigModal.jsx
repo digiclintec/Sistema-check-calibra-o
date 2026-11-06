@@ -14,7 +14,10 @@ import {
   Info,
   Clock,
   ArrowRight,
-  Lock
+  Lock,
+  Truck,
+  KeyRound,
+  RotateCcw
 } from 'lucide-react';
 
 export default function SheetServicesConfigModal({
@@ -31,6 +34,13 @@ export default function SheetServicesConfigModal({
   const [enablePreventiva, setEnablePreventiva] = useState(true);
   const [enableSeguranca, setEnableSeguranca] = useState(true);
   const [executionMode, setExecutionMode] = useState('all_at_once'); // Padrão: 'all_at_once' (Pacote Completo Fixado)
+  const [enableCarrinhoDevolucao, setEnableCarrinhoDevolucao] = useState(false);
+  
+  // Controle de Senha para Habilitar/Desabilitar o Módulo de Carrinho & Devolução
+  const [showPinPrompt, setShowPinPrompt] = useState(false);
+  const [pendingCarrinhoToggle, setPendingCarrinhoToggle] = useState(null);
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState('');
 
   useEffect(() => {
     if (isOpen) {
@@ -38,6 +48,10 @@ export default function SheetServicesConfigModal({
       setEnablePreventiva(serviceConfig?.enablePreventiva ?? true);
       setEnableSeguranca(serviceConfig?.enableSeguranca ?? true);
       setExecutionMode(serviceConfig?.executionMode || 'all_at_once');
+      setEnableCarrinhoDevolucao(Boolean(serviceConfig?.enableCarrinhoDevolucao));
+      setShowPinPrompt(false);
+      setPinInput('');
+      setPinError('');
     }
   }, [isOpen, serviceConfig]);
 
@@ -80,13 +94,35 @@ export default function SheetServicesConfigModal({
 
   const activeCount = [enableCalibracao, enablePreventiva, enableSeguranca].filter(Boolean).length;
 
+  const handleRequestCarrinhoToggle = () => {
+    const nextVal = !enableCarrinhoDevolucao;
+    setPendingCarrinhoToggle(nextVal);
+    setShowPinPrompt(true);
+    setPinInput('');
+    setPinError('');
+  };
+
+  const handleConfirmPin = (e) => {
+    e?.preventDefault();
+    const clean = pinInput.trim();
+    if (clean === '1234' || clean.toLowerCase() === 'digiclintec' || clean === 'admin123') {
+      setEnableCarrinhoDevolucao(pendingCarrinhoToggle);
+      setShowPinPrompt(false);
+      setPinInput('');
+      setPinError('');
+    } else {
+      setPinError('Senha incorreta. (Padrão de segurança: 1234)');
+    }
+  };
+
   const handleSave = (e) => {
     e.preventDefault();
     onSaveConfig({
       enableCalibracao,
       enablePreventiva,
       enableSeguranca,
-      executionMode
+      executionMode,
+      enableCarrinhoDevolucao
     });
     onClose();
   };
@@ -339,6 +375,114 @@ export default function SheetServicesConfigModal({
                 </div>
               </button>
 
+            </div>
+          </div>
+
+          {/* Seção 3: Logística e Carrinho de Devolução aos Setores */}
+          <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+            <div className="flex items-center justify-between">
+              <label className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <Truck className="w-4 h-4 text-emerald-500" />
+                <span>3. Logística: Carrinho & Devolução aos Setores</span>
+              </label>
+
+              <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                enableCarrinhoDevolucao 
+                  ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' 
+                  : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
+              }`}>
+                {enableCarrinhoDevolucao ? 'Ativado' : 'Desativado'}
+              </span>
+            </div>
+
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Habilita a aba de conferência e separação de bombas por setor de destino para devolução aos andares do hospital (com identificação rápida por bip).
+            </p>
+
+            {/* Toggle Card com Proteção de Senha */}
+            <div className="p-3 rounded-2xl border transition bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                    enableCarrinhoDevolucao ? 'bg-emerald-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-400'
+                  }`}>
+                    <RotateCcw className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm">
+                      Módulo de Carrinho & Devolução
+                    </div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Requer senha técnica para ativar ou desativar
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleRequestCarrinhoToggle}
+                  className={`px-3 py-1.5 rounded-xl font-bold text-xs transition flex items-center gap-1.5 shadow-xs ${
+                    enableCarrinhoDevolucao
+                      ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                      : 'bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300'
+                  }`}
+                >
+                  <KeyRound className="w-3.5 h-3.5" />
+                  <span>{enableCarrinhoDevolucao ? 'Desativar Módulo' : 'Ativar Módulo'}</span>
+                </button>
+              </div>
+
+              {/* Prompt de Senha Inline se solicitado toggle */}
+              {showPinPrompt && (
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 space-y-2 animate-in fade-in">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs flex items-center gap-1.5">
+                      <Lock className="w-3.5 h-3.5 text-amber-500" />
+                      <span>Confirme sua Senha de Técnico:</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowPinPrompt(false)}
+                      className="text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="password"
+                      autoFocus
+                      placeholder="Senha (padrão: 1234)"
+                      value={pinInput}
+                      onChange={e => {
+                        setPinInput(e.target.value);
+                        setPinError('');
+                      }}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleConfirmPin();
+                        }
+                      }}
+                      className="flex-1 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleConfirmPin}
+                      className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition shrink-0"
+                    >
+                      Confirmar
+                    </button>
+                  </div>
+
+                  {pinError && (
+                    <p className="text-[11px] text-red-600 dark:text-red-400 font-bold">
+                      {pinError}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 

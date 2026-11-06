@@ -43,6 +43,7 @@ import MassActionPasswordModal from './components/MassActionPasswordModal';
 import SmartBatchModal from './components/SmartBatchModal';
 import SpreadsheetAuditView from './components/SpreadsheetAuditView';
 import SheetServicesConfigModal from './components/SheetServicesConfigModal';
+import CarrinhoDevolucaoTab from './components/CarrinhoDevolucaoTab';
 import ManualCheckPasswordModal from './components/ManualCheckPasswordModal';
 import ModalityBar from './components/ModalityBar';
 import SectorColorModal from './components/SectorColorModal';
@@ -209,7 +210,8 @@ export default function App() {
       enableCalibracao: true,
       enablePreventiva: true,
       enableSeguranca: true,
-      executionMode: 'all_at_once' // Padrão recomendado: 'all_at_once' (Pacote Completo Fixado)
+      executionMode: 'all_at_once', // Padrão recomendado: 'all_at_once' (Pacote Completo Fixado)
+      enableCarrinhoDevolucao: false // Ativação opcional com senha do módulo de devolução
     };
   });
   const [serviceConfigModal, setServiceConfigModal] = useState({ isOpen: false, isInitialSetup: false });
@@ -275,8 +277,16 @@ export default function App() {
         body: JSON.stringify({ hospitalId: activeHospitalId, serviceConfig: newConfig })
       });
     } catch (e) {}
-    showToast('success', `Opções atualizadas: ${newConfig.executionMode === 'all_at_once' ? '⚡ Bipar Tudo de Uma Vez' : '🎯 Bipar Separado'}`);
+    const carrinhoLabel = newConfig.enableCarrinhoDevolucao ? ' • 📦 Carrinho de Devolução Ativo' : '';
+    showToast('success', `Opções atualizadas: ${newConfig.executionMode === 'all_at_once' ? '⚡ Bipar Tudo de Uma Vez' : '🎯 Bipar Separado'}${carrinhoLabel}`);
   };
+
+  // Se o módulo de devolução for desativado e o técnico estava nessa aba, volta para conferência
+  useEffect(() => {
+    if (activeMainTab === 'devolucao' && !serviceConfig?.enableCarrinhoDevolucao) {
+      setActiveMainTab('conferencia');
+    }
+  }, [activeMainTab, serviceConfig]);
 
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [lastScannedId, setLastScannedId] = useState(null);
@@ -1883,6 +1893,7 @@ export default function App() {
         onUndo={handleUndoAction}
         onResetData={handleResetData}
         googleSheetUrl={googleSheetUrl}
+        serviceConfig={serviceConfig}
       />
 
       {/* Main Content Area */}
@@ -1954,6 +1965,14 @@ export default function App() {
               setActiveMainTab('conferencia');
               setIsScannerOpen(true);
             }}
+          />
+        ) : activeMainTab === 'devolucao' ? (
+          <CarrinhoDevolucaoTab
+            equipments={equipments}
+            hospitalName={activeHospital?.name}
+            planTitle={activeSheetName}
+            sectorColors={sectorColors}
+            onOpenScanner={() => setIsScannerOpen(true)}
           />
         ) : activeMainTab === 'perfil' ? (
           <TechnicianProfileTab

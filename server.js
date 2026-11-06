@@ -963,7 +963,8 @@ app.get('/api/data', (req, res) => {
       enableCalibracao: true,
       enablePreventiva: true,
       enableSeguranca: true,
-      executionMode: 'all_at_once'
+      executionMode: 'all_at_once',
+      enableCarrinhoDevolucao: false
     },
     sectorColors: hospital.sectorColors || db.sectorColors || {},
     lastUpdated: planLastUpdated,
@@ -1053,7 +1054,8 @@ app.post('/api/service-config', (req, res) => {
     enableCalibracao: serviceConfig?.enableCalibracao ?? true,
     enablePreventiva: serviceConfig?.enablePreventiva ?? true,
     enableSeguranca: serviceConfig?.enableSeguranca ?? true,
-    executionMode: serviceConfig?.executionMode === 'separated' ? 'separated' : 'all_at_once'
+    executionMode: serviceConfig?.executionMode === 'separated' ? 'separated' : 'all_at_once',
+    enableCarrinhoDevolucao: Boolean(serviceConfig?.enableCarrinhoDevolucao)
   };
 
   db.hospitals[idx].lastUpdated = Date.now();
@@ -1121,7 +1123,8 @@ app.post('/api/data', (req, res) => {
       enableCalibracao: serviceConfig.enableCalibracao ?? true,
       enablePreventiva: serviceConfig.enablePreventiva ?? true,
       enableSeguranca: serviceConfig.enableSeguranca ?? true,
-      executionMode: serviceConfig.executionMode === 'separated' ? 'separated' : 'all_at_once'
+      executionMode: serviceConfig.executionMode === 'separated' ? 'separated' : 'all_at_once',
+      enableCarrinhoDevolucao: Boolean(serviceConfig.enableCarrinhoDevolucao)
     };
   }
   if (sectorColors) {

@@ -21,7 +21,8 @@ import {
   RotateCcw,
   User,
   Link2,
-  Trash2
+  Trash2,
+  Truck
 } from 'lucide-react';
 
 export default function Navbar({ 
@@ -52,7 +53,8 @@ export default function Navbar({
   undoCheckpoint = null,
   onUndo = null,
   onResetData = null,
-  googleSheetUrl = ''
+  googleSheetUrl = '',
+  serviceConfig = null
 }) {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const moreMenuRef = useRef(null);
@@ -194,6 +196,21 @@ export default function Navbar({
                   </span>
                 )}
               </button>
+
+              {serviceConfig?.enableCarrinhoDevolucao && (
+                <button
+                  onClick={() => onChangeMainTab('devolucao')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
+                    activeMainTab === 'devolucao'
+                      ? 'bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-500'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                  title="Carrinho & Devolução de Bombas aos Setores"
+                >
+                  <Truck className="w-3.5 h-3.5 shrink-0" />
+                  <span>Carrinho & Devolução</span>
+                </button>
+              )}
 
               <button
                 onClick={() => onChangeMainTab('perfil')}
@@ -498,6 +515,22 @@ export default function Navbar({
                 </span>
               )}
             </button>
+
+            {serviceConfig?.enableCarrinhoDevolucao && (
+              <button
+                onClick={() => onChangeMainTab('devolucao')}
+                className={`py-1.5 px-1 sm:px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 sm:gap-1.5 truncate ${
+                  activeMainTab === 'devolucao'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+                title="Carrinho de Devolução"
+              >
+                <Truck className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate hidden sm:inline">Carrinho & Devolução</span>
+                <span className="truncate sm:hidden">Carrinho</span>
+              </button>
+            )}
 
             <button
               onClick={() => onChangeMainTab('perfil')}
