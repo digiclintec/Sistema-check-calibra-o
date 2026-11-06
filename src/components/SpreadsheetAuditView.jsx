@@ -88,10 +88,13 @@ export default function SpreadsheetAuditView({
       if (e.check_seguranca) segOk++;
       if (e.check_externa) externaOk++;
 
-      const isComplete = (
-        (!serviceConfig || !serviceConfig.enableCalibracao || e.check_calibracao) &&
-        (!serviceConfig || !serviceConfig.enablePreventiva || e.check_preventiva) &&
-        (!serviceConfig || !serviceConfig.enableSeguranca || e.check_seguranca)
+      const isComplete = Boolean(
+        e.check_externa ||
+        (
+          (!serviceConfig || !serviceConfig.enableCalibracao || e.check_calibracao) &&
+          (!serviceConfig || !serviceConfig.enablePreventiva || e.check_preventiva) &&
+          (!serviceConfig || !serviceConfig.enableSeguranca || e.check_seguranca)
+        )
       );
 
       if (isComplete) {

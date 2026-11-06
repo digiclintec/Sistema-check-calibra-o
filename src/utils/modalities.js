@@ -150,9 +150,14 @@ export function isEquipmentChecked(eq, modality = 'calibracao', serviceConfig = 
 
 /**
  * Retorna se o equipamento está 100% conferido considerando as modalidades ativas
+ * OU se foi bipado/registrado para Manutenção Externa (pois teve saída e foi atendido)
  */
 export function isEquipmentFullyChecked(eq, serviceConfig) {
   if (!eq) return false;
+
+  // Se o equipamento foi bipado e registrado para Manutenção Externa, ele conta como atendido na Visão Geral
+  if (Boolean(eq.check_externa)) return true;
+
   const enableCal = serviceConfig?.enableCalibracao ?? true;
   const enablePrev = serviceConfig?.enablePreventiva ?? true;
   const enableSeg = serviceConfig?.enableSeguranca ?? true;
@@ -192,6 +197,23 @@ export function getCheckMeta(eq, modality = 'calibracao') {
       date: eq.data_externa,
       user: eq.usuario_externa,
       motivo: eq.motivo_externa || 'Calibração e conserto por terceirizados'
+    };
+  }
+
+  if (modality === 'geral') {
+    if (eq.check_externa) {
+      return {
+        checked: true,
+        date: eq.data_externa || eq.dataCheck,
+        user: eq.usuario_externa || eq.conferidoPor || 'Manutenção Externa',
+        motivo: eq.motivo_externa || 'Saída para Manutenção'
+      };
+    }
+    const isFull = isEquipmentFullyChecked(eq);
+    return {
+      checked: isFull,
+      date: eq.data_calibracao || eq.data_preventiva || eq.data_seguranca || eq.dataCheck,
+      user: eq.usuario_calibracao || eq.usuario_preventiva || eq.usuario_seguranca || eq.conferidoPor
     };
   }
 

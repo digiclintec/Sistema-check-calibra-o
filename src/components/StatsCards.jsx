@@ -36,11 +36,11 @@ export default function StatsCards({ stats, activeFilter, onSelectFilter, active
       progressGradient: 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-500'
     },
     geral: {
-      checkedTitle: '100% Concluídos (3 Frentes)',
-      checkedSubtext: `${percent}% com Calibração + Prev + Seg`,
-      pendingTitle: 'Pendentes em Alguma Frente',
-      pendingSubtext: 'Falta calibração, preventiva ou TSE',
-      progressGradient: 'bg-gradient-to-r from-indigo-600 to-purple-500'
+      checkedTitle: 'Validados & Manutenção',
+      checkedSubtext: `${percent}% atendidos (serviço concluído ou saída p/ manutenção)`,
+      pendingTitle: 'Pendentes de Bipagem',
+      pendingSubtext: 'Falta validação interna ou saída p/ manutenção',
+      progressGradient: 'bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-500'
     }
   }[activeModality] || {
     checkedTitle: 'Checados / OK',

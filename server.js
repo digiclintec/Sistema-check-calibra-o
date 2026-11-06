@@ -476,7 +476,7 @@ app.get('/api/hospitals', (req, res) => {
     const prevOk = listEq.filter(e => e.check_preventiva).length;
     const segOk = listEq.filter(e => e.check_seguranca).length;
     const externaOk = listEq.filter(e => e.check_externa).length;
-    const complete100 = listEq.filter(e => e.check_calibracao && e.check_preventiva && e.check_seguranca).length;
+    const complete100 = listEq.filter(e => (e.check_calibracao && e.check_preventiva && e.check_seguranca) || e.check_externa).length;
     const checkedCount = listEq.filter(e => e.checado).length;
 
     // Usuários com acesso a este hospital
