@@ -1,5 +1,14 @@
-import { parseWorkbookBuffer, isMaintenanceExternalText, parseCheckValue } from './sheetParser.js';
+import { 
+  parseWorkbookBuffer, 
+  isMaintenanceExternalText, 
+  parseCheckValue,
+  isPrevOnlyText,
+  isTseOnlyText,
+  isCalibradoText
+} from './sheetParser.js';
 import { findBestEquipmentMatches, cleanAlphanumeric } from './fuzzyMatch.js';
+
+export { isPrevOnlyText, isTseOnlyText, isCalibradoText };
 
 /**
  * Detecta se uma célula de status representa um item PENDENTE ou não calibrado
@@ -32,7 +41,7 @@ export function isPendingText(val) {
 }
 
 /**
- * Classifica com precisão se a linha do arquivo é Manutenção Externa, Calibração Completa ou Pendente
+ * Classifica com precisão se a linha do arquivo é Manutenção Externa, Calibração, Preventiva (Prev), TSE ou Pendente
  */
 export function classifyImportedServiceType(item, fileHasCheckOrStatusCol = false) {
   if (!item) return 'pendente';
@@ -44,27 +53,46 @@ export function classifyImportedServiceType(item, fileHasCheckOrStatusCol = fals
 
   const row = item._originalRow || item;
 
-  // 2. Procura termos explícitos nas colunas da linha
+  // 2. Procura termos e gatilhos explícitos nas colunas da linha
   let hasExplicitPending = false;
-  let hasExplicitCheck = false;
+  let hasExplicitPrev = false;
+  let hasExplicitTse = false;
+  let hasExplicitCal = false;
+  let hasGenericCheck = false;
 
   for (const [k, v] of Object.entries(row)) {
     if (k.startsWith('_')) continue;
-    if (isPendingText(v)) {
-      hasExplicitPending = true;
-    }
-    if (parseCheckValue(v)) {
-      hasExplicitCheck = true;
-    }
+    if (isPendingText(v)) hasExplicitPending = true;
+    if (isPrevOnlyText(v)) hasExplicitPrev = true;
+    if (isTseOnlyText(v)) hasExplicitTse = true;
+    if (isCalibradoText(v)) hasExplicitCal = true;
+    if (parseCheckValue(v)) hasGenericCheck = true;
   }
 
-  // Se o item já tem marcação direta de calibração
+  // Se o item já tem marcação direta de calibração ou modalidade no objeto
   if (item.check_calibracao || (item.checado && !item.check_externa)) {
-    hasExplicitCheck = true;
+    hasExplicitCal = true;
+  }
+  if (item.check_preventiva) hasExplicitPrev = true;
+  if (item.check_seguranca) hasExplicitTse = true;
+
+  // Gatilho: Somente Preventiva (Prev)
+  if (hasExplicitPrev && !hasExplicitCal && !hasExplicitTse) {
+    return 'preventiva';
   }
 
-  // Se tiver indicação afirmativa de calibração/check e não for pendente
-  if (hasExplicitCheck && !hasExplicitPending) {
+  // Gatilho: Somente Teste de Segurança (TSE)
+  if (hasExplicitTse && !hasExplicitCal && !hasExplicitPrev) {
+    return 'seguranca';
+  }
+
+  // Gatilho: Calibrado
+  if (hasExplicitCal && !hasExplicitPending) {
+    return 'calibrado';
+  }
+
+  // Se tiver indicação afirmativa genérica de calibração/check e não for pendente
+  if (hasGenericCheck && !hasExplicitPending) {
     return 'calibracao_completa';
   }
 
@@ -78,8 +106,8 @@ export function classifyImportedServiceType(item, fileHasCheckOrStatusCol = fals
     return 'pendente';
   }
 
-  // Fallback: se o arquivo não tem nenhuma coluna de conferência (ex: lista simples de bombas a carimbar)
-  return 'calibracao_completa';
+  // Fallback: se o arquivo não tem nenhuma coluna de conferência
+  return 'calibrado';
 }
 
 /**
@@ -452,13 +480,45 @@ export function mergeCalibrationsIntoEquipments(
         copy.check_calibracao = false;
         copy.data_calibracao = null;
         copy.usuario_calibracao = null;
+        copy.check_preventiva = false;
+        copy.check_seguranca = false;
+        copy.checado = true;
+        copy.dataCheck = dateToApply;
+        copy.conferidoPor = userToApply;
+        hasChanges = true;
+      }
+    } else if (effectiveType === 'preventiva') {
+      // GATILHO 'Prev': Marca exclusivamente Preventiva
+      if (overwriteExisting || !copy.check_preventiva) {
+        copy.check_preventiva = true;
+        copy.data_preventiva = dateToApply;
+        copy.usuario_preventiva = userToApply;
+        copy.check_externa = false;
+        copy.data_externa = null;
+        copy.usuario_externa = null;
+        copy.motivo_externa = null;
+        copy.checado = true;
+        copy.dataCheck = dateToApply;
+        copy.conferidoPor = userToApply;
+        hasChanges = true;
+      }
+    } else if (effectiveType === 'seguranca') {
+      // GATILHO 'tse': Marca exclusivamente Teste de Segurança Elétrica
+      if (overwriteExisting || !copy.check_seguranca) {
+        copy.check_seguranca = true;
+        copy.data_seguranca = dateToApply;
+        copy.usuario_seguranca = userToApply;
+        copy.check_externa = false;
+        copy.data_externa = null;
+        copy.usuario_externa = null;
+        copy.motivo_externa = null;
         copy.checado = true;
         copy.dataCheck = dateToApply;
         copy.conferidoPor = userToApply;
         hasChanges = true;
       }
     } else {
-      // Aplica Calibração Completa / Serviços internos
+      // GATILHO 'calibrado' ou 'calibracao_completa'
       modalities.forEach(m => {
         if (m === 'calibracao') {
           if (overwriteExisting || !copy.check_calibracao) {

@@ -129,6 +129,81 @@ export function isMaintenanceExternalText(rawVal) {
 }
 
 /**
+ * Detecta se um texto indica especificamente Manutenção Preventiva (Prev, Preventiva, MP)
+ */
+export function isPrevOnlyText(rawVal) {
+  if (!rawVal) return false;
+  const s = String(rawVal)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+  if (!s) return false;
+  return (
+    s === 'prev' ||
+    s === 'mp' ||
+    s === 'preventiva' ||
+    s === 'preventivada' ||
+    s === 'preventivado' ||
+    s === 'somente prev' ||
+    s === 'so prev' ||
+    s === 'manutencao preventiva' ||
+    s.includes('manutencao preventiva') ||
+    (s.includes('prev') && !s.includes('calibrad') && !s.includes('tse'))
+  );
+}
+
+/**
+ * Detecta se um texto indica especificamente Teste de Segurança Elétrica (TSE, Seg. Elétrica, Segurança)
+ */
+export function isTseOnlyText(rawVal) {
+  if (!rawVal) return false;
+  const s = String(rawVal)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+  if (!s) return false;
+  return (
+    s === 'tse' ||
+    s === 'somente tse' ||
+    s === 'so tse' ||
+    s === 'seguranca' ||
+    s === 'seguranca eletrica' ||
+    s === 'teste seguranca' ||
+    s === 'teste de seguranca' ||
+    s === 'eletrica' ||
+    (s.includes('tse') && !s.includes('calibrad') && !s.includes('prev'))
+  );
+}
+
+/**
+ * Detecta se um texto indica Calibração (Calibrado, Calibração, Cal)
+ */
+export function isCalibradoText(rawVal) {
+  if (!rawVal) return false;
+  const s = String(rawVal)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+  if (!s) return false;
+  return (
+    s === 'calibrado' ||
+    s === 'calibrada' ||
+    s === 'calibrados' ||
+    s === 'calibradas' ||
+    s === 'calibracao' ||
+    s === 'cal' ||
+    s.includes('calibrad') ||
+    s.includes('calibrac') ||
+    s === 'check' ||
+    s === 'ok' ||
+    s === 'sim'
+  );
+}
+
+/**
  * Converte valor de data (texto BR, ISO ou Date) para formato ISO
  */
 export function parseDateValue(val) {
@@ -613,7 +688,7 @@ export function normalizeRows(rows, mapping) {
     // FRENTE 2: PREVENTIVA
     const hasPrevCol = Boolean(mapping.checkPreventiva);
     const rawCheckPrev = hasPrevCol ? row[mapping.checkPreventiva] : null;
-    const isPrevChecked = hasPrevCol ? parseCheckValue(rawCheckPrev) : false;
+    let isPrevChecked = hasPrevCol ? parseCheckValue(rawCheckPrev) : false;
 
     let dataPrev = mapping.dataPreventiva ? parseDateValue(row[mapping.dataPreventiva]) : null;
     if (!dataPrev && isPrevChecked) {
@@ -686,9 +761,36 @@ export function normalizeRows(rows, mapping) {
       ? String(row[mapping.motivoExterna]).trim()
       : 'Calibração e conserto por equipe externa terceirizada';
 
-    // Se estiver em Manutenção, não pode constar como calibração
+    // Detecção inteligente de gatilhos específicos ("Prev", "tse", "calibrado")
+    const triggerSource = rawChecadoGeral || rawStatus || row['Status'] || row['Situação'] || row['Situacao'] || row['Serviço'] || row['Servico'] || row['ESTADO - Pendente'];
+
+    const isPrevTrigger = isPrevOnlyText(triggerSource);
+    const isTseTrigger = isTseOnlyText(triggerSource);
+    const isCalTrigger = isCalibradoText(triggerSource);
+
+    if (!hasPrevCol && isPrevTrigger && !isCalTrigger && !isTseTrigger) {
+      // Gatilho 'Prev': O usuário indicou expressamente somente preventiva!
+      isPrevChecked = true;
+      isCalChecked = false;
+      isSegChecked = false;
+      if (!dataPrev) dataPrev = parseDateValue(triggerSource) || new Date().toISOString();
+    } else if (!hasSegCol && isTseTrigger && !isCalTrigger && !isPrevTrigger) {
+      // Gatilho 'tse': O usuário indicou expressamente somente teste de segurança!
+      isSegChecked = true;
+      isCalChecked = false;
+      isPrevChecked = false;
+      if (!dataSeg) dataSeg = parseDateValue(triggerSource) || new Date().toISOString();
+    } else if (!hasCalCol && isCalTrigger) {
+      // Gatilho 'calibrado': Calibração metrológica padrão
+      isCalChecked = true;
+      if (!dataCal) dataCal = parseDateValue(triggerSource) || new Date().toISOString();
+    }
+
+    // Se estiver em Manutenção, não pode constar como calibração, preventiva ou segurança interna
     if (isExtChecked) {
       isCalChecked = false;
+      isPrevChecked = false;
+      isSegChecked = false;
       isChecadoGeral = false;
     }
 
