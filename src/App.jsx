@@ -96,6 +96,19 @@ export default function App() {
   // Multi-Hospital SaaS state
   const [hospitals, setHospitals] = useState([]);
   const [activeHospitalId, setActiveHospitalId] = useState(() => {
+    try {
+      const savedUserStr = localStorage.getItem(USER_KEY);
+      if (savedUserStr) {
+        const u = JSON.parse(savedUserStr);
+        if (u?.id) {
+          const userHosp = localStorage.getItem(`calibracheck_active_hospital_${u.id}`);
+          if (userHosp) return userHosp;
+          if (u.hospitalIds && u.hospitalIds.length > 0 && u.hospitalIds[0] !== 'all') {
+            return u.hospitalIds[0];
+          }
+        }
+      }
+    } catch (e) {}
     return localStorage.getItem(HOSP_KEY) || 'hosp_central';
   });
 
@@ -308,9 +321,13 @@ export default function App() {
       const data = await res.json();
       if (data.success && data.plans) {
         setMonthlyPlans(data.plans);
-        if (data.activePlanId) {
-          setActivePlanId(data.activePlanId);
-        }
+        // Respeita o plano escolhido por este técnico individualmente, sem ser sobrescrito pelo plano de outros técnicos
+        setActivePlanId(current => {
+          if (current && data.plans.some(p => p.id === current)) return current;
+          const userSavedPlan = localStorage.getItem(`usr_${currentUser.id}_calibracheck_active_plan_${hospId}`);
+          if (userSavedPlan && data.plans.some(p => p.id === userSavedPlan)) return userSavedPlan;
+          return data.plans[0]?.id || null;
+        });
       }
     } catch (e) {
       console.warn('Erro ao carregar planejamentos mensais:', e);
@@ -321,7 +338,7 @@ export default function App() {
     loadMonthlyPlans(activeHospitalId);
   }, [loadMonthlyPlans, activeHospitalId]);
 
-  // Switch active monthly plan
+  // Switch active monthly plan (ação local e independente deste técnico)
   const handleSwitchPlan = async (planId) => {
     try {
       const res = await fetch('/api/plans/switch', {
@@ -335,10 +352,13 @@ export default function App() {
       const data = await res.json();
       if (data.success) {
         setActivePlanId(planId);
+        if (currentUser?.id) {
+          localStorage.setItem(`usr_${currentUser.id}_calibracheck_active_plan_${activeHospitalId}`, planId);
+        }
         setEquipments(data.equipments || []);
         if (data.activeSheetName) setActiveSheetName(data.activeSheetName);
         setActiveMainTab('conferencia');
-        showToast('success', `Planilha "${data.planTitle || planId}" ativada para validação!`);
+        showToast('success', `Planilha "${data.planTitle || planId}" ativada para o seu perfil!`);
         loadMonthlyPlans(activeHospitalId);
       } else {
         showToast('error', data.message || 'Erro ao alternar planilha.');
@@ -409,6 +429,9 @@ export default function App() {
   // Switch hospital
   const handleSwitchHospital = async (hospId) => {
     setActiveHospitalId(hospId);
+    if (currentUser?.id) {
+      localStorage.setItem(`calibracheck_active_hospital_${currentUser.id}`, hospId);
+    }
     localStorage.setItem(HOSP_KEY, hospId);
     lastUpdatedServerRef.current = 0; // force reload
 
@@ -452,33 +475,6 @@ export default function App() {
       showToast('error', data.message || 'Erro ao alterar plano.');
     }
   };
-
-  // Cross-tab broadcast channel
-  useEffect(() => {
-    if (typeof BroadcastChannel !== 'undefined') {
-      const channel = new BroadcastChannel('calibracheck_sync');
-      broadcastChannelRef.current = channel;
-
-      channel.onmessage = (event) => {
-        const { type, payload } = event.data || {};
-        if (type === 'STATE_UPDATE') {
-          if (!payload.hospitalId || payload.hospitalId === activeHospitalId) {
-            setEquipments((payload.equipments || []).map(normalizeEquipmentModalities));
-            if (payload.activeSheetName !== undefined) setActiveSheetName(payload.activeSheetName);
-            if (payload.lastAction) {
-              showToast('info', payload.lastAction);
-            }
-          }
-        } else if (type === 'SECTOR_COLORS_UPDATE') {
-          if (!payload.hospitalId || payload.hospitalId === activeHospitalId) {
-            setSectorColors(payload.sectorColors || {});
-          }
-        }
-      };
-
-      return () => channel.close();
-    }
-  }, [activeHospitalId]);
 
   // Reseta o cache de sincronização e carrega configuração ao trocar de hospital
   useEffect(() => {
@@ -535,11 +531,12 @@ export default function App() {
     setToast({ type, message, action });
   };
 
-  // Sync with Server API (Shared real-time state for hospital)
+  // Sync with Server API (Sincronização em tempo real isolada por Hospital e por Plano de Trabalho)
   const syncWithServer = useCallback(async () => {
     if (!currentUser) return;
     try {
-      const res = await fetch(`/api/data?hospitalId=${encodeURIComponent(activeHospitalId)}`);
+      const planParam = activePlanId ? `&planId=${encodeURIComponent(activePlanId)}` : '';
+      const res = await fetch(`/api/data?hospitalId=${encodeURIComponent(activeHospitalId)}${planParam}`);
       if (!res.ok) return;
       const data = await res.json();
       if (data.success) {
@@ -558,7 +555,8 @@ export default function App() {
         if (data.lastUpdated && data.lastUpdated > lastUpdatedServerRef.current) {
           lastUpdatedServerRef.current = data.lastUpdated;
           
-          // If server data differs, update local state
+          // Se o servidor tem dados atualizados para ESTE plano/hospital, atualiza a lista de bombas
+          // SEM fechar a câmera, SEM mudar de aba, SEM resetar o filtro de setor do técnico
           if (data.equipments && data.equipments.length >= 0) {
             setEquipments(data.equipments.map(normalizeEquipmentModalities));
             if (data.activeSheetName !== undefined) {
@@ -576,7 +574,7 @@ export default function App() {
     } catch (err) {
       // Offline fallback silent
     }
-  }, [currentUser, activeHospitalId]);
+  }, [currentUser, activeHospitalId, activePlanId]);
 
   // Poll server every 2.5s for changes made by other users/devices
   useEffect(() => {
@@ -586,27 +584,16 @@ export default function App() {
     return () => clearInterval(interval);
   }, [currentUser, syncWithServer]);
 
-  // Push full update to server & broadcast
+  // Push update to server com vinculação ao plano ativo
   const pushServerUpdate = async (newEquipments, sheetName, actionDesc, gUrl = undefined) => {
     setEquipments(newEquipments);
     if (sheetName !== undefined) setActiveSheetName(sheetName);
 
-    // Broadcast to other tabs on same machine
-    broadcastChannelRef.current?.postMessage({
-      type: 'STATE_UPDATE',
-      payload: {
-        hospitalId: activeHospitalId,
-        equipments: newEquipments,
-        activeSheetName: sheetName !== undefined ? sheetName : activeSheetName,
-        googleSheetUrl: gUrl !== undefined ? gUrl : googleSheetUrl,
-        lastAction: actionDesc
-      }
-    });
-
-    // Post to backend server
+    // Post to backend server com identificação do plano
     try {
       const body = {
         hospitalId: activeHospitalId,
+        planId: activePlanId,
         equipments: newEquipments,
         activeSheetName: sheetName !== undefined ? sheetName : activeSheetName,
         userEmail: currentUser?.email,
@@ -1179,6 +1166,7 @@ export default function App() {
           modality: targetMods[0],
           modalities: targetMods,
           hospitalId: activeHospitalId,
+          planId: activePlanId,
           userEmail: currentUser?.email,
           userName: currentUser?.name
         })

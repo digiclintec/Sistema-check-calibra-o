@@ -832,20 +832,17 @@ app.post('/api/plans/switch', (req, res) => {
     return res.status(404).json({ success: false, message: 'Planejamento não encontrado.' });
   }
 
+  // Registra o plano de referência para o usuário sem disparar gatilho destrutivo para outros técnicos
   hospital.activePlanId = planId;
-  hospital.equipments = plan.equipments || [];
-  hospital.activeSheetName = plan.fileName || plan.title;
-  hospital.lastUpdated = Date.now();
-  db.lastUpdated = Date.now();
   saveDb(db);
 
   res.json({
     success: true,
-    message: `Planejamento "${plan.title}" ativado com sucesso!`,
+    message: `Planejamento "${plan.title}" ativado para você!`,
     activePlanId: planId,
     activePlan: plan,
     equipments: plan.equipments || [],
-    activeSheetName: hospital.activeSheetName
+    activeSheetName: plan.fileName || plan.title || hospital.activeSheetName
   });
 });
 
@@ -936,14 +933,28 @@ app.get('/api/data', (req, res) => {
   const db = readDb();
   const targetId = req.query.hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
   const hospital = (db.hospitals || []).find(h => h.id === targetId) || db.hospitals?.[0] || {};
+  const requestedPlanId = req.query.planId;
+
+  // Suporte a múltiplos técnicos em projetos/planos simultâneos e independentes
+  let targetPlan = null;
+  if (requestedPlanId && Array.isArray(hospital.plans)) {
+    targetPlan = hospital.plans.find(p => p.id === requestedPlanId);
+  } else if (hospital.activePlanId && Array.isArray(hospital.plans)) {
+    targetPlan = hospital.plans.find(p => p.id === hospital.activePlanId);
+  }
+
+  const equipments = targetPlan ? (targetPlan.equipments || []) : (hospital.equipments || []);
+  const activeSheetName = targetPlan ? (targetPlan.fileName || targetPlan.title || hospital.activeSheetName || '') : (hospital.activeSheetName || '');
+  const planLastUpdated = targetPlan?.lastUpdated || hospital.lastUpdated || db.lastUpdated || Date.now();
 
   res.json({
     success: true,
     hospitalId: hospital.id,
     hospitalName: hospital.name,
     hospitalPlan: hospital.plano || 'pro',
-    equipments: hospital.equipments || [],
-    activeSheetName: hospital.activeSheetName || '',
+    activePlanId: targetPlan ? targetPlan.id : (hospital.activePlanId || null),
+    equipments,
+    activeSheetName,
     googleSheetUrl: hospital.googleSheetUrl || '',
     googleSheetAutoSync: hospital.googleSheetAutoSync !== false,
     lastGoogleSheetSync: hospital.lastGoogleSheetSync || null,
@@ -955,7 +966,7 @@ app.get('/api/data', (req, res) => {
       executionMode: 'all_at_once'
     },
     sectorColors: hospital.sectorColors || db.sectorColors || {},
-    lastUpdated: hospital.lastUpdated || db.lastUpdated || Date.now(),
+    lastUpdated: planLastUpdated,
     lastUpdatedBy: hospital.lastUpdatedBy || ''
   });
 });
@@ -1056,7 +1067,7 @@ app.post('/api/service-config', (req, res) => {
   });
 });
 
-// Save or Update spreadsheet for active hospital
+// Save or Update spreadsheet for active hospital (com isolamento por plano e técnico)
 app.post('/api/data', (req, res) => {
   const { 
     equipments, 
@@ -1064,6 +1075,7 @@ app.post('/api/data', (req, res) => {
     userEmail, 
     userName, 
     hospitalId, 
+    planId,
     serviceConfig, 
     sectorColors,
     googleSheetUrl,
@@ -1078,9 +1090,26 @@ app.post('/api/data', (req, res) => {
   }
 
   const inspectorLabel = userName ? `${userName} (${userEmail})` : (userEmail || 'Sistema');
+  const now = Date.now();
+  const newEquipments = Array.isArray(equipments) ? equipments : [];
 
-  db.hospitals[idx].equipments = Array.isArray(equipments) ? equipments : [];
-  db.hospitals[idx].activeSheetName = activeSheetName || '';
+  // Se este técnico está trabalhando em um plano específico, atualiza esse plano isoladamente
+  let targetPlan = null;
+  if (planId && Array.isArray(db.hospitals[idx].plans)) {
+    targetPlan = db.hospitals[idx].plans.find(p => p.id === planId);
+    if (targetPlan) {
+      targetPlan.equipments = newEquipments;
+      if (activeSheetName) targetPlan.fileName = activeSheetName;
+      targetPlan.lastUpdated = now;
+    }
+  }
+
+  // Atualiza a base do hospital apenas se for o plano principal ou sem plano específico
+  if (!planId || !targetPlan || planId === db.hospitals[idx].activePlanId) {
+    db.hospitals[idx].equipments = newEquipments;
+    db.hospitals[idx].activeSheetName = activeSheetName || db.hospitals[idx].activeSheetName || '';
+  }
+
   if (googleSheetUrl !== undefined) {
     db.hospitals[idx].googleSheetUrl = googleSheetUrl;
   }
@@ -1101,20 +1130,9 @@ app.post('/api/data', (req, res) => {
       ...sectorColors
     };
   }
-  db.hospitals[idx].lastUpdated = Date.now();
+  db.hospitals[idx].lastUpdated = now;
   db.hospitals[idx].lastUpdatedBy = inspectorLabel;
-
-  // Sincroniza com o plano ativo
-  if (Array.isArray(db.hospitals[idx].plans)) {
-    const pIdx = db.hospitals[idx].plans.findIndex(p => p.id === db.hospitals[idx].activePlanId);
-    if (pIdx !== -1) {
-      db.hospitals[idx].plans[pIdx].equipments = db.hospitals[idx].equipments;
-      db.hospitals[idx].plans[pIdx].fileName = activeSheetName || db.hospitals[idx].plans[pIdx].fileName;
-      db.hospitals[idx].plans[pIdx].lastUpdated = Date.now();
-    }
-  }
-
-  db.lastUpdated = Date.now();
+  db.lastUpdated = now;
   saveDb(db);
 
   res.json({
@@ -1122,10 +1140,9 @@ app.post('/api/data', (req, res) => {
     message: 'Planilha sincronizada com sucesso.',
     hospitalId: db.hospitals[idx].id,
     hospitalName: db.hospitals[idx].name,
-    equipments: db.hospitals[idx].equipments,
-    activeSheetName: db.hospitals[idx].activeSheetName,
-    sectorColors: db.hospitals[idx].sectorColors || db.sectorColors || {},
-    lastUpdated: db.hospitals[idx].lastUpdated
+    planId: targetPlan ? targetPlan.id : (planId || null),
+    equipments: newEquipments,
+    lastUpdated: now
   });
 });
 
@@ -1563,9 +1580,10 @@ app.post('/api/toggle-check', (req, res) => {
   db.hospitals[hospIdx].lastUpdated = Date.now();
   db.hospitals[hospIdx].lastUpdatedBy = inspectorLabel;
 
-  // Sincroniza com plano ativo
+  // Sincroniza tanto no plano específico do técnico quanto no plano ativo do hospital
   if (Array.isArray(db.hospitals[hospIdx].plans)) {
-    const pIdx = db.hospitals[hospIdx].plans.findIndex(p => p.id === db.hospitals[hospIdx].activePlanId);
+    const targetPlanId = planId || db.hospitals[hospIdx].activePlanId;
+    const pIdx = db.hospitals[hospIdx].plans.findIndex(p => p.id === targetPlanId);
     if (pIdx !== -1) {
       db.hospitals[hospIdx].plans[pIdx].equipments = list;
       db.hospitals[hospIdx].plans[pIdx].lastUpdated = Date.now();
@@ -1588,7 +1606,7 @@ app.post('/api/toggle-check', (req, res) => {
 
 // Batch Check multiple equipments at once with modality & sector of retrieval support
 app.post('/api/batch-check', (req, res) => {
-  const { ids, items, modality = 'calibracao', modalities, hospitalId, userEmail, userName, defaultSetorRetirada } = req.body || {};
+  const { ids, items, modality = 'calibracao', modalities, hospitalId, planId, userEmail, userName, defaultSetorRetirada } = req.body || {};
   
   // Normaliza lista de modalidades a serem checadas
   let targetModalities = [];
@@ -1702,9 +1720,10 @@ app.post('/api/batch-check', (req, res) => {
   db.hospitals[hospIdx].lastUpdated = Date.now();
   db.hospitals[hospIdx].lastUpdatedBy = inspectorLabel;
 
-  // Sincroniza com plano ativo
+  // Sincroniza tanto no plano específico do técnico quanto no plano ativo do hospital
   if (Array.isArray(db.hospitals[hospIdx].plans)) {
-    const pIdx = db.hospitals[hospIdx].plans.findIndex(p => p.id === db.hospitals[hospIdx].activePlanId);
+    const targetPlanId = planId || db.hospitals[hospIdx].activePlanId;
+    const pIdx = db.hospitals[hospIdx].plans.findIndex(p => p.id === targetPlanId);
     if (pIdx !== -1) {
       db.hospitals[hospIdx].plans[pIdx].equipments = list;
       db.hospitals[hospIdx].plans[pIdx].lastUpdated = Date.now();
@@ -1960,9 +1979,10 @@ app.post('/api/mass-check', (req, res) => {
   db.hospitals[hospIdx].lastUpdated = Date.now();
   db.hospitals[hospIdx].lastUpdatedBy = `${targetTechnician} (Lote)`;
 
-  // Sincroniza com plano ativo
+  // Sincroniza tanto no plano específico do técnico quanto no plano ativo do hospital
   if (Array.isArray(db.hospitals[hospIdx].plans)) {
-    const pIdx = db.hospitals[hospIdx].plans.findIndex(p => p.id === db.hospitals[hospIdx].activePlanId);
+    const targetPlanId = planId || db.hospitals[hospIdx].activePlanId;
+    const pIdx = db.hospitals[hospIdx].plans.findIndex(p => p.id === targetPlanId);
     if (pIdx !== -1) {
       db.hospitals[hospIdx].plans[pIdx].equipments = list;
       db.hospitals[hospIdx].plans[pIdx].lastUpdated = Date.now();
