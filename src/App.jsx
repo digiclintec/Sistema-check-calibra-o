@@ -1912,7 +1912,7 @@ export default function App() {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 self-end sm:self-auto w-full sm:w-auto flex-wrap sm:flex-nowrap">
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 self-end sm:self-auto w-full sm:w-auto flex-wrap">
                 {/* Sincronização Google Sheets Ao Vivo */}
                 {googleSheetUrl ? (
                   <>
