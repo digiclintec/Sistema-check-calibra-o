@@ -1,10 +1,43 @@
 import React from 'react';
-import { CheckCircle2, Clock, AlertTriangle, Layers, Percent, Target, Wrench, Zap, LayoutGrid, Package } from 'lucide-react';
+import { 
+  CheckCircle2, 
+  Clock, 
+  AlertTriangle, 
+  Layers, 
+  Percent, 
+  Target, 
+  Wrench, 
+  Zap, 
+  LayoutGrid, 
+  Package,
+  PieChart,
+  BarChart3,
+  TrendingUp,
+  Sparkles,
+  ShieldCheck
+} from 'lucide-react';
 import { MODALITIES } from '../utils/modalities';
 
 export default function StatsCards({ stats, activeFilter, onSelectFilter, activeModality = 'calibracao' }) {
   const { total, checked, pending, expired, expiringSoon, percent, externa = 0 } = stats;
   const currentMod = MODALITIES[activeModality] || MODALITIES.calibracao;
+
+  const validInHouse = Math.max(0, checked - externa);
+  const validPercent = total > 0 ? ((validInHouse / total) * 100).toFixed(1) : '0';
+  const externaPercent = total > 0 ? ((externa / total) * 100).toFixed(1) : '0';
+  const pendingPercent = total > 0 ? ((pending / total) * 100).toFixed(1) : '0';
+
+  // Cálculos geométricos precisos para o Gráfico em Pizza / Rosca SVG (SVG Donut Chart)
+  const RADIUS = 38;
+  const CIRCUMFERENCE = 2 * Math.PI * RADIUS; // ~238.761
+
+  const validStroke = total > 0 ? (validInHouse / total) * CIRCUMFERENCE : 0;
+  const externaStroke = total > 0 ? (externa / total) * CIRCUMFERENCE : 0;
+  const pendingStroke = total > 0 ? (pending / total) * CIRCUMFERENCE : 0;
+
+  const validOffset = 0;
+  const externaOffset = -validStroke;
+  const pendingOffset = -(validStroke + externaStroke);
 
   const modalityLabels = {
     calibracao: {
@@ -115,36 +148,253 @@ export default function StatsCards({ stats, activeFilter, onSelectFilter, active
 
   return (
     <div className="space-y-2.5 sm:space-y-3 w-full overflow-hidden">
-      {/* Progress Bar Header */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 shadow-sm w-full overflow-hidden">
-        <div className="flex items-center justify-between gap-1.5 mb-2 flex-wrap">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Progresso ({currentMod.shortName})
-            </span>
-            <span className="text-[11px] sm:text-xs px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 font-semibold font-mono">
-              {checked} de {total} itens
-            </span>
-          </div>
-          <span className="text-xs sm:text-sm font-extrabold text-slate-800 dark:text-slate-100 font-mono">
-            {percent}% CONCLUÍDO
-          </span>
-        </div>
+      
+      {/* ============================================================
+          DASHBOARD HERO EXECUTIVO COM GRÁFICO EM PIZZA / ROSCA
+      ============================================================ */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-3.5 sm:p-5 shadow-sm w-full relative overflow-hidden">
         
-        {/* Visual Progress Bar */}
-        <div className="w-full bg-slate-100 dark:bg-slate-800 h-2.5 sm:h-3 rounded-full overflow-hidden p-0.5">
-          <div
-            className={`h-full rounded-full transition-all duration-500 ease-out ${
-              percent === 100
-                ? 'bg-gradient-to-r from-emerald-500 to-teal-400'
-                : modalityLabels.progressGradient
-            }`}
-            style={{ width: `${percent}%` }}
-          ></div>
+        {/* Glow de fundo estético */}
+        <div className="absolute -top-12 -right-12 w-48 h-48 bg-blue-500/5 dark:bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-12 -left-12 w-48 h-48 bg-purple-500/5 dark:bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6 relative">
+          
+          {/* LADO ESQUERDO: GRÁFICO EM PIZZA / ROSCA SVG */}
+          <div className="relative shrink-0 flex items-center justify-center">
+            <svg 
+              className="w-28 h-28 sm:w-32 sm:h-32 transform -rotate-90 drop-shadow-sm" 
+              viewBox="0 0 100 100"
+            >
+              {/* Trilha de fundo (neutra) */}
+              <circle
+                cx="50"
+                cy="50"
+                r={RADIUS}
+                fill="transparent"
+                strokeWidth="10"
+                className="text-slate-100 dark:text-slate-800/80 stroke-current"
+              />
+
+              {total > 0 && (
+                <>
+                  {/* Fatia 1: Validadas / Checadas no Hospital (Azul / Ciano) */}
+                  {validInHouse > 0 && (
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r={RADIUS}
+                      fill="transparent"
+                      strokeWidth="10"
+                      strokeDasharray={`${validStroke} ${CIRCUMFERENCE}`}
+                      strokeDashoffset={validOffset}
+                      className="text-blue-500 dark:text-blue-400 stroke-current transition-all duration-700 ease-out"
+                    />
+                  )}
+
+                  {/* Fatia 2: Manutenção Externa / Terceirizada (Roxo) */}
+                  {externa > 0 && (
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r={RADIUS}
+                      fill="transparent"
+                      strokeWidth="10"
+                      strokeDasharray={`${externaStroke} ${CIRCUMFERENCE}`}
+                      strokeDashoffset={externaOffset}
+                      className="text-purple-500 dark:text-purple-400 stroke-current transition-all duration-700 ease-out"
+                    />
+                  )}
+
+                  {/* Fatia 3: Pendentes de Bipagem (Âmbar suave / Ardósia) */}
+                  {pending > 0 && (
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r={RADIUS}
+                      fill="transparent"
+                      strokeWidth="10"
+                      strokeDasharray={`${pendingStroke} ${CIRCUMFERENCE}`}
+                      strokeDashoffset={pendingOffset}
+                      className="text-amber-400/50 dark:text-slate-700 stroke-current transition-all duration-700 ease-out"
+                    />
+                  )}
+                </>
+              )}
+            </svg>
+
+            {/* Centro do Gráfico: Percentual & Total */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
+              <span className="text-xl sm:text-2xl font-black font-mono tracking-tight text-slate-900 dark:text-white leading-none">
+                {percent}%
+              </span>
+              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-400 mt-0.5">
+                {checked}/{total}
+              </span>
+              <span className={`text-[8px] font-black uppercase tracking-wider mt-0.5 ${
+                percent === 100 
+                  ? 'text-emerald-600 dark:text-emerald-400' 
+                  : 'text-blue-600 dark:text-blue-400'
+              }`}>
+                {percent === 100 ? '✓ 100% OK' : 'BIPADOS'}
+              </span>
+            </div>
+          </div>
+
+          {/* LADO DIREITO: DASHBOARD INFORMATIVO & LEGENDA INTERATIVA */}
+          <div className="flex-1 min-w-0 w-full space-y-3">
+            
+            {/* Header com Identificador da Frente e Meta */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 border-b border-slate-100 dark:border-slate-800/80 pb-2">
+              <div>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                    Dashboard Metrológico
+                  </span>
+                  <span className="text-xs font-black text-slate-900 dark:text-white">
+                    {currentMod.name}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  Distribuição e cobertura em tempo real da carga de trabalho hospitalar.
+                </p>
+              </div>
+
+              <div className="text-left sm:text-right shrink-0">
+                <span className="text-[11px] font-mono text-slate-400 block">
+                  Carga Total: <strong>{total} bombas</strong>
+                </span>
+                <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                  {checked} atendidas ({percent}%)
+                </span>
+              </div>
+            </div>
+
+            {/* Barra Segmentada Multi-Cores Proporcional */}
+            <div className="space-y-1">
+              <div className="w-full bg-slate-100 dark:bg-slate-800 h-3 rounded-full overflow-hidden flex shadow-inner p-0.5 gap-0.5">
+                {/* Segmento Validadas */}
+                {parseFloat(validPercent) > 0 && (
+                  <div
+                    style={{ width: `${validPercent}%` }}
+                    className="h-full bg-gradient-to-r from-blue-600 to-indigo-500 rounded-full transition-all duration-500"
+                    title={`Validadas no Hospital: ${validInHouse} (${validPercent}%)`}
+                  />
+                )}
+                {/* Segmento Manutenção Externa */}
+                {parseFloat(externaPercent) > 0 && (
+                  <div
+                    style={{ width: `${externaPercent}%` }}
+                    className="h-full bg-gradient-to-r from-purple-500 to-purple-600 rounded-full transition-all duration-500"
+                    title={`Manutenção Externa: ${externa} (${externaPercent}%)`}
+                  />
+                )}
+                {/* Segmento Pendentes */}
+                {parseFloat(pendingPercent) > 0 && (
+                  <div
+                    style={{ width: `${pendingPercent}%` }}
+                    className="h-full bg-slate-200 dark:bg-slate-700/60 rounded-full transition-all duration-500"
+                    title={`Pendentes: ${pending} (${pendingPercent}%)`}
+                  />
+                )}
+              </div>
+            </div>
+
+            {/* Legenda Interativa com Acesso Rápido a Filtros */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-0.5">
+              
+              {/* 1. Validadas no Hospital */}
+              <button
+                type="button"
+                onClick={() => onSelectFilter('checados')}
+                className={`p-2 rounded-xl border text-left transition active:scale-95 flex items-center justify-between gap-1.5 ${
+                  activeFilter === 'checados'
+                    ? 'bg-blue-50 dark:bg-blue-950/60 border-blue-400 dark:border-blue-700 shadow-xs ring-1 ring-blue-400/40'
+                    : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-800'
+                }`}
+                title="Filtrar por bombas validadas no hospital"
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0" />
+                    <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 truncate">
+                      Validadas
+                    </span>
+                  </div>
+                  <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 pl-4">
+                    {validPercent}%
+                  </div>
+                </div>
+                <span className="text-xs sm:text-sm font-extrabold font-mono text-blue-600 dark:text-blue-400 shrink-0">
+                  {validInHouse}
+                </span>
+              </button>
+
+              {/* 2. Manutenção Externa */}
+              <button
+                type="button"
+                onClick={() => onSelectFilter('externa')}
+                className={`p-2 rounded-xl border text-left transition active:scale-95 flex items-center justify-between gap-1.5 ${
+                  activeFilter === 'externa'
+                    ? 'bg-purple-50 dark:bg-purple-950/60 border-purple-400 dark:border-purple-700 shadow-xs ring-1 ring-purple-400/40'
+                    : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 hover:border-purple-300 dark:hover:border-purple-800'
+                }`}
+                title="Filtrar por bombas em manutenção externa"
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-purple-500 shrink-0" />
+                    <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 truncate">
+                      Manut. Ext.
+                    </span>
+                  </div>
+                  <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 pl-4">
+                    {externaPercent}%
+                  </div>
+                </div>
+                <span className="text-xs sm:text-sm font-extrabold font-mono text-purple-600 dark:text-purple-400 shrink-0">
+                  {externa}
+                </span>
+              </button>
+
+              {/* 3. Pendentes de Bipagem */}
+              <button
+                type="button"
+                onClick={() => onSelectFilter('pendentes')}
+                className={`p-2 rounded-xl border text-left transition active:scale-95 flex items-center justify-between gap-1.5 col-span-2 sm:col-span-1 ${
+                  activeFilter === 'pendentes'
+                    ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-400 dark:border-amber-700 shadow-xs ring-1 ring-amber-400/40'
+                    : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 hover:border-amber-300 dark:hover:border-amber-800'
+                }`}
+                title="Filtrar por bombas ainda pendentes de bipagem"
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-400 dark:bg-slate-500 shrink-0" />
+                    <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 truncate">
+                      Pendentes
+                    </span>
+                  </div>
+                  <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 pl-4">
+                    {pendingPercent}%
+                  </div>
+                </div>
+                <span className="text-xs sm:text-sm font-extrabold font-mono text-amber-600 dark:text-amber-400 shrink-0">
+                  {pending}
+                </span>
+              </button>
+
+            </div>
+
+          </div>
+
         </div>
+
       </div>
 
-      {/* Cards Grid (5 Cards incluindo Manutenção Externa) */}
+      {/* ============================================================
+          CARDS GRID (5 Cards com Filtros Rápidos de Status)
+      ============================================================ */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 w-full">
         {cards.map((card) => {
           const Icon = card.icon;
