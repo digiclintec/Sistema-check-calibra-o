@@ -36,10 +36,10 @@ export default function StatsCards({ stats, activeFilter, onSelectFilter, active
       progressGradient: 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-500'
     },
     geral: {
-      checkedTitle: 'Validados & Manutenção',
-      checkedSubtext: `${percent}% atendidos (serviço concluído ou saída p/ manutenção)`,
-      pendingTitle: 'Pendentes de Bipagem',
-      pendingSubtext: 'Falta validação interna ou saída p/ manutenção',
+      checkedTitle: 'Total Bipados',
+      checkedSubtext: `${percent}% já lidos e separados (calibração ou manutenção)`,
+      pendingTitle: 'Falta Bipar',
+      pendingSubtext: 'Aguardando bipagem e separação',
       progressGradient: 'bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-500'
     }
   }[activeModality] || {

@@ -98,18 +98,17 @@ export function isMaintenanceExternalText(rawVal) {
     .trim();
   if (!s) return false;
 
-  // Exclui preventiva explícita (ex: "Manutenção Preventiva", "MP")
-  if (s.includes('preventiv') || s === 'mp') return false;
+  // Exclui preventiva explícita (ex: "Manutenção Preventiva", "MP", "Prev")
+  if (s.includes('preventiv') || s === 'mp' || s === 'prev') return false;
 
   // Termos diretos que caracterizam Manutenção / Manutenção Externa
   if (
-    s === 'manutencao' ||
-    s === 'em manutencao' ||
-    s.includes('em manut') ||
+    s.includes('manut') ||
     s.includes('extern') ||
     s.includes('terceir') ||
     s.includes('conserto') ||
     s.includes('reparo') ||
+    s.includes('corretiv') ||
     s.includes('assistenc') ||
     s.includes('oficina') ||
     s.includes('bancada') ||

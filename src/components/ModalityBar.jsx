@@ -15,11 +15,9 @@ export default function ModalityBar({
   const prevOk = equipments.filter(e => e.check_preventiva).length;
   const segOk = equipments.filter(e => e.check_seguranca).length;
   const externaOk = equipments.filter(e => Boolean(e.check_externa)).length;
-  const allThreeOk = equipments.filter(e => 
-    (e.check_calibracao !== undefined ? e.check_calibracao : e.checado) && 
-    e.check_preventiva && 
-    e.check_seguranca
-  ).length;
+  const totalBipados = equipments.filter(e => Boolean(
+    e.checado || e.check_calibracao || e.check_preventiva || e.check_seguranca || e.check_externa
+  )).length;
 
   const allModalitiesList = [
     {
@@ -62,9 +60,10 @@ export default function ModalityBar({
     },
     {
       id: 'geral',
-      label: 'Visão Integrada',
+      label: 'Total Bipados',
+      shortLabel: 'Bipados',
       icon: LayoutGrid,
-      count: allThreeOk,
+      count: totalBipados,
       color: 'indigo',
       activeBg: 'bg-indigo-600 text-white shadow-indigo-500/25',
       badgeClass: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300'
@@ -123,7 +122,7 @@ export default function ModalityBar({
                   (activeModality === 'calibracao' && 'Validações afetam apenas a Calibração Metrológica.') ||
                   (activeModality === 'seguranca' && 'Validações afetam apenas o Teste de Segurança Elétrica (TSE).') ||
                   (activeModality === 'externa' && 'Equipamentos enviados para calibração e conserto por equipe terceirizada.') ||
-                  (activeModality === 'geral' && 'Visão completa das equipes ativas em tempo real.')
+                  (activeModality === 'geral' && 'Total de equipamentos lidos, bipados e separados (serviço interno ou saída para manutenção).')
               }
             </span>
           </div>

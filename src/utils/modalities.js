@@ -75,8 +75,8 @@ export const MODALITIES = {
   },
   geral: {
     id: 'geral',
-    name: 'Visão Integrada (Todas as Equipes)',
-    shortName: 'Visão Geral',
+    name: 'Total Bipados',
+    shortName: 'Bipados',
     icon: '📋',
     color: 'indigo',
     badgeClass: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/70 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800',
@@ -84,7 +84,7 @@ export const MODALITIES = {
     ringClass: 'ring-indigo-500',
     textColor: 'text-indigo-600 dark:text-indigo-400',
     bgLight: 'bg-indigo-50 dark:bg-indigo-950/40',
-    description: 'Acompanhamento unificado das 3 equipes em tempo real'
+    description: 'Total de equipamentos lidos, bipados e separados (serviço interno ou saída para manutenção)'
   }
 };
 
@@ -140,11 +140,14 @@ export function normalizeEquipmentModalities(eq) {
  */
 export function isEquipmentChecked(eq, modality = 'calibracao', serviceConfig = null) {
   if (!eq) return false;
-  if (modality === 'calibracao') return Boolean(eq.check_calibracao);
+  if (modality === 'calibracao') return Boolean(eq.check_calibracao !== undefined ? eq.check_calibracao : eq.checado);
   if (modality === 'preventiva') return Boolean(eq.check_preventiva);
   if (modality === 'seguranca') return Boolean(eq.check_seguranca);
   if (modality === 'externa' || modality === 'manutencao_externa') return Boolean(eq.check_externa);
-  // Se for visão geral ou não especificado, checa se todas as modalidades ativas estão concluídas
+  // Visão Geral / Bipados: Qualquer equipamento já lido, bipado e separado (calibração ou saída p/ manutenção)
+  if (modality === 'geral') {
+    return Boolean(eq.checado || eq.check_calibracao || eq.check_preventiva || eq.check_seguranca || eq.check_externa);
+  }
   return isEquipmentFullyChecked(eq, serviceConfig);
 }
 
@@ -154,19 +157,7 @@ export function isEquipmentChecked(eq, modality = 'calibracao', serviceConfig = 
  */
 export function isEquipmentFullyChecked(eq, serviceConfig) {
   if (!eq) return false;
-
-  // Se o equipamento foi bipado e registrado para Manutenção Externa, ele conta como atendido na Visão Geral
-  if (Boolean(eq.check_externa)) return true;
-
-  const enableCal = serviceConfig?.enableCalibracao ?? true;
-  const enablePrev = serviceConfig?.enablePreventiva ?? true;
-  const enableSeg = serviceConfig?.enableSeguranca ?? true;
-
-  if (enableCal && !eq.check_calibracao) return false;
-  if (enablePrev && !eq.check_preventiva) return false;
-  if (enableSeg && !eq.check_seguranca) return false;
-
-  return true;
+  return Boolean(eq.checado || eq.check_calibracao || eq.check_preventiva || eq.check_seguranca || eq.check_externa);
 }
 
 /**
