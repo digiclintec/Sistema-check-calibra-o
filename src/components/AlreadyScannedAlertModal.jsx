@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { AlertTriangle, Package, CheckCircle2, X, MapPin, Tag, Hash, User, Calendar, FileText, Check, Pencil } from 'lucide-react';
+import { AlertTriangle, Package, CheckCircle2, X, MapPin, Tag, Hash, User, Calendar, FileText, Check, Pencil, ArrowRight } from 'lucide-react';
 
 export default function AlreadyScannedAlertModal({
   isOpen,
@@ -35,6 +35,12 @@ export default function AlreadyScannedAlertModal({
     : 'Registrado no plano ativo';
 
   const motivo = eq.motivo_externa || meta.motivo || eq.observacao || (isMaintenance ? 'Calibração e conserto por equipe externa terceirizada' : 'Validação metrológica e conferência no hospital');
+
+  // Identificação Clara de Onde Foi Retirada para Devolução Correta
+  const setorRetirada = (eq.setor_retirada && String(eq.setor_retirada).trim()) || '';
+  const setorCadastrado = (eq.setor && String(eq.setor).trim()) || '';
+  const setorDestino = setorRetirada || setorCadastrado || 'Setor Geral / Não Informado';
+  const isDifferentSector = Boolean(setorRetirada && setorCadastrado && setorRetirada.toLowerCase() !== setorCadastrado.toLowerCase());
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
@@ -144,6 +150,42 @@ export default function AlreadyScannedAlertModal({
                   <span>{eq.setor_retirada || eq.setor}</span>
                 </span>
               )}
+            </div>
+          </div>
+
+          {/* DESTAQUE PRINCIPAL: SETOR ONDE FOI RETIRADA / DESTINO PARA DEVOLUÇÃO CORRETA */}
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950/80 via-slate-900 to-teal-950/80 border-2 border-emerald-500/60 shadow-lg shadow-emerald-950/40 space-y-2.5">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-emerald-400">
+                <MapPin className="w-4 h-4 text-emerald-400 animate-bounce shrink-0" />
+                <span>Destino de Devolução / Setor de Retirada</span>
+              </div>
+              <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 uppercase">
+                {setorRetirada ? 'Local de Retirada Registrado' : 'Setor Cadastrado'}
+              </span>
+            </div>
+
+            <div className="bg-slate-950/90 p-3.5 rounded-xl border border-emerald-500/30 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wide">
+                  {setorRetirada ? 'Bomba retirada no setor:' : 'Destino para devolução:'}
+                </span>
+                <div className="text-base sm:text-lg font-black text-emerald-300 truncate flex items-center gap-2 mt-0.5">
+                  <span>📍 {setorDestino}</span>
+                </div>
+                {isDifferentSector && (
+                  <span className="text-[11px] text-slate-400 block mt-1 font-medium">
+                    🏢 Setor de Cadastro Original: <strong className="text-slate-200">{setorCadastrado}</strong>
+                  </span>
+                )}
+              </div>
+
+              <div className="text-right shrink-0">
+                <div className="text-[11px] font-extrabold px-3 py-1.5 rounded-xl bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/30 flex items-center gap-1">
+                  <span>Devolver Aqui</span>
+                  <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
+                </div>
+              </div>
             </div>
           </div>
 
