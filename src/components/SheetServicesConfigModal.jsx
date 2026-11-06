@@ -13,7 +13,8 @@ import {
   Users, 
   Info,
   Clock,
-  ArrowRight
+  ArrowRight,
+  Lock
 } from 'lucide-react';
 
 export default function SheetServicesConfigModal({
@@ -29,14 +30,14 @@ export default function SheetServicesConfigModal({
   const [enableCalibracao, setEnableCalibracao] = useState(true);
   const [enablePreventiva, setEnablePreventiva] = useState(true);
   const [enableSeguranca, setEnableSeguranca] = useState(true);
-  const [executionMode, setExecutionMode] = useState('separated'); // 'all_at_once' | 'separated'
+  const [executionMode, setExecutionMode] = useState('all_at_once'); // Padrão: 'all_at_once' (Pacote Completo Fixado)
 
   useEffect(() => {
     if (isOpen) {
       setEnableCalibracao(serviceConfig?.enableCalibracao ?? true);
       setEnablePreventiva(serviceConfig?.enablePreventiva ?? true);
       setEnableSeguranca(serviceConfig?.enableSeguranca ?? true);
-      setExecutionMode(serviceConfig?.executionMode || 'separated');
+      setExecutionMode(serviceConfig?.executionMode || 'all_at_once');
     }
   }, [isOpen, serviceConfig]);
 
@@ -62,6 +63,13 @@ export default function SheetServicesConfigModal({
     setEnableCalibracao(true);
     setEnablePreventiva(false);
     setEnableSeguranca(false);
+  };
+
+  const handleLockCompletePackage = () => {
+    setEnableCalibracao(true);
+    setEnablePreventiva(true);
+    setEnableSeguranca(true);
+    setExecutionMode('all_at_once');
   };
 
   const handleSetAllServices = () => {
@@ -135,20 +143,22 @@ export default function SheetServicesConfigModal({
               </label>
 
               {/* Botões Rápidos de Preset */}
-              <div className="flex items-center gap-1 text-[11px]">
+              <div className="flex items-center gap-1.5 text-[11px] flex-wrap">
                 <button
                   type="button"
-                  onClick={handleSetOnlyCalibracao}
-                  className="px-2 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-bold border border-blue-200 dark:border-blue-800 transition"
+                  onClick={handleLockCompletePackage}
+                  className="px-2.5 py-1 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold shadow-xs transition flex items-center gap-1"
+                  title="Fixar todos os 3 serviços juntos em 1 único bip"
                 >
-                  🎯 Somente Calibração
+                  <Lock className="w-3 h-3 text-amber-300" />
+                  <span>🔒 Fixar Calibração Completa (3 em 1)</span>
                 </button>
                 <button
                   type="button"
-                  onClick={handleSetAllServices}
-                  className="px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 font-bold border border-slate-200 dark:border-slate-700 transition"
+                  onClick={handleSetOnlyCalibracao}
+                  className="px-2 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-600 dark:text-slate-400 font-medium border border-slate-200 dark:border-slate-700 transition"
                 >
-                  ⭐ Todos os 3
+                  Somente Calibração
                 </button>
               </div>
             </div>
@@ -346,8 +356,13 @@ export default function SheetServicesConfigModal({
               ].filter(Boolean).join(', ')})
             </p>
             <p className="text-[11px] text-slate-600 dark:text-slate-400">
-              • Regra de Bipagem: <strong>{executionMode === 'all_at_once' ? '1 Bip valida todos os serviços ativos' : 'Bipa por frentes separadas de trabalho'}</strong>
+              • Regra de Bipagem: <strong>{executionMode === 'all_at_once' ? '🔒 1 Bip carimba Calibração + Preventiva + Seg. Elétrica juntas (Fixado)' : 'Bipa por frentes separadas de trabalho'}</strong>
             </p>
+            {executionMode === 'all_at_once' && (
+              <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">
+                ✓ Prevenção de erros ativada: O scanner bipará todas as etapas juntas. A única exceção alterável é Manutenção Externa.
+              </p>
+            )}
           </div>
 
           {/* Botões do Rodapé */}

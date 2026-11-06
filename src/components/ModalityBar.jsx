@@ -105,10 +105,10 @@ export default function ModalityBar({
           {serviceConfig && (
             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 border ${
               serviceConfig.executionMode === 'all_at_once'
-                ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30'
+                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
                 : 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30'
             }`}>
-              <span>{serviceConfig.executionMode === 'all_at_once' ? '⚡ Modo: Tudo Junto' : '🎯 Modo: Separado'}</span>
+              <span>{serviceConfig.executionMode === 'all_at_once' ? '🔒 Calibração Completa Fixada' : '🎯 Modo: Separado'}</span>
             </span>
           )}
         </div>
@@ -118,7 +118,7 @@ export default function ModalityBar({
             <Info className="w-3.5 h-3.5 text-blue-500 shrink-0" />
             <span className="truncate">
               {serviceConfig?.executionMode === 'all_at_once' 
-                ? '⚡ 1 bip carimba todos os parâmetros ativos de uma vez só.' 
+                ? '🔒 Calibração Completa Fixada: 1 bip carimba Calibração + Preventiva + Segurança Elétrica juntas. A única exceção é Manutenção Externa.' 
                 : (activeModality === 'preventiva' && 'Validações afetam apenas a Manutenção Preventiva.') ||
                   (activeModality === 'calibracao' && 'Validações afetam apenas a Calibração Metrológica.') ||
                   (activeModality === 'seguranca' && 'Validações afetam apenas o Teste de Segurança Elétrica (TSE).') ||

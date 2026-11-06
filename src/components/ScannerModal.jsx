@@ -29,7 +29,9 @@ import {
   ChevronDown,
   SwitchCamera,
   Columns2,
-  Rows2
+  Rows2,
+  Lock,
+  Package
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { playSuccessSound, playWarningSound, playErrorSound } from '../utils/audio';
@@ -239,20 +241,44 @@ export default function ScannerModal({
     }
   };
 
-  // Modalidades ativas selecionadas para bipar (ex: ['calibracao'], ['preventiva'], ou ['calibracao', 'preventiva'])
+  // Modalidades padrão completas configuradas para o hospital (Calibração + Preventiva + Segurança Elétrica)
+  // Conforme solicitação do usuário: Fixado em Calibração Completa (todas as etapas juntas)
+  const configuredStandardModalities = useMemo(() => {
+    const mods = [];
+    if (!serviceConfig || serviceConfig.enableCalibracao !== false) mods.push('calibracao');
+    if (!serviceConfig || serviceConfig.enablePreventiva !== false) mods.push('preventiva');
+    if (!serviceConfig || serviceConfig.enableSeguranca !== false) mods.push('seguranca');
+    return mods.length > 0 ? mods : ['calibracao', 'preventiva', 'seguranca'];
+  }, [serviceConfig]);
+
+  // Modalidades ativas para bipar: Inicia em Manutenção Externa se activeModality for externa, senão no pacote completo
   const [selectedModalities, setSelectedModalities] = useState(() => {
-    if (activeModality && activeModality !== 'geral') {
-      return [activeModality];
+    if (activeModality === 'externa' || activeModality === 'manutencao_externa') {
+      return ['externa'];
     }
-    return ['calibracao'];
+    return configuredStandardModalities;
   });
 
   // Sincroniza se a modalidade mudar pelo componente pai
   useEffect(() => {
-    if (activeModality && activeModality !== 'geral') {
-      setSelectedModalities([activeModality]);
+    if (activeModality === 'externa' || activeModality === 'manutencao_externa') {
+      setSelectedModalities(['externa']);
+    } else {
+      setSelectedModalities(configuredStandardModalities);
     }
-  }, [activeModality]);
+  }, [activeModality, configuredStandardModalities]);
+
+  const isExternalMode = selectedModalities.length === 1 && (selectedModalities[0] === 'externa' || selectedModalities[0] === 'manutencao_externa');
+
+  const handleSelectStandardComplete = () => {
+    setSelectedModalities(configuredStandardModalities);
+    if (onChangeModality) onChangeModality('geral');
+  };
+
+  const handleSelectExternalMaintenance = () => {
+    setSelectedModalities(['externa']);
+    if (onChangeModality) onChangeModality('externa');
+  };
 
   // Altura customizável e arrastável: Câmera vs Lista de Bombas
   // cameraHeightPercent: Padrão mobile 30% para priorizar a visualização imediata da lista de bombas bipadas
@@ -1110,7 +1136,7 @@ export default function ScannerModal({
     const targetEq = bestMatch.equipment;
 
     // SEGURANÇA INTELIGENTE: Bloqueia se TODAS as modalidades selecionadas já estiverem concluídas!
-    const effectiveMods = selectedModalities.length > 0 ? selectedModalities : ['calibracao'];
+    const effectiveMods = selectedModalities.length > 0 ? selectedModalities : configuredStandardModalities;
     const uncompletedMods = effectiveMods.filter(m => !isEquipmentChecked(targetEq, m, serviceConfig));
     const isAlreadyCheckedAll = uncompletedMods.length === 0;
     const modLabels = effectiveMods.map(m => MODALITIES[m]?.shortName || m).join(' + ');
@@ -1259,7 +1285,7 @@ export default function ScannerModal({
       setorRetirada: item.setorRetirada || batchSector || item.equipment.setor || 'Geral'
     }));
     
-    const effectiveMods = selectedModalities.length > 0 ? selectedModalities : ['calibracao'];
+    const effectiveMods = selectedModalities.length > 0 ? selectedModalities : configuredStandardModalities;
 
     if (onBatchCheck) {
       await onBatchCheck(itemsPayload, effectiveMods);
@@ -1556,59 +1582,39 @@ export default function ScannerModal({
             BARRA DE CONTROLE COMPACTA: MODALIDADE + ALVO + FILA
         ============================================================ */}
         <div className="px-2.5 py-1.5 bg-slate-950 border-b border-slate-800/80 flex items-center justify-between gap-1.5 shrink-0 overflow-x-auto scrollbar-none">
-          {/* Seletor de Modalidade a Bipar */}
-          <div className="flex items-center gap-1 overflow-x-auto scrollbar-none shrink-0">
-            <span className="text-[10px] font-bold text-slate-400 hidden sm:inline">Bipar:</span>
+          {/* Seletor de Modalidade a Bipar: Calibração Completa Fixada vs Manutenção Externa */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Opção 1: Calibração Completa Fixa (Bloqueada para prevenir erros) */}
             <button
               type="button"
-              onClick={() => handleSetExactModalities(['calibracao'])}
-              className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition flex items-center gap-1 shrink-0 ${
-                selectedModalities.length === 1 && selectedModalities.includes('calibracao')
-                  ? 'bg-blue-600 text-white shadow-xs ring-1 ring-blue-400'
+              onClick={handleSelectStandardComplete}
+              className={`px-2.5 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 shadow-sm ${
+                !isExternalMode
+                  ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-emerald-600 text-white shadow-blue-500/30 ring-1 ring-blue-300'
                   : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
               }`}
-              title="Calibração Metrológica"
+              title="Calibração Completa Fixada: Valida Calibração + Preventiva + Segurança Elétrica juntas"
             >
-              <span>🎯 Calibração</span>
+              <Lock className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+              <span>⚡ Calibração Completa</span>
+              <span className="text-[10px] bg-white/20 px-1.5 py-0.2 rounded font-extrabold hidden xs:inline">
+                {configuredStandardModalities.length} em 1
+              </span>
             </button>
 
+            {/* Opção 2: Manutenção Externa (Única alternativa alterável) */}
             <button
               type="button"
-              onClick={() => handleSetExactModalities(['preventiva'])}
-              className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition flex items-center gap-1 shrink-0 ${
-                selectedModalities.length === 1 && selectedModalities.includes('preventiva')
-                  ? 'bg-emerald-600 text-white shadow-xs ring-1 ring-emerald-400'
-                  : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-              }`}
-              title="Manutenção Preventiva"
-            >
-              <span>🔧 Preventiva</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleSetExactModalities(['calibracao', 'preventiva'])}
-              className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition flex items-center gap-1 shrink-0 ${
-                selectedModalities.length === 2 && selectedModalities.includes('calibracao') && selectedModalities.includes('preventiva')
-                  ? 'bg-gradient-to-r from-blue-600 to-emerald-600 text-white shadow-xs ring-1 ring-teal-400'
-                  : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-              }`}
-              title="Calibração + Preventiva"
-            >
-              <span>🎯+🔧 Ambos</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleSetExactModalities(['externa'])}
-              className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition flex items-center gap-1 shrink-0 ${
-                selectedModalities.length === 1 && selectedModalities.includes('externa')
-                  ? 'bg-purple-600 text-white shadow-xs ring-1 ring-purple-400'
+              onClick={handleSelectExternalMaintenance}
+              className={`px-2.5 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 shadow-sm ${
+                isExternalMode
+                  ? 'bg-purple-600 text-white shadow-purple-500/30 ring-1 ring-purple-300'
                   : 'bg-slate-900 text-purple-300 hover:text-white border border-slate-800'
               }`}
-              title="Manutenção Externa"
+              title="Equipamento enviado para calibração/conserto por equipe externa terceirizada"
             >
-              <span>📦 Externa</span>
+              <Package className="w-3.5 h-3.5 shrink-0" />
+              <span>📦 Manut. Externa</span>
             </button>
           </div>
 
@@ -2100,18 +2106,25 @@ export default function ScannerModal({
                       {/* Modalidades que serão aplicadas */}
                       {selectedModalities.map(m => {
                         const isAlready = isEquipmentChecked(eq, m, serviceConfig);
+                        const isCal = m === 'calibracao';
+                        const isPrev = m === 'preventiva';
+                        const isSeg = m === 'seguranca';
+                        const isExt = m === 'externa' || m === 'manutencao_externa';
+
+                        const colorClasses = isAlready 
+                          ? 'bg-emerald-950/60 text-emerald-400 border-emerald-800'
+                          : isCal
+                          ? 'bg-blue-900/60 text-blue-300 border-blue-700'
+                          : isPrev
+                          ? 'bg-emerald-900/60 text-emerald-300 border-emerald-700'
+                          : isSeg
+                          ? 'bg-amber-900/60 text-amber-300 border-amber-700'
+                          : 'bg-purple-900/60 text-purple-300 border-purple-700';
+
                         return (
                           <span
                             key={m}
-                            className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded-full border ${
-                              isAlready 
-                                ? 'bg-emerald-950/60 text-emerald-400 border-emerald-800'
-                                : m === 'calibracao'
-                                ? 'bg-blue-900/60 text-blue-300 border-blue-700'
-                                : m === 'preventiva'
-                                ? 'bg-emerald-900/60 text-emerald-300 border-emerald-700'
-                                : 'bg-purple-900/60 text-purple-300 border-purple-700'
-                            }`}
+                            className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded-full border ${colorClasses}`}
                           >
                             {isAlready ? `✓ ${MODALITIES[m]?.shortName || m} OK` : `+ ${MODALITIES[m]?.shortName || m}`}
                           </span>
@@ -2138,11 +2151,18 @@ export default function ScannerModal({
           {stagedItems.length > 0 ? (
             <button
               onClick={handleConfirmBatchCheck}
-              className="flex-1 py-2.5 px-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 text-white rounded-xl text-xs sm:text-sm font-extrabold shadow-lg shadow-emerald-600/30 transition active:scale-[0.98] flex items-center justify-center gap-2 truncate"
+              className={`flex-1 py-2.5 px-3 text-white rounded-xl text-xs sm:text-sm font-extrabold shadow-lg transition active:scale-[0.98] flex items-center justify-center gap-2 truncate ${
+                isExternalMode
+                  ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-500 hover:from-purple-500 hover:to-indigo-400 shadow-purple-600/30'
+                  : 'bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 shadow-emerald-600/30'
+              }`}
             >
               <CheckCircle className="w-4 h-4 stroke-[2.5] shrink-0" />
               <span className="truncate">
-                Confirmar {selectedModalities.map(m => MODALITIES[m]?.shortName || m).join('+')} ({stagedItems.length} {stagedItems.length === 1 ? 'bomba' : 'bombas'})
+                {isExternalMode
+                  ? `Confirmar Manut. Externa (${stagedItems.length} ${stagedItems.length === 1 ? 'bomba' : 'bombas'})`
+                  : `Confirmar Calibração Completa (${stagedItems.length} ${stagedItems.length === 1 ? 'bomba' : 'bombas'})`
+                }
               </span>
             </button>
           ) : (

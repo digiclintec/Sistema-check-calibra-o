@@ -845,7 +845,7 @@ app.get('/api/data', (req, res) => {
       enableCalibracao: true,
       enablePreventiva: true,
       enableSeguranca: true,
-      executionMode: 'separated'
+      executionMode: 'all_at_once'
     },
     sectorColors: hospital.sectorColors || db.sectorColors || {},
     lastUpdated: hospital.lastUpdated || db.lastUpdated || Date.now(),
@@ -907,7 +907,7 @@ app.post('/api/service-config', (req, res) => {
     enableCalibracao: serviceConfig?.enableCalibracao ?? true,
     enablePreventiva: serviceConfig?.enablePreventiva ?? true,
     enableSeguranca: serviceConfig?.enableSeguranca ?? true,
-    executionMode: serviceConfig?.executionMode === 'all_at_once' ? 'all_at_once' : 'separated'
+    executionMode: serviceConfig?.executionMode === 'separated' ? 'separated' : 'all_at_once'
   };
 
   db.hospitals[idx].lastUpdated = Date.now();
@@ -957,7 +957,7 @@ app.post('/api/data', (req, res) => {
       enableCalibracao: serviceConfig.enableCalibracao ?? true,
       enablePreventiva: serviceConfig.enablePreventiva ?? true,
       enableSeguranca: serviceConfig.enableSeguranca ?? true,
-      executionMode: serviceConfig.executionMode === 'all_at_once' ? 'all_at_once' : 'separated'
+      executionMode: serviceConfig.executionMode === 'separated' ? 'separated' : 'all_at_once'
     };
   }
   if (sectorColors) {

@@ -480,8 +480,8 @@ export default function EquipmentTable({
                   <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center justify-between">
                     <span>Frentes Técnicas / Equipes:</span>
                     {serviceConfig?.executionMode === 'all_at_once' && (
-                      <span className="text-[9px] text-amber-600 dark:text-amber-400 font-bold bg-amber-500/15 px-1.5 py-0.2 rounded">
-                        ⚡ Modo Combo (Bipa Tudo)
+                      <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-500/15 px-1.5 py-0.2 rounded">
+                        🔒 Calibração Completa Fixada (Carimba Tudo)
                       </span>
                     )}
                   </div>

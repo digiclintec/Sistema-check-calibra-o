@@ -130,7 +130,7 @@ export default function App() {
       enableCalibracao: true,
       enablePreventiva: true,
       enableSeguranca: true,
-      executionMode: 'separated' // 'all_at_once' | 'separated'
+      executionMode: 'all_at_once' // Padrão recomendado: 'all_at_once' (Pacote Completo Fixado)
     };
   });
   const [serviceConfigModal, setServiceConfigModal] = useState({ isOpen: false, isInitialSetup: false });
@@ -443,6 +443,15 @@ export default function App() {
     }
   }, [activeHospitalId]);
 
+  // Reseta o cache de sincronização e carrega configuração ao trocar de hospital
+  useEffect(() => {
+    lastUpdatedServerRef.current = 0;
+    try {
+      const saved = localStorage.getItem(`calibracheck_service_config_${activeHospitalId}`);
+      if (saved) setServiceConfig(JSON.parse(saved));
+    } catch (e) {}
+  }, [activeHospitalId]);
+
   // Save to LocalStorage
   useEffect(() => {
     try {
@@ -563,7 +572,8 @@ export default function App() {
         equipments: newEquipments,
         activeSheetName: sheetName !== undefined ? sheetName : activeSheetName,
         userEmail: currentUser?.email,
-        userName: currentUser?.name
+        userName: currentUser?.name,
+        serviceConfig: serviceConfig
       };
       if (gUrl !== undefined) {
         body.googleSheetUrl = gUrl;
@@ -724,13 +734,16 @@ export default function App() {
     if (!target) return;
 
     let targetMods = [];
-    if (serviceConfig?.executionMode === 'all_at_once' && (targetModality === 'geral' || !targetModality)) {
-      if (serviceConfig.enableCalibracao) targetMods.push('calibracao');
-      if (serviceConfig.enablePreventiva) targetMods.push('preventiva');
-      if (serviceConfig.enableSeguranca) targetMods.push('seguranca');
-      if (targetMods.length === 0) targetMods = ['calibracao'];
+    if (targetModality === 'externa' || targetModality === 'manutencao_externa') {
+      targetMods = ['externa'];
+    } else if (serviceConfig?.executionMode === 'all_at_once') {
+      // Pacote Completo Fixado: Carimba todas as etapas configuradas juntas (Calibração + Preventiva + Seg. Elétrica)
+      if (!serviceConfig || serviceConfig.enableCalibracao !== false) targetMods.push('calibracao');
+      if (!serviceConfig || serviceConfig.enablePreventiva !== false) targetMods.push('preventiva');
+      if (!serviceConfig || serviceConfig.enableSeguranca !== false) targetMods.push('seguranca');
+      if (targetMods.length === 0) targetMods = ['calibracao', 'preventiva', 'seguranca'];
     } else {
-      const mod = targetModality === 'geral' ? 'calibracao' : targetModality;
+      const mod = targetModality === 'geral' ? 'calibracao' : (targetModality || 'calibracao');
       targetMods = [mod];
     }
 
@@ -886,14 +899,24 @@ export default function App() {
   const handleBatchCheck = async (itemsOrIds, targetModality = activeModality) => {
     if (!itemsOrIds || itemsOrIds.length === 0) return;
 
-    // Normaliza modalidades selecionadas (suporta array, string composta 'calibracao+preventiva', 'all', ou string individual)
-    const targetMods = Array.isArray(targetModality)
-      ? targetModality
-      : targetModality === 'all' || targetModality === 'todos'
-        ? ['calibracao', 'preventiva', 'seguranca']
-        : targetModality === 'calibracao+preventiva'
-          ? ['calibracao', 'preventiva']
-          : [targetModality === 'geral' ? 'calibracao' : (targetModality || 'calibracao')];
+    // Normaliza modalidades selecionadas (suporta array, combo fixado ou manutenção externa)
+    let targetMods = [];
+    if (targetModality === 'externa' || targetModality === 'manutencao_externa' || (Array.isArray(targetModality) && targetModality.includes('externa') && targetModality.length === 1)) {
+      targetMods = ['externa'];
+    } else if (serviceConfig?.executionMode === 'all_at_once' || !targetModality || targetModality === 'all' || targetModality === 'geral') {
+      // Pacote Completo Fixado: Carimba todas as etapas configuradas (Calibração + Preventiva + Seg. Elétrica)
+      if (!serviceConfig || serviceConfig.enableCalibracao !== false) targetMods.push('calibracao');
+      if (!serviceConfig || serviceConfig.enablePreventiva !== false) targetMods.push('preventiva');
+      if (!serviceConfig || serviceConfig.enableSeguranca !== false) targetMods.push('seguranca');
+      if (targetMods.length === 0) targetMods = ['calibracao', 'preventiva', 'seguranca'];
+    } else if (Array.isArray(targetModality) && targetModality.length > 0) {
+      targetMods = targetModality;
+    } else {
+      const mod = targetModality === 'calibracao+preventiva'
+        ? ['calibracao', 'preventiva']
+        : [targetModality || 'calibracao'];
+      targetMods = mod;
+    }
 
     const nowIso = new Date().toISOString();
     const inspector = currentUser?.name ? `${currentUser.name} (${currentUser.email})` : (currentUser?.email || 'Operador');
@@ -1093,15 +1116,18 @@ export default function App() {
 
     // Modalidades que o bip vai validar
     let targetMods = [];
-    if (customMods && Array.isArray(customMods) && customMods.length > 0) {
+    if (customMods === 'externa' || (Array.isArray(customMods) && customMods.includes('externa') && customMods.length === 1)) {
+      targetMods = ['externa'];
+    } else if (serviceConfig?.executionMode === 'all_at_once' || !customMods) {
+      // Pacote Completo Fixado: Valida Calibração + Preventiva + Seg. Elétrica juntas
+      if (!serviceConfig || serviceConfig.enableCalibracao !== false) targetMods.push('calibracao');
+      if (!serviceConfig || serviceConfig.enablePreventiva !== false) targetMods.push('preventiva');
+      if (!serviceConfig || serviceConfig.enableSeguranca !== false) targetMods.push('seguranca');
+      if (targetMods.length === 0) targetMods = ['calibracao', 'preventiva', 'seguranca'];
+    } else if (customMods && Array.isArray(customMods) && customMods.length > 0) {
       targetMods = customMods;
     } else if (typeof customMods === 'string' && customMods) {
       targetMods = [customMods];
-    } else if (serviceConfig?.executionMode === 'all_at_once') {
-      if (serviceConfig.enableCalibracao) targetMods.push('calibracao');
-      if (serviceConfig.enablePreventiva) targetMods.push('preventiva');
-      if (serviceConfig.enableSeguranca) targetMods.push('seguranca');
-      if (targetMods.length === 0) targetMods = ['calibracao'];
     } else {
       const mod = activeModality === 'geral' ? 'calibracao' : activeModality;
       targetMods = [mod];
