@@ -140,6 +140,11 @@ export function normalizeEquipmentModalities(eq) {
  */
 export function isEquipmentChecked(eq, modality = 'calibracao', serviceConfig = null) {
   if (!eq) return false;
+
+  // Equipamentos em Manutenção Externa já foram atendidos, bipados e separados para envio/conserto
+  // Por isso contam como checados em qualquer frente de trabalho na lista de bombas
+  if (eq.check_externa) return true;
+
   if (modality === 'calibracao') return Boolean(eq.check_calibracao !== undefined ? eq.check_calibracao : eq.checado);
   if (modality === 'preventiva') return Boolean(eq.check_preventiva);
   if (modality === 'seguranca') return Boolean(eq.check_seguranca);

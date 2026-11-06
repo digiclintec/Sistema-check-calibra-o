@@ -422,7 +422,7 @@ export default function EquipmentTable({
                 style={{ borderLeft: `5px solid ${sectorColor.hex}` }}
                 className={`p-4 rounded-2xl border transition-all ${
                   isCheckedCurrent
-                    ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-300/60 dark:border-emerald-800/50'
+                    ? (isExtOk ? 'bg-purple-50/50 dark:bg-purple-950/25 border-purple-300/70 dark:border-purple-800/60' : 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-300/60 dark:border-emerald-800/50')
                     : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 shadow-sm'
                 } ${isRecentlyScanned ? 'ring-2 ring-blue-500 animate-pulse' : ''}`}
               >
@@ -454,8 +454,8 @@ export default function EquipmentTable({
                   </div>
                   <div className="flex flex-col items-end gap-1 shrink-0">
                     {isExtOk && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 dark:bg-purple-950/70 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
-                        📦 Manut. Externa
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-purple-100 text-purple-800 dark:bg-purple-950/80 dark:text-purple-300 border border-purple-300 dark:border-purple-800 shadow-xs">
+                        ✓ 📦 Manut. Externa (Checado)
                       </span>
                     )}
                     {getStatusBadge(item.statusCalibracao)}
@@ -619,17 +619,17 @@ export default function EquipmentTable({
                 {/* Big Touch Action Button (focado na frente de trabalho atual) */}
                 <div className="pt-2">
                   <button
-                    onClick={() => onToggleCheck(item.id, activeModality)}
+                    onClick={() => onToggleCheck(item.id, isExtOk ? 'externa' : activeModality)}
                     className={`w-full py-2.5 px-4 rounded-xl font-bold text-xs transition flex items-center justify-center gap-2 active:scale-95 shadow-sm ${
                       isCheckedCurrent
-                        ? 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-red-50 hover:text-red-600'
+                        ? (isExtOk ? 'bg-purple-100 dark:bg-purple-950/80 text-purple-800 dark:text-purple-300 border border-purple-300 dark:border-purple-800 hover:bg-red-50 hover:text-red-600' : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-red-50 hover:text-red-600')
                         : currentMod.btnClass
                     }`}
                   >
                     {isCheckedCurrent ? (
                       <>
                         <X className="w-4 h-4 text-slate-500" />
-                        Desmarcar {currentMod.shortName}
+                        {isExtOk ? 'Desmarcar Manut. Externa' : `Desmarcar ${currentMod.shortName}`}
                       </>
                     ) : (
                       <>
@@ -713,19 +713,19 @@ export default function EquipmentTable({
                     style={{ borderLeft: `4px solid ${sectorColor.hex}` }}
                     className={`transition-colors duration-200 group ${
                       isCheckedCurrent 
-                        ? 'bg-emerald-50/40 dark:bg-emerald-950/15' 
+                        ? (isExtOk ? 'bg-purple-50/40 dark:bg-purple-950/20' : 'bg-emerald-50/40 dark:bg-emerald-950/15')
                         : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
                     } ${isRecentlyScanned ? 'animate-pulse bg-blue-100/60 dark:bg-blue-900/40' : ''}`}
                   >
                     <td className="py-3 px-4 text-center">
                       <button
-                        onClick={() => onToggleCheck(item.id, activeModality)}
+                        onClick={() => onToggleCheck(item.id, isExtOk ? 'externa' : activeModality)}
                         className={`w-7 h-7 mx-auto rounded-full flex items-center justify-center transition-transform active:scale-90 ${
                           isCheckedCurrent
-                            ? 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/30'
+                            ? (isExtOk ? 'bg-purple-600 text-white shadow-sm shadow-purple-500/30' : 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/30')
                             : 'border-2 border-slate-300 dark:border-slate-700 text-transparent hover:border-blue-500'
                         }`}
-                        title={isCheckedCurrent ? `Desmarcar ${currentMod.shortName}` : `Marcar ${currentMod.shortName}`}
+                        title={isCheckedCurrent ? (isExtOk ? 'Checado (Manutenção Externa)' : `Desmarcar ${currentMod.shortName}`) : `Marcar ${currentMod.shortName}`}
                       >
                         <Check className="w-4 h-4 stroke-[3]" />
                       </button>
@@ -735,8 +735,8 @@ export default function EquipmentTable({
                       <div className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2 flex-wrap">
                         <span>{item.equipamento}</span>
                         {isExtOk && (
-                          <span className="text-[10px] bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300 px-1.5 py-0.2 rounded font-bold border border-purple-200 dark:border-purple-800 flex items-center gap-1">
-                            📦 Manut. Externa
+                          <span className="text-[10px] bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300 px-2 py-0.5 rounded font-black border border-purple-300 dark:border-purple-800 flex items-center gap-1 shadow-xs">
+                            ✓ 📦 Manut. Externa (Checado)
                           </span>
                         )}
                         {isCheckedCurrent && !isExtOk && (
@@ -869,17 +869,17 @@ export default function EquipmentTable({
 
                     <td className="py-3 px-4 text-center">
                       <button
-                        onClick={() => onToggleCheck(item.id, activeModality)}
+                        onClick={() => onToggleCheck(item.id, isExtOk ? 'externa' : activeModality)}
                         className={`w-full py-1.5 px-3 rounded-xl font-semibold text-xs transition duration-150 flex items-center justify-center gap-1.5 ${
                           isCheckedCurrent
-                            ? 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-red-100 hover:text-red-700 dark:hover:bg-red-950/60 dark:hover:text-red-400'
+                            ? (isExtOk ? 'bg-purple-100 dark:bg-purple-950/80 text-purple-800 dark:text-purple-300 hover:bg-red-100 hover:text-red-700 dark:hover:bg-red-950/60 dark:hover:text-red-400' : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-red-100 hover:text-red-700 dark:hover:bg-red-950/60 dark:hover:text-red-400')
                             : currentMod.btnClass
                         }`}
                       >
                         {isCheckedCurrent ? (
                           <>
                             <X className="w-3.5 h-3.5" />
-                            Desmarcar
+                            {isExtOk ? 'Desmarcar' : 'Desmarcar'}
                           </>
                         ) : (
                           <>
