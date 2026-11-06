@@ -1,8 +1,12 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express';
 import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import bcrypt from 'bcryptjs';
 import { parseWorkbookBuffer } from './src/utils/sheetParser.js';
 import { PDFParse } from 'pdf-parse';
 
@@ -25,11 +29,53 @@ if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-// Master User seed
+// ============================================================
+// BLINDAGEM CRIPTOGRÁFICA DE SEGURANÇA (BCRYPT + ENV)
+// ============================================================
+const SALT_ROUNDS = 10;
+const MASTER_EMAIL = (process.env.MASTER_EMAIL || 'digiclintec@gmail.com').trim().toLowerCase();
+const MASTER_PASSWORD = process.env.MASTER_PASSWORD || 'Digiclintec@Master2026!';
+const MASTER_PIN = process.env.MASTER_PIN || '1234';
+
+/**
+ * Verifica se uma string já é um hash bcrypt válido
+ */
+export function isBcryptHash(str) {
+  return typeof str === 'string' && /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/.test(str);
+}
+
+/**
+ * Converte senha em texto puro para hash bcrypt irreversível com salt
+ */
+export function hashPassword(plain) {
+  if (!plain) return '';
+  if (isBcryptHash(plain)) return plain;
+  return bcrypt.hashSync(String(plain).trim(), SALT_ROUNDS);
+}
+
+/**
+ * Compara senha em texto com a senha armazenada (bcrypt ou texto legado com auto-upgrade)
+ */
+export function verifyPassword(plain, stored) {
+  if (!plain || !stored) return false;
+  const cleanPlain = String(plain).trim();
+  const cleanStored = String(stored).trim();
+
+  if (isBcryptHash(cleanStored)) {
+    try {
+      return bcrypt.compareSync(cleanPlain, cleanStored);
+    } catch (e) {
+      return false;
+    }
+  }
+  return cleanPlain === cleanStored;
+}
+
+// Master User seed (sempre armazenado com hash criptográfico, nunca texto puro)
 const DEFAULT_MASTER = {
   id: 'usr_master_1',
-  email: 'digiclintec@gmail.com',
-  password: '12289399@Ra',
+  email: MASTER_EMAIL,
+  password: hashPassword(MASTER_PASSWORD),
   name: 'Digiclintec Master',
   role: 'master', // 'master' | 'admin' | 'operador'
   hospitalId: 'all',
@@ -92,25 +138,40 @@ export const PLANS = {
   }
 };
 
-// Read users
+// Read users (com blindagem automática de senhas para bcrypt)
 function readUsers() {
   try {
     if (fs.existsSync(USERS_FILE)) {
       const content = fs.readFileSync(USERS_FILE, 'utf-8');
       const parsed = JSON.parse(content);
       if (Array.isArray(parsed) && parsed.length > 0) {
+        let needsSave = false;
+
+        // Auto-upgrade criptográfico: transforma qualquer senha legada em texto puro em hash bcrypt
+        parsed.forEach(u => {
+          if (u.password && !isBcryptHash(u.password)) {
+            u.password = hashPassword(u.password);
+            needsSave = true;
+          }
+        });
+
         const hasMaster = parsed.some(u => u.email.toLowerCase() === DEFAULT_MASTER.email.toLowerCase());
         if (!hasMaster) {
-          parsed.unshift(DEFAULT_MASTER);
+          parsed.unshift({ ...DEFAULT_MASTER });
+          needsSave = true;
+        }
+
+        if (needsSave) {
           saveUsers(parsed);
         }
+
         return parsed;
       }
     }
   } catch (err) {
     console.error('Erro ao ler users.json:', err);
   }
-  const initial = [DEFAULT_MASTER];
+  const initial = [{ ...DEFAULT_MASTER }];
   saveUsers(initial);
   return initial;
 }
@@ -296,7 +357,22 @@ function saveDb(data) {
 
 // ---------------- AUTH ROUTES ---------------- //
 
+// Rate Limiter em memória para proteção contra ataques de força bruta no login
+const loginAttempts = new Map(); // IP -> { count, blockedUntil }
+
 app.post('/api/login', (req, res) => {
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'local';
+  const now = Date.now();
+  const attempt = loginAttempts.get(ip) || { count: 0, blockedUntil: 0 };
+
+  if (attempt.blockedUntil > now) {
+    const remainingSeconds = Math.ceil((attempt.blockedUntil - now) / 1000);
+    return res.status(429).json({
+      success: false,
+      message: `Acesso temporariamente bloqueado por excesso de tentativas. Tente novamente em ${remainingSeconds} segundos.`
+    });
+  }
+
   const { email, password } = req.body || {};
 
   if (!email || !password) {
@@ -304,11 +380,21 @@ app.post('/api/login', (req, res) => {
   }
 
   const cleanEmail = String(email).trim().toLowerCase();
+  const cleanPass = String(password).trim();
   const users = readUsers();
   
-  const user = users.find(u => u.email.toLowerCase() === cleanEmail && u.password === password);
+  const user = users.find(u => u.email.toLowerCase() === cleanEmail && verifyPassword(cleanPass, u.password));
 
   if (user) {
+    // Limpa histórico de tentativas em caso de sucesso
+    loginAttempts.delete(ip);
+
+    // Auto-upgrade transparente: se a senha ainda estava em texto puro legado, salva o hash bcrypt
+    if (!isBcryptHash(user.password)) {
+      user.password = hashPassword(cleanPass);
+      saveUsers(users);
+    }
+
     const userHospitalIds = Array.isArray(user.hospitalIds) && user.hospitalIds.length > 0
       ? user.hospitalIds
       : [user.hospitalId || 'all'];
@@ -327,13 +413,20 @@ app.post('/api/login', (req, res) => {
     });
   }
 
+  // Registra tentativa falha para proteção
+  attempt.count += 1;
+  if (attempt.count >= 8) {
+    attempt.blockedUntil = now + 15 * 60 * 1000; // Bloqueio de 15 minutos
+  }
+  loginAttempts.set(ip, attempt);
+
   return res.status(401).json({
     success: false,
     message: 'Credenciais inválidas. Verifique seu e-mail e senha.'
   });
 });
 
-// List users
+// List users (nunca expõe senhas)
 app.get('/api/users', (req, res) => {
   const users = readUsers();
   const sanitized = users.map(u => ({
@@ -351,12 +444,16 @@ app.get('/api/users', (req, res) => {
   res.json({ success: true, users: sanitized });
 });
 
-// Create user
+// Create user (criptografa senha com bcrypt antes de salvar)
 app.post('/api/users', (req, res) => {
   const { name, email, password, role, hospitalId, hospitalIds } = req.body || {};
 
   if (!name || !email || !password) {
     return res.status(400).json({ success: false, message: 'Preencha nome, e-mail e senha.' });
+  }
+
+  if (String(password).trim().length < 4) {
+    return res.status(400).json({ success: false, message: 'A senha deve ter no mínimo 4 caracteres.' });
   }
 
   const cleanEmail = String(email).trim().toLowerCase();
@@ -379,7 +476,7 @@ app.post('/api/users', (req, res) => {
     id: 'usr_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
     name: String(name).trim(),
     email: cleanEmail,
-    password: String(password).trim(),
+    password: hashPassword(password),
     role: role || 'operador',
     hospitalId: targetHospitalIds[0] || 'all',
     hospitalIds: targetHospitalIds,
@@ -389,10 +486,13 @@ app.post('/api/users', (req, res) => {
   users.push(newUser);
   saveUsers(users);
 
+  // Retorna dados do usuário sem expor a senha
+  const { password: _p, ...safeNewUser } = newUser;
+
   res.json({
     success: true,
     message: 'Usuário cadastrado com sucesso!',
-    user: newUser
+    user: safeNewUser
   });
 });
 
@@ -419,10 +519,12 @@ app.post('/api/users/update', (req, res) => {
 
   saveUsers(users);
 
+  const { password: _p, ...safeUpdatedUser } = users[idx];
+
   res.json({
     success: true,
     message: 'Usuário atualizado com sucesso!',
-    user: users[idx]
+    user: safeUpdatedUser
   });
 });
 
@@ -446,9 +548,13 @@ app.post('/api/users/delete', (req, res) => {
   res.json({ success: true, message: 'Usuário excluído com sucesso.' });
 });
 
-// Update password
+// Update password (criptografia forte via bcrypt)
 app.post('/api/users/password', (req, res) => {
   const { id, newPassword } = req.body || {};
+  if (!newPassword || String(newPassword).trim().length < 4) {
+    return res.status(400).json({ success: false, message: 'A nova senha deve ter no mínimo 4 caracteres.' });
+  }
+
   const users = readUsers();
   const idx = users.findIndex(u => u.id === id);
 
@@ -456,10 +562,10 @@ app.post('/api/users/password', (req, res) => {
     return res.status(404).json({ success: false, message: 'Usuário não encontrado.' });
   }
 
-  users[idx].password = String(newPassword).trim();
+  users[idx].password = hashPassword(newPassword);
   saveUsers(users);
 
-  res.json({ success: true, message: 'Senha atualizada com sucesso!' });
+  res.json({ success: true, message: 'Senha atualizada e criptografada com sucesso!' });
 });
 
 // ---------------- HOSPITALS & PLANS ROUTES ---------------- //
@@ -1676,17 +1782,16 @@ app.post('/api/equipment/update-sector', (req, res) => {
   });
 });
 
-// Validação de Senha / PIN Simples para Conferência Manual
+// Validação de Senha / PIN com Blindagem Criptográfica
 app.post('/api/verify-pin', (req, res) => {
   const { pin } = req.body || {};
   const cleanPin = String(pin || '').trim();
-  const MASTER_PIN = '1234';
 
   const users = readUsers();
   const isValid = cleanPin === MASTER_PIN || 
                   cleanPin.toLowerCase() === 'digiclintec' || 
                   cleanPin === 'admin123' || 
-                  users.some(u => u.password === cleanPin);
+                  users.some(u => verifyPassword(cleanPin, u.password));
 
   if (isValid) {
     return res.json({ success: true, message: 'Senha confirmada.' });
@@ -1698,7 +1803,7 @@ app.post('/api/verify-pin', (req, res) => {
   });
 });
 
-// Mass Check (Check All or Uncheck All with intelligent multi-modality, technician assignment, sector filtering, and PIN protection)
+// Mass Check (Check All or Uncheck All com proteção criptográfica de PIN/Senha)
 app.post('/api/mass-check', (req, res) => {
   const { 
     action, 
@@ -1714,15 +1819,13 @@ app.post('/api/mass-check', (req, res) => {
     userName 
   } = req.body || {};
 
-  // Senha simples de segurança: padrão 1234 ou senha de usuário/master
-  const MASTER_PIN = '1234';
   const cleanPass = String(password || '').trim();
 
   const users = readUsers();
   const isValidPass = cleanPass === MASTER_PIN || 
                       cleanPass.toLowerCase() === 'digiclintec' || 
                       cleanPass === 'admin123' || 
-                      users.some(u => u.password === cleanPass);
+                      users.some(u => verifyPassword(cleanPass, u.password));
 
   if (!isValidPass) {
     return res.status(401).json({

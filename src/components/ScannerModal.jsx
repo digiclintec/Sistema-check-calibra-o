@@ -1,13 +1,13 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
-import { 
-  X, 
-  Camera, 
-  RefreshCw, 
-  Zap, 
-  Volume2, 
-  VolumeX, 
-  CheckCircle, 
+import {
+  X,
+  Camera,
+  RefreshCw,
+  Zap,
+  Volume2,
+  VolumeX,
+  CheckCircle,
   CheckCircle2,
   AlertTriangle,
   Image as ImageIcon,
@@ -35,9 +35,9 @@ import {
   Check
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { 
-  playSuccessSound, 
-  playWarningSound, 
+import {
+  playSuccessSound,
+  playWarningSound,
   playErrorSound,
   playAlreadyCheckedSound,
   playMaintenanceAlertSound,
@@ -64,12 +64,12 @@ const SUPPORTED_FORMATS = [
   Html5QrcodeSupportedFormats.DATA_MATRIX,
 ];
 
-export default function ScannerModal({ 
-  isOpen, 
-  onClose, 
-  onScan, 
-  onBatchCheck, 
-  equipments = [], 
+export default function ScannerModal({
+  isOpen,
+  onClose,
+  onScan,
+  onBatchCheck,
+  equipments = [],
   soundEnabled = true,
   activeModality = 'calibracao',
   onChangeModality,
@@ -89,7 +89,7 @@ export default function ScannerModal({
   const [activeLensLabel, setActiveLensLabel] = useState('🎯 50MP Principal');
   const [viewMode, setViewMode] = useState('split'); // 'split' | 'full_camera'
   const [reticleType, setReticleType] = useState('1d'); // '1d' (Linha Laser) | '2d' (Caixa QR)
-  
+
   // Helper para identificar lente ultra-wide (0.5x / grande angular afastada)
   const isUltraWideLens = (label) => {
     const l = (label || '').toLowerCase();
@@ -151,7 +151,7 @@ export default function ScannerModal({
   const getFriendlyCameraLabel = (camera, index, total) => {
     if (!camera) return `Lente ${index + 1}`;
     const raw = (camera.label || '').toLowerCase();
-    
+
     if (isFrontCamera(raw)) {
       return `🤳 Lente Frontal (${index + 1})`;
     }
@@ -383,14 +383,14 @@ export default function ScannerModal({
   const [focusFeedbackText, setFocusFeedbackText] = useState('');
 
   // Modo de operação: 'batch' (Fila de conferência) ou 'instant' (Check 1 por 1)
-  const [mode, setMode] = useState('batch'); 
+  const [mode, setMode] = useState('batch');
 
   // Alvo de busca no código de barras: 'all' (automático) | 'idec' (somente IDEC / Tag) | 'serie' (somente Série)
   const [searchTarget, setSearchTarget] = useState('all');
-  
+
   // Fila de equipamentos bipados aguardando confirmação
   const [stagedItems, setStagedItems] = useState([]);
-  
+
   // Feedback do último item bipado
   const [lastScannedFeedback, setLastScannedFeedback] = useState(null);
 
@@ -437,7 +437,7 @@ export default function ScannerModal({
         let savedCam = null;
         try {
           savedCam = localStorage.getItem('calibracheck_preferred_camera_v2');
-        } catch (e) {}
+        } catch (e) { }
 
         // 1. Enumera e descobre todas as lentes físicas do smartphone
         let detected = [];
@@ -569,8 +569,8 @@ export default function ScannerModal({
       };
 
       // Configuração exata para o Html5Qrcode respeitar a lente física solicitada
-      const cameraConfig = cameraId 
-        ? { deviceId: { exact: cameraId } } 
+      const cameraConfig = cameraId
+        ? { deviceId: { exact: cameraId } }
         : { facingMode: "environment" };
 
       await html5QrCode.start(
@@ -614,7 +614,7 @@ export default function ScannerModal({
             if (best) setSelectedCamera(best.id);
           }
         }
-      } catch (e) {}
+      } catch (e) { }
 
       // ESTRUTURA GOOGLE ML KIT (Android Chrome / Google Play Services Engine):
       // Leitura automática contínua em tempo real (como no tablet)
@@ -659,7 +659,7 @@ export default function ScannerModal({
                       const roiBitmap = await createImageBitmap(videoEl, cropX, cropY, cropW, cropH);
                       barcodes = await nativeDetector.detect(roiBitmap);
                       roiBitmap.close();
-                    } catch (cropErr) {}
+                    } catch (cropErr) { }
                   }
 
                   if (barcodes && barcodes.length > 0) {
@@ -705,7 +705,7 @@ export default function ScannerModal({
           const cap = html5QrCode.getRunningTrackCapabilities();
           if (cap && 'torch' in cap) setHasTorch(true);
           if (cap && 'zoom' in cap) setHasZoom(true);
-        } catch (err) {}
+        } catch (err) { }
       }
 
     } catch (err) {
@@ -820,11 +820,11 @@ export default function ScannerModal({
       const videoEl = document.querySelector('#barcode-reader-box video');
       if (videoEl && videoEl.srcObject) {
         videoEl.srcObject.getTracks().forEach(track => {
-          try { track.stop(); } catch (e) {}
+          try { track.stop(); } catch (e) { }
         });
         videoEl.srcObject = null;
       }
-    } catch (e) {}
+    } catch (e) { }
 
     if (html5QrCodeRef.current) {
       try {
@@ -832,7 +832,7 @@ export default function ScannerModal({
           await html5QrCodeRef.current.stop();
         }
         await html5QrCodeRef.current.clear();
-      } catch (e) {}
+      } catch (e) { }
       html5QrCodeRef.current = null;
     }
     setScanning(false);
@@ -851,14 +851,14 @@ export default function ScannerModal({
 
       if (track) {
         const caps = track.getCapabilities ? track.getCapabilities() : {};
-        
+
         // 1. Ponto de interesse do foco (onde o técnico tocou na tela)
         if (relX !== undefined && relY !== undefined && caps.pointsOfInterest) {
           try {
             await track.applyConstraints({
               advanced: [{ pointsOfInterest: [{ x: relX, y: relY }] }]
             });
-          } catch (e) {}
+          } catch (e) { }
         }
 
         // 2. Dispara ciclo de foco no motor da lente com prioridade para foco de perto (macro)
@@ -875,7 +875,7 @@ export default function ScannerModal({
                     }
                     await track.applyConstraints({ advanced: adv });
                   }
-                } catch (e) {}
+                } catch (e) { }
               }, 300);
             } else if (caps.focusMode.includes('continuous')) {
               const adv = [{ focusMode: 'continuous' }];
@@ -884,7 +884,7 @@ export default function ScannerModal({
               }
               await track.applyConstraints({ advanced: adv });
             }
-          } catch (e) {}
+          } catch (e) { }
         }
       }
     } catch (err) {
@@ -1001,7 +1001,7 @@ export default function ScannerModal({
         try {
           await html5QrCodeRef.current.applyVideoConstraints({ advanced: [{ zoom: clampedZoom }] });
           applied = true;
-        } catch (e2) {}
+        } catch (e2) { }
       }
 
       setZoomLevel(clampedZoom);
@@ -1042,17 +1042,17 @@ export default function ScannerModal({
     setSelectedCamera(camId);
     try {
       localStorage.setItem('calibracheck_preferred_camera_v2', camId);
-    } catch (e) {}
+    } catch (e) { }
 
     const idx = cameras.findIndex(c => (c.id === camId || c.deviceId === camId));
     const targetCam = idx >= 0 ? cameras[idx] : { id: camId, label: '' };
     const friendly = getFriendlyCameraLabel(targetCam, idx >= 0 ? idx : 0, cameras.length);
-    
+
     try {
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
         navigator.vibrate(40);
       }
-    } catch (e) {}
+    } catch (e) { }
 
     setFocusFeedbackText(`🔄 Ativando: ${friendly}...`);
 
@@ -1065,7 +1065,7 @@ export default function ScannerModal({
       if (videoEl.srcObject) {
         try {
           videoEl.srcObject.getTracks().forEach(t => t.stop());
-        } catch (e) {}
+        } catch (e) { }
         videoEl.srcObject = null;
       }
     }
@@ -1316,7 +1316,7 @@ export default function ScannerModal({
       equipment: item.equipment,
       setorRetirada: item.setorRetirada || batchSector || item.equipment.setor || 'Geral'
     }));
-    
+
     const effectiveMods = selectedModalities.length > 0 ? selectedModalities : configuredStandardModalities;
 
     if (onBatchCheck) {
@@ -1371,15 +1371,15 @@ export default function ScannerModal({
           const bmp = await createImageBitmap(file);
           const nativeDetector = new window.BarcodeDetector({
             formats: [
-              'code_128', 
-              'code_39', 
-              'code_93', 
-              'ean_13', 
-              'ean_8', 
-              'itf', 
-              'qr_code', 
-              'data_matrix', 
-              'upc_a', 
+              'code_128',
+              'code_39',
+              'code_93',
+              'ean_13',
+              'ean_8',
+              'itf',
+              'qr_code',
+              'data_matrix',
+              'upc_a',
               'upc_e'
             ]
           });
@@ -1420,7 +1420,7 @@ export default function ScannerModal({
               canvas.height = h;
               const ctx = canvas.getContext('2d');
               ctx.drawImage(img, 0, 0, w, h);
-              
+
               canvas.toBlob((blob) => {
                 resolve({
                   dataUrl: canvas.toDataURL('image/jpeg', 0.90),
@@ -1451,7 +1451,7 @@ export default function ScannerModal({
             if (detectedOpt && detectedOpt.length > 0 && detectedOpt[0].rawValue) {
               decodedBarcode = detectedOpt[0].rawValue;
             }
-          } catch (e) {}
+          } catch (e) { }
         }
 
         if (!decodedBarcode) {
@@ -1460,7 +1460,7 @@ export default function ScannerModal({
               formatsToSupport: SUPPORTED_FORMATS
             });
             decodedBarcode = await scanner.scanFile(optimizedBlob, true);
-          } catch (scannerErr) {}
+          } catch (scannerErr) { }
         }
       }
 
@@ -1537,7 +1537,7 @@ export default function ScannerModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 backdrop-blur-md animate-in fade-in duration-150">
-      
+
       {/* Input oculto para envio de foto */}
       <input
         type="file"
@@ -1548,11 +1548,11 @@ export default function ScannerModal({
         className="hidden"
       />
 
-      <div 
+      <div
         ref={containerRef}
         className="bg-slate-900 border border-slate-800 w-full h-full sm:h-[94vh] sm:max-w-3xl md:max-w-5xl lg:max-w-6xl md:h-[92vh] sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col select-none"
       >
-        
+
         {/* Top Header Compacto */}
         <div className="px-3 py-2 sm:px-4 sm:py-2.5 border-b border-slate-800 flex items-center justify-between bg-slate-900/95 shrink-0 safe-area-top">
           <div className="flex items-center gap-2">
@@ -1620,11 +1620,10 @@ export default function ScannerModal({
             <button
               type="button"
               onClick={handleSelectStandardComplete}
-              className={`px-2.5 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 shadow-sm ${
-                !isExternalMode
+              className={`px-2.5 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 shadow-sm ${!isExternalMode
                   ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-emerald-600 text-white shadow-blue-500/30 ring-1 ring-blue-300'
                   : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-              }`}
+                }`}
               title="Calibração Completa Fixada: Valida Calibração + Preventiva + Segurança Elétrica juntas"
             >
               <Lock className="w-3.5 h-3.5 text-amber-300 shrink-0" />
@@ -1638,11 +1637,10 @@ export default function ScannerModal({
             <button
               type="button"
               onClick={handleSelectExternalMaintenance}
-              className={`px-2.5 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 shadow-sm ${
-                isExternalMode
+              className={`px-2.5 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 shadow-sm ${isExternalMode
                   ? 'bg-purple-600 text-white shadow-purple-500/30 ring-1 ring-purple-300'
                   : 'bg-slate-900 text-purple-300 hover:text-white border border-slate-800'
-              }`}
+                }`}
               title="Equipamento enviado para calibração/conserto por equipe externa terceirizada"
             >
               <Package className="w-3.5 h-3.5 shrink-0" />
@@ -1655,9 +1653,8 @@ export default function ScannerModal({
             <div className="flex items-center bg-slate-900 p-0.5 rounded-lg border border-slate-800 text-[10px]">
               <button
                 onClick={() => setSearchTarget(t => t === 'all' ? 'idec' : t === 'idec' ? 'serie' : 'all')}
-                className={`px-2 py-0.5 rounded font-bold transition ${
-                  searchTarget === 'all' ? 'text-blue-400' : searchTarget === 'idec' ? 'text-amber-400' : 'text-purple-400'
-                }`}
+                className={`px-2 py-0.5 rounded font-bold transition ${searchTarget === 'all' ? 'text-blue-400' : searchTarget === 'idec' ? 'text-amber-400' : 'text-purple-400'
+                  }`}
                 title="Alternar alvo de busca: Auto / IDEC / Série"
               >
                 <span>🔍 {searchTarget === 'all' ? 'Auto' : searchTarget === 'idec' ? 'IDEC' : 'Série'}</span>
@@ -1667,9 +1664,8 @@ export default function ScannerModal({
             <div className="flex items-center bg-slate-900 p-0.5 rounded-lg border border-slate-800 text-[10px]">
               <button
                 onClick={() => setMode('batch')}
-                className={`px-2 py-0.5 rounded font-bold transition flex items-center gap-1 ${
-                  mode === 'batch' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
-                }`}
+                className={`px-2 py-0.5 rounded font-bold transition flex items-center gap-1 ${mode === 'batch' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                  }`}
                 title="Fila contínua de conferência em lote"
               >
                 <ListChecks className="w-3 h-3" />
@@ -1677,9 +1673,8 @@ export default function ScannerModal({
               </button>
               <button
                 onClick={() => setMode('instant')}
-                className={`px-2 py-0.5 rounded font-bold transition flex items-center gap-1 ${
-                  mode === 'instant' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
-                }`}
+                className={`px-2 py-0.5 rounded font-bold transition flex items-center gap-1 ${mode === 'instant' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                  }`}
                 title="Check instantâneo 1 a 1"
               >
                 <Zap className="w-3 h-3" />
@@ -1695,9 +1690,9 @@ export default function ScannerModal({
             Tablet / Desktop (>= 768px): Modo Lado a Lado (40% câmera / 60% fila)
         ============================================================ */}
         <div className={`flex-1 flex min-h-0 overflow-hidden ${isTabletSplit ? 'flex-col md:flex-row' : 'flex-col'}`}>
-          
+
           {/* PAINEL DA ESQUERDA: CÂMERA 50MP */}
-          <div 
+          <div
             style={{
               height: `${cameraHeightPercent}%`,
               minHeight: '130px',
@@ -1706,262 +1701,255 @@ export default function ScannerModal({
             className="w-full shrink-0 flex flex-col bg-black min-h-0 overflow-hidden transition-[height] duration-150 md:!h-full md:!max-h-full md:w-5/12 lg:w-5/12 md:border-r border-slate-800"
           >
             {/* Camera Viewport Area com CLIQUE PARA FOCAR (Tap to Focus) */}
-            <div 
+            <div
               ref={viewfinderRef}
               onClick={handleViewfinderClick}
               className="relative flex-1 bg-black flex flex-col items-center justify-center overflow-hidden cursor-crosshair select-none min-h-0 w-full"
               title="Toque em qualquer ponto da imagem para focar"
             >
-          
-          {/* Caixa do Html5Qrcode com preenchimento total e sem barras pretas */}
-          <div 
-            id="barcode-reader-box" 
-            className="w-full h-full flex items-center justify-center pointer-events-none [&_video]:w-full [&_video]:h-full [&_video]:object-cover"
-          ></div>
 
-          {/* Mira Laser Ampla de Enquadramento */}
-          {scanning && !cameraError && (
-            <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-3">
-              {reticleType === '1d' ? (
-                // Mira 1D: Ampla e horizontal ideal para bombas de infusão (Code 128 / GS1)
-                <div className="relative w-[96%] max-w-[480px] h-[100px] sm:h-[130px] border-2 border-dashed border-red-500/80 rounded-2xl shadow-[0_0_25px_rgba(239,68,68,0.35)] flex items-center justify-center">
-                  {/* Linha Laser Vermelha Horizontal Contínua e Brilhante */}
-                  <div className="absolute left-0 right-0 h-1 bg-gradient-to-r from-red-600 via-rose-300 to-red-600 shadow-[0_0_14px_#ef4444] animate-pulse"></div>
-                  
-                  {/* Marcadores de Canto Vermelhos */}
-                  <div className="absolute -top-1 -left-1 w-5 h-5 border-t-4 border-l-4 border-red-500 rounded-tl-lg"></div>
-                  <div className="absolute -top-1 -right-1 w-5 h-5 border-t-4 border-r-4 border-red-500 rounded-tr-lg"></div>
-                  <div className="absolute -bottom-1 -left-1 w-5 h-5 border-b-4 border-l-4 border-red-500 rounded-bl-lg"></div>
-                  <div className="absolute -bottom-1 -right-1 w-5 h-5 border-b-4 border-r-4 border-red-500 rounded-br-lg"></div>
+              {/* Caixa do Html5Qrcode com preenchimento total e sem barras pretas */}
+              <div
+                id="barcode-reader-box"
+                className="w-full h-full flex items-center justify-center pointer-events-none [&_video]:w-full [&_video]:h-full [&_video]:object-cover"
+              ></div>
 
-                  {/* Dica da Linha Laser no rodapé da mira */}
-                  <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-semibold text-white/95 bg-slate-900/95 px-2.5 py-0.5 rounded-full border border-red-500/40 shadow-md flex items-center gap-1.5">
-                    <ScanLine className="w-3 h-3 text-red-400" />
-                    <span>Laser vermelho sobre o código</span>
-                  </div>
-                </div>
-              ) : (
-                // Mira 2D: Caixa quadrada para QR Code / DataMatrix
-                <div className="relative w-full max-w-[260px] h-[220px] border-2 border-dashed border-blue-400/80 rounded-2xl shadow-[0_0_30px_rgba(59,130,246,0.35)]">
-                  <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-cyan-300 to-blue-500 shadow-[0_0_12px_#3b82f6] animate-[bounce_2s_infinite]"></div>
-                  <div className="absolute -top-1 -left-1 w-5 h-5 border-t-4 border-l-4 border-blue-500 rounded-tl-lg"></div>
-                  <div className="absolute -top-1 -right-1 w-5 h-5 border-t-4 border-r-4 border-blue-500 rounded-tr-lg"></div>
-                  <div className="absolute -bottom-1 -left-1 w-5 h-5 border-b-4 border-l-4 border-blue-500 rounded-bl-lg"></div>
-                  <div className="absolute -bottom-1 -right-1 w-5 h-5 border-b-4 border-r-4 border-blue-500 rounded-br-lg"></div>
-                  <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-semibold text-white/95 bg-slate-900/90 px-2.5 py-0.5 rounded-full border border-slate-700/80 shadow-md flex items-center gap-1.5">
-                    <Crosshair className="w-3 h-3 text-amber-400 animate-spin" />
-                    <span>Enquadre o código QR</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+              {/* Mira Laser Ampla de Enquadramento */}
+              {scanning && !cameraError && (
+                <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-3">
+                  {reticleType === '1d' ? (
+                    // Mira 1D: Ampla e horizontal ideal para bombas de infusão (Code 128 / GS1)
+                    <div className="relative w-[96%] max-w-[480px] h-[100px] sm:h-[130px] border-2 border-dashed border-red-500/80 rounded-2xl shadow-[0_0_25px_rgba(239,68,68,0.35)] flex items-center justify-center">
+                      {/* Linha Laser Vermelha Horizontal Contínua e Brilhante */}
+                      <div className="absolute left-0 right-0 h-1 bg-gradient-to-r from-red-600 via-rose-300 to-red-600 shadow-[0_0_14px_#ef4444] animate-pulse"></div>
 
-          {/* Mira Visual Animada de Toque no Ponto Tocado (Tap Reticle) */}
-          {focusRing.visible && (
-            <div 
-              className={`absolute pointer-events-none -translate-x-1/2 -translate-y-1/2 transition-transform duration-200 z-30 ${
-                focusRing.status === 'focused' ? 'scale-95 text-emerald-400' : 'scale-110 text-amber-400 animate-pulse'
-              }`}
-              style={{ left: focusRing.x, top: focusRing.y, width: 64, height: 64 }}
-            >
-              <div className="w-full h-full border-2 border-dashed border-current rounded-2xl relative shadow-[0_0_15px_currentColor]">
-                <div className="absolute -top-1 -left-1 w-3 h-3 border-t-2 border-l-2 border-current"></div>
-                <div className="absolute -top-1 -right-1 w-3 h-3 border-t-2 border-r-2 border-current"></div>
-                <div className="absolute -bottom-1 -left-1 w-3 h-3 border-b-2 border-l-2 border-current"></div>
-                <div className="absolute -bottom-1 -right-1 w-3 h-3 border-b-2 border-r-2 border-current"></div>
-                <div className="absolute inset-0 m-auto w-2 h-2 rounded-full bg-current"></div>
-              </div>
-            </div>
-          )}
+                      {/* Marcadores de Canto Vermelhos */}
+                      <div className="absolute -top-1 -left-1 w-5 h-5 border-t-4 border-l-4 border-red-500 rounded-tl-lg"></div>
+                      <div className="absolute -top-1 -right-1 w-5 h-5 border-t-4 border-r-4 border-red-500 rounded-tr-lg"></div>
+                      <div className="absolute -bottom-1 -left-1 w-5 h-5 border-b-4 border-l-4 border-red-500 rounded-bl-lg"></div>
+                      <div className="absolute -bottom-1 -right-1 w-5 h-5 border-b-4 border-r-4 border-red-500 rounded-br-lg"></div>
 
-          {/* Toast Pill de Confirmação de Foco */}
-          {focusFeedbackText && (
-            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 pointer-events-none animate-in fade-in slide-in-from-top-2 duration-150">
-              <div className="bg-slate-950/90 text-white border border-slate-700/80 px-3 py-1 rounded-full text-[11px] font-bold shadow-xl flex items-center gap-1.5">
-                <Target className="w-3.5 h-3.5 text-amber-400" />
-                <span>{focusFeedbackText}</span>
-              </div>
-            </div>
-          )}
-
-          {/* Barra Superior Unificada do Viewfinder: NÃO SOBREPÕE */}
-          <div className="absolute top-2.5 left-2.5 right-2.5 z-20 flex items-center justify-between gap-1.5 pointer-events-auto" onClick={e => e.stopPropagation()}>
-            {/* Controles da Esquerda: Alternador 1D/2D e Seletor/Indicador da Câmera Principal */}
-            <div className="flex items-center gap-1.5 min-w-0">
-              <button
-                type="button"
-                onClick={() => setReticleType(r => r === '1d' ? '2d' : '1d')}
-                className={`px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 border shadow-lg transition active:scale-95 shrink-0 ${
-                  reticleType === '1d'
-                    ? 'bg-red-500/25 text-red-200 border-red-500/50 shadow-red-500/20'
-                    : 'bg-blue-500/25 text-blue-200 border-blue-500/50 shadow-blue-500/20'
-                }`}
-                title="Alternar entre mira para Código de Barras (1D) e mira para QR Code (2D)"
-              >
-                <ScanLine className="w-3 h-3" />
-                <span>{reticleType === '1d' ? '1D Laser' : '2D QR'}</span>
-              </button>
-
-              {/* Botão Dinâmico de Alternar Lente Traseira (se houver mais de 1 câmera) ou Indicador Fixo */}
-              {rearCamerasList.length > 1 ? (
-                <button
-                  type="button"
-                  onClick={handleToggleRearCamera}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-bold bg-slate-900/90 hover:bg-slate-800 text-blue-300 border border-blue-500/50 shadow-md backdrop-blur-xs transition active:scale-95 shrink-0"
-                  title="Toque para alternar entre as lentes traseiras do celular"
-                >
-                  <SwitchCamera className="w-3.5 h-3.5 text-blue-400" />
-                  <span>{currentLensDisplay}</span>
-                </button>
-              ) : (
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-bold bg-slate-950/85 text-blue-300 border border-blue-500/40 shadow-md backdrop-blur-xs">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
-                  <span>🎯 50MP Principal</span>
-                </div>
-              )}
-            </div>
-
-            {/* Controles da Direita: Foco de Perto (Macro) e Lanterna */}
-            <div className="flex items-center gap-1 shrink-0">
-              <button
-                onClick={handleTriggerCenterFocus}
-                className="px-2.5 py-1 rounded-full bg-slate-900/90 hover:bg-slate-800 text-amber-300 font-bold text-xs flex items-center gap-1.5 border border-amber-500/40 shadow-lg transition active:scale-95"
-                title="Focar de perto agora (Calibrar motor da lente para 5-15cm)"
-              >
-                <Crosshair className="w-3.5 h-3.5 text-amber-400" />
-                <span className="text-[10px] hidden xs:inline">Focar Perto</span>
-              </button>
-
-              {hasTorch && (
-                <button
-                  onClick={toggleTorch}
-                  className={`p-1.5 rounded-full flex items-center justify-center shadow-lg transition border ${
-                    torchOn 
-                      ? 'bg-amber-400 text-slate-950 font-bold border-amber-300 ring-2 ring-amber-400/50 shadow-amber-400/30' 
-                      : 'bg-slate-900/90 text-white hover:bg-slate-800 border-slate-700/80'
-                  }`}
-                  title={torchOn ? "Desligar lanterna" : "Ligar lanterna"}
-                >
-                  <Zap className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* HUD FLOATING ALERT BANNER DIRETO SOBRE A CÂMERA (IMPOSSÍVEL DE NÃO VER PELO OPERADOR) */}
-          {lastScannedFeedback && (lastScannedFeedback.status === 'already_checked' || lastScannedFeedback.status === 'in_maintenance') && (
-            <div className="absolute top-14 left-2.5 right-2.5 z-30 animate-in zoom-in-95 duration-200">
-              <div className={`p-3 rounded-2xl border-2 shadow-2xl backdrop-blur-md flex items-center justify-between gap-2.5 ${
-                lastScannedFeedback.status === 'in_maintenance'
-                  ? 'bg-purple-950/95 border-purple-400 text-purple-100 shadow-purple-950/70'
-                  : 'bg-amber-950/95 border-amber-400 text-amber-100 shadow-amber-950/70'
-              }`}>
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-inner ${
-                    lastScannedFeedback.status === 'in_maintenance'
-                      ? 'bg-purple-500/20 text-purple-300 border border-purple-400/50'
-                      : 'bg-amber-500/20 text-amber-300 border border-amber-400/50'
-                  }`}>
-                    {lastScannedFeedback.status === 'in_maintenance' ? (
-                      <Package className="w-5 h-5 text-purple-300 animate-pulse" />
-                    ) : (
-                      <AlertTriangle className="w-5 h-5 text-amber-300 animate-pulse" />
-                    )}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                        lastScannedFeedback.status === 'in_maintenance'
-                          ? 'bg-purple-500 text-white'
-                          : 'bg-amber-500 text-slate-950'
-                      }`}>
-                        {lastScannedFeedback.status === 'in_maintenance'
-                          ? '📦 EM MANUTENÇÃO EXTERNA'
-                          : '⚠️ BOMBA JÁ CHECADA'}
-                      </span>
-                      <span className="text-[10px] opacity-75 font-mono">
-                        {lastScannedFeedback.timestamp}
-                      </span>
+                      {/* Dica da Linha Laser no rodapé da mira */}
+                      <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-semibold text-white/95 bg-slate-900/95 px-2.5 py-0.5 rounded-full border border-red-500/40 shadow-md flex items-center gap-1.5">
+                        <ScanLine className="w-3 h-3 text-red-400" />
+                        <span>Laser vermelho sobre o código</span>
+                      </div>
                     </div>
-                    <div className="text-xs font-black text-white truncate mt-0.5">
-                      {lastScannedFeedback.equipment?.equipamento || 'Bomba de Infusão'}
+                  ) : (
+                    // Mira 2D: Caixa quadrada para QR Code / DataMatrix
+                    <div className="relative w-full max-w-[260px] h-[220px] border-2 border-dashed border-blue-400/80 rounded-2xl shadow-[0_0_30px_rgba(59,130,246,0.35)]">
+                      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-cyan-300 to-blue-500 shadow-[0_0_12px_#3b82f6] animate-[bounce_2s_infinite]"></div>
+                      <div className="absolute -top-1 -left-1 w-5 h-5 border-t-4 border-l-4 border-blue-500 rounded-tl-lg"></div>
+                      <div className="absolute -top-1 -right-1 w-5 h-5 border-t-4 border-r-4 border-blue-500 rounded-tr-lg"></div>
+                      <div className="absolute -bottom-1 -left-1 w-5 h-5 border-b-4 border-l-4 border-blue-500 rounded-bl-lg"></div>
+                      <div className="absolute -bottom-1 -right-1 w-5 h-5 border-b-4 border-r-4 border-blue-500 rounded-br-lg"></div>
+                      <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-semibold text-white/95 bg-slate-900/90 px-2.5 py-0.5 rounded-full border border-slate-700/80 shadow-md flex items-center gap-1.5">
+                        <Crosshair className="w-3 h-3 text-amber-400 animate-spin" />
+                        <span>Enquadre o código QR</span>
+                      </div>
                     </div>
-                    <div className="text-[10px] opacity-90 truncate font-mono">
-                      🏷️ IDEC: <strong>{lastScannedFeedback.equipment?.tag || 'S/N'}</strong> • S/N: {lastScannedFeedback.equipment?.serie || 'N/A'} • {
-                        lastScannedFeedback.status === 'in_maintenance'
-                          ? (lastScannedFeedback.equipment?.motivo_externa || 'Terceirizada')
-                          : `Por: ${lastScannedFeedback.meta?.user || 'Técnico'}`
-                      }
-                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Mira Visual Animada de Toque no Ponto Tocado (Tap Reticle) */}
+              {focusRing.visible && (
+                <div
+                  className={`absolute pointer-events-none -translate-x-1/2 -translate-y-1/2 transition-transform duration-200 z-30 ${focusRing.status === 'focused' ? 'scale-95 text-emerald-400' : 'scale-110 text-amber-400 animate-pulse'
+                    }`}
+                  style={{ left: focusRing.x, top: focusRing.y, width: 64, height: 64 }}
+                >
+                  <div className="w-full h-full border-2 border-dashed border-current rounded-2xl relative shadow-[0_0_15px_currentColor]">
+                    <div className="absolute -top-1 -left-1 w-3 h-3 border-t-2 border-l-2 border-current"></div>
+                    <div className="absolute -top-1 -right-1 w-3 h-3 border-t-2 border-r-2 border-current"></div>
+                    <div className="absolute -bottom-1 -left-1 w-3 h-3 border-b-2 border-l-2 border-current"></div>
+                    <div className="absolute -bottom-1 -right-1 w-3 h-3 border-b-2 border-r-2 border-current"></div>
+                    <div className="absolute inset-0 m-auto w-2 h-2 rounded-full bg-current"></div>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setLastScannedFeedback(null)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-black shrink-0 transition shadow-md active:scale-95 ${
-                    lastScannedFeedback.status === 'in_maintenance'
-                      ? 'bg-purple-500 hover:bg-purple-400 text-white shadow-purple-500/40'
-                      : 'bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-amber-400/40'
-                  }`}
-                >
-                  Entendido
-                </button>
-              </div>
-            </div>
-          )}
+              )}
 
-          {/* Barra Inferior do Viewfinder: Foco de Perto + Indicador Google AI */}
-          {scanning && !cameraError && (
-            <div className="absolute bottom-2.5 left-2.5 right-2.5 z-20 flex items-center justify-between pointer-events-none gap-1.5">
-              <div className="bg-slate-950/85 backdrop-blur-md text-emerald-300 border border-emerald-500/40 px-3 py-1 rounded-full text-[10px] font-semibold shadow-lg flex items-center gap-1.5 truncate">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
-                <span className="truncate">🎯 Foco de Perto (5-15cm) • 50MP Principal</span>
+              {/* Toast Pill de Confirmação de Foco */}
+              {focusFeedbackText && (
+                <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 pointer-events-none animate-in fade-in slide-in-from-top-2 duration-150">
+                  <div className="bg-slate-950/90 text-white border border-slate-700/80 px-3 py-1 rounded-full text-[11px] font-bold shadow-xl flex items-center gap-1.5">
+                    <Target className="w-3.5 h-3.5 text-amber-400" />
+                    <span>{focusFeedbackText}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Barra Superior Unificada do Viewfinder: NÃO SOBREPÕE */}
+              <div className="absolute top-2.5 left-2.5 right-2.5 z-20 flex items-center justify-between gap-1.5 pointer-events-auto" onClick={e => e.stopPropagation()}>
+                {/* Controles da Esquerda: Alternador 1D/2D e Seletor/Indicador da Câmera Principal */}
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => setReticleType(r => r === '1d' ? '2d' : '1d')}
+                    className={`px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 border shadow-lg transition active:scale-95 shrink-0 ${reticleType === '1d'
+                        ? 'bg-red-500/25 text-red-200 border-red-500/50 shadow-red-500/20'
+                        : 'bg-blue-500/25 text-blue-200 border-blue-500/50 shadow-blue-500/20'
+                      }`}
+                    title="Alternar entre mira para Código de Barras (1D) e mira para QR Code (2D)"
+                  >
+                    <ScanLine className="w-3 h-3" />
+                    <span>{reticleType === '1d' ? '1D Laser' : '2D QR'}</span>
+                  </button>
+
+                  {/* Botão Dinâmico de Alternar Lente Traseira (se houver mais de 1 câmera) ou Indicador Fixo */}
+                  {rearCamerasList.length > 1 ? (
+                    <button
+                      type="button"
+                      onClick={handleToggleRearCamera}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-bold bg-slate-900/90 hover:bg-slate-800 text-blue-300 border border-blue-500/50 shadow-md backdrop-blur-xs transition active:scale-95 shrink-0"
+                      title="Toque para alternar entre as lentes traseiras do celular"
+                    >
+                      <SwitchCamera className="w-3.5 h-3.5 text-blue-400" />
+                      <span>{currentLensDisplay}</span>
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-bold bg-slate-950/85 text-blue-300 border border-blue-500/40 shadow-md backdrop-blur-xs">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
+                      <span>🎯 50MP Principal</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Controles da Direita: Foco de Perto (Macro) e Lanterna */}
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={handleTriggerCenterFocus}
+                    className="px-2.5 py-1 rounded-full bg-slate-900/90 hover:bg-slate-800 text-amber-300 font-bold text-xs flex items-center gap-1.5 border border-amber-500/40 shadow-lg transition active:scale-95"
+                    title="Focar de perto agora (Calibrar motor da lente para 5-15cm)"
+                  >
+                    <Crosshair className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="text-[10px] hidden xs:inline">Focar Perto</span>
+                  </button>
+
+                  {hasTorch && (
+                    <button
+                      onClick={toggleTorch}
+                      className={`p-1.5 rounded-full flex items-center justify-center shadow-lg transition border ${torchOn
+                          ? 'bg-amber-400 text-slate-950 font-bold border-amber-300 ring-2 ring-amber-400/50 shadow-amber-400/30'
+                          : 'bg-slate-900/90 text-white hover:bg-slate-800 border-slate-700/80'
+                        }`}
+                      title={torchOn ? "Desligar lanterna" : "Ligar lanterna"}
+                    >
+                      <Zap className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
-              {typeof window !== 'undefined' && 'BarcodeDetector' in window && (
-                <div className="bg-blue-950/85 backdrop-blur-md text-blue-200 border border-blue-500/60 px-2.5 py-1 rounded-full text-[9px] font-bold shadow-lg flex items-center gap-1 shrink-0" title="Motor Google ML Kit acelerado por hardware">
-                  <span className="text-[10px]">⚡</span>
-                  <span>Google AI</span>
+
+              {/* HUD FLOATING ALERT BANNER DIRETO SOBRE A CÂMERA (IMPOSSÍVEL DE NÃO VER PELO OPERADOR) */}
+              {lastScannedFeedback && (lastScannedFeedback.status === 'already_checked' || lastScannedFeedback.status === 'in_maintenance') && (
+                <div className="absolute top-14 left-2.5 right-2.5 z-30 animate-in zoom-in-95 duration-200">
+                  <div className={`p-3 rounded-2xl border-2 shadow-2xl backdrop-blur-md flex items-center justify-between gap-2.5 ${lastScannedFeedback.status === 'in_maintenance'
+                      ? 'bg-purple-950/95 border-purple-400 text-purple-100 shadow-purple-950/70'
+                      : 'bg-amber-950/95 border-amber-400 text-amber-100 shadow-amber-950/70'
+                    }`}>
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-inner ${lastScannedFeedback.status === 'in_maintenance'
+                          ? 'bg-purple-500/20 text-purple-300 border border-purple-400/50'
+                          : 'bg-amber-500/20 text-amber-300 border border-amber-400/50'
+                        }`}>
+                        {lastScannedFeedback.status === 'in_maintenance' ? (
+                          <Package className="w-5 h-5 text-purple-300 animate-pulse" />
+                        ) : (
+                          <AlertTriangle className="w-5 h-5 text-amber-300 animate-pulse" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${lastScannedFeedback.status === 'in_maintenance'
+                              ? 'bg-purple-500 text-white'
+                              : 'bg-amber-500 text-slate-950'
+                            }`}>
+                            {lastScannedFeedback.status === 'in_maintenance'
+                              ? '📦 EM MANUTENÇÃO EXTERNA'
+                              : '⚠️ BOMBA JÁ CHECADA'}
+                          </span>
+                          <span className="text-[10px] opacity-75 font-mono">
+                            {lastScannedFeedback.timestamp}
+                          </span>
+                        </div>
+                        <div className="text-xs font-black text-white truncate mt-0.5">
+                          {lastScannedFeedback.equipment?.equipamento || 'Bomba de Infusão'}
+                        </div>
+                        <div className="text-[10px] opacity-90 truncate font-mono">
+                          🏷️ IDEC: <strong>{lastScannedFeedback.equipment?.tag || 'S/N'}</strong> • S/N: {lastScannedFeedback.equipment?.serie || 'N/A'} • {
+                            lastScannedFeedback.status === 'in_maintenance'
+                              ? (lastScannedFeedback.equipment?.motivo_externa || 'Terceirizada')
+                              : `Por: ${lastScannedFeedback.meta?.user || 'Técnico'}`
+                          }
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setLastScannedFeedback(null)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-black shrink-0 transition shadow-md active:scale-95 ${lastScannedFeedback.status === 'in_maintenance'
+                          ? 'bg-purple-500 hover:bg-purple-400 text-white shadow-purple-500/40'
+                          : 'bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-amber-400/40'
+                        }`}
+                    >
+                      Entendido
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Barra Inferior do Viewfinder: Foco de Perto + Indicador Google AI */}
+              {scanning && !cameraError && (
+                <div className="absolute bottom-2.5 left-2.5 right-2.5 z-20 flex items-center justify-between pointer-events-none gap-1.5">
+                  <div className="bg-slate-950/85 backdrop-blur-md text-emerald-300 border border-emerald-500/40 px-3 py-1 rounded-full text-[10px] font-semibold shadow-lg flex items-center gap-1.5 truncate">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
+                    <span className="truncate">🎯 Foco de Perto (5-15cm) • 50MP Principal</span>
+                  </div>
+                  {typeof window !== 'undefined' && 'BarcodeDetector' in window && (
+                    <div className="bg-blue-950/85 backdrop-blur-md text-blue-200 border border-blue-500/60 px-2.5 py-1 rounded-full text-[9px] font-bold shadow-lg flex items-center gap-1 shrink-0" title="Motor Google ML Kit acelerado por hardware">
+                      <span className="text-[10px]">⚡</span>
+                      <span>Google AI</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Indicador de Inicialização Suave da Câmera */}
+              {isCameraStarting && !scanning && !cameraError && (
+                <div className="absolute inset-0 z-15 flex flex-col items-center justify-center p-6 text-center bg-slate-950/90 space-y-3 animate-in fade-in duration-150">
+                  <div className="w-8 h-8 border-3 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+                  <p className="text-white font-bold text-xs">Iniciando câmera Full HD 1080p...</p>
+                  <p className="text-slate-400 text-[10px]">Autofoco e sensor principal ativo</p>
+                </div>
+              )}
+
+              {/* Mensagem de Erro de Câmera */}
+              {cameraError && (
+                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-4 text-center bg-slate-900/95 space-y-2">
+                  <AlertTriangle className="w-8 h-8 text-amber-500" />
+                  <p className="text-white font-semibold text-xs">Câmera não iniciada</p>
+                  <p className="text-slate-400 text-[11px] max-w-sm">{cameraError}</p>
+
+                  <div className="pt-2 flex flex-col sm:flex-row gap-2 w-full max-w-xs">
+                    <button
+                      onClick={() => startScanner(selectedCamera)}
+                      className="py-2 px-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" /> Tentar Novamente
+                    </button>
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5"
+                    >
+                      <ImageIcon className="w-3.5 h-3.5" /> Tirar Foto
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
-          )}
 
-          {/* Indicador de Inicialização Suave da Câmera */}
-          {isCameraStarting && !scanning && !cameraError && (
-            <div className="absolute inset-0 z-15 flex flex-col items-center justify-center p-6 text-center bg-slate-950/90 space-y-3 animate-in fade-in duration-150">
-              <div className="w-8 h-8 border-3 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
-              <p className="text-white font-bold text-xs">Iniciando câmera Full HD 1080p...</p>
-              <p className="text-slate-400 text-[10px]">Autofoco e sensor principal ativo</p>
-            </div>
-          )}
-
-          {/* Mensagem de Erro de Câmera */}
-          {cameraError && (
-            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-4 text-center bg-slate-900/95 space-y-2">
-              <AlertTriangle className="w-8 h-8 text-amber-500" />
-              <p className="text-white font-semibold text-xs">Câmera não iniciada</p>
-              <p className="text-slate-400 text-[11px] max-w-sm">{cameraError}</p>
-              
-              <div className="pt-2 flex flex-col sm:flex-row gap-2 w-full max-w-xs">
-                <button
-                  onClick={() => startScanner(selectedCamera)}
-                  className="py-2 px-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" /> Tentar Novamente
-                </button>
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5"
-                >
-                  <ImageIcon className="w-3.5 h-3.5" /> Tirar Foto
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-      </div> {/* Fim do PAINEL DA ESQUERDA (CÂMERA) */}
+          </div> {/* Fim do PAINEL DA ESQUERDA (CÂMERA) */}
 
           {/* ============================================================
               PAINEL DA DIREITA: FILA DE BOMBAS BIPADAS (TOTALMENTE VISÍVEL E COM SCROLL)
@@ -1978,7 +1966,7 @@ export default function ScannerModal({
                       <div className="w-9 h-9 rounded-xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-300 shrink-0 mt-0.5 shadow-inner">
                         <Package className="w-5 h-5 text-purple-400 animate-pulse" />
                       </div>
-                      
+
                       <div className="flex-1 min-w-0 space-y-1.5">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-purple-500 text-white uppercase tracking-wide shadow-xs">
@@ -2029,8 +2017,8 @@ export default function ScannerModal({
                           </div>
                           <div className="text-[11px] leading-relaxed text-slate-200 break-words">
                             👤 <strong>Responsável:</strong> {
-                              lastScannedFeedback.meta?.user || 
-                              lastScannedFeedback.equipment?.usuario_externa || 
+                              lastScannedFeedback.meta?.user ||
+                              lastScannedFeedback.equipment?.usuario_externa ||
                               'Equipe Externa'
                             }
                           </div>
@@ -2083,7 +2071,7 @@ export default function ScannerModal({
                       <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300 shrink-0 mt-0.5 shadow-inner">
                         <AlertTriangle className="w-5 h-5 text-amber-400 animate-pulse" />
                       </div>
-                      
+
                       <div className="flex-1 min-w-0 space-y-1.5">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-amber-500 text-slate-950 uppercase tracking-wide shadow-xs">
@@ -2157,10 +2145,10 @@ export default function ScannerModal({
                           </div>
                           <div className="text-[11px] leading-relaxed text-slate-200 break-words">
                             👤 <strong>Responsável:</strong> {
-                              lastScannedFeedback.meta?.user || 
-                              lastScannedFeedback.equipment?.usuario_calibracao || 
-                              lastScannedFeedback.equipment?.usuario_preventiva || 
-                              lastScannedFeedback.equipment?.conferidoPor || 
+                              lastScannedFeedback.meta?.user ||
+                              lastScannedFeedback.equipment?.usuario_calibracao ||
+                              lastScannedFeedback.equipment?.usuario_preventiva ||
+                              lastScannedFeedback.equipment?.conferidoPor ||
                               'Operador Autorizado'
                             }
                           </div>
@@ -2246,13 +2234,12 @@ export default function ScannerModal({
                 </div>
               ) : (
                 /* BANNER NORMAL PARA NOVAS BIPAGENS E ALERTA DE NÃO ENCONTRADO */
-                <div className={`px-3.5 py-2 border-b shrink-0 text-xs transition-all ${
-                  lastScannedFeedback.status === 'not_found'
+                <div className={`px-3.5 py-2 border-b shrink-0 text-xs transition-all ${lastScannedFeedback.status === 'not_found'
                     ? 'bg-red-500/15 border-red-500/30 text-red-200'
                     : lastScannedFeedback.status === 'already_staged'
-                    ? 'bg-amber-500/15 border-amber-500/30 text-amber-200'
-                    : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-200'
-                }`}>
+                      ? 'bg-amber-500/15 border-amber-500/30 text-amber-200'
+                      : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-200'
+                  }`}>
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 truncate">
                       {lastScannedFeedback.status === 'not_found' ? (
@@ -2260,18 +2247,17 @@ export default function ScannerModal({
                       ) : (
                         <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                       )}
-                      
+
                       <div className="truncate">
                         <div className="flex items-center gap-1.5 font-bold truncate">
                           <span className="truncate">
                             {lastScannedFeedback.equipment ? lastScannedFeedback.equipment.equipamento : 'Código Lido'}
                           </span>
                           {lastScannedFeedback.match && (
-                            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-semibold shrink-0 ${
-                              lastScannedFeedback.match.isExact 
-                                ? 'bg-emerald-500/20 text-emerald-300' 
+                            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-semibold shrink-0 ${lastScannedFeedback.match.isExact
+                                ? 'bg-emerald-500/20 text-emerald-300'
                                 : 'bg-blue-500/20 text-blue-300'
-                            }`}>
+                              }`}>
                               {lastScannedFeedback.match.confidence}% Similar
                             </span>
                           )}
@@ -2292,218 +2278,215 @@ export default function ScannerModal({
               )
             )}
 
-        {/* ============================================================
+            {/* ============================================================
             SEÇÃO DA FILA DE EQUIPAMENTOS BIPADOS (STAGED LIST)
             Altura flexível e garantida com scroll suave
         ============================================================ */}
-        <div className="flex-1 overflow-y-auto bg-slate-950/50 p-2.5 sm:p-3 min-h-0 flex flex-col">
-          
-          <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-800/80 shrink-0">
-            <div className="flex items-center gap-1.5">
-              <ListChecks className="w-4 h-4 text-blue-400" />
-              <h4 className="text-xs font-bold text-white uppercase tracking-wider">
-                Fila Bipada ({stagedItems.length} {stagedItems.length === 1 ? 'bomba' : 'bombas'})
-              </h4>
-              <span className="text-[10px] font-bold text-blue-300 bg-blue-900/50 border border-blue-700/60 px-2 py-0.5 rounded-full">
-                {selectedModalities.map(m => MODALITIES[m]?.shortName || m).join(' + ')}
-              </span>
-            </div>
+            <div className="flex-1 overflow-y-auto bg-slate-950/50 p-2.5 sm:p-3 min-h-0 flex flex-col">
 
-            {stagedItems.length > 0 && (
-              <button
-                onClick={handleClearStaged}
-                className="text-xs text-red-400 hover:text-red-300 font-semibold flex items-center gap-1 transition px-2 py-0.5 rounded-lg hover:bg-red-500/10"
-                title="Remover todos da lista"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Limpar Fila</span>
-              </button>
-            )}
-          </div>
+              <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-800/80 shrink-0">
+                <div className="flex items-center gap-1.5">
+                  <ListChecks className="w-4 h-4 text-blue-400" />
+                  <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                    Fila Bipada ({stagedItems.length} {stagedItems.length === 1 ? 'bomba' : 'bombas'})
+                  </h4>
+                  <span className="text-[10px] font-bold text-blue-300 bg-blue-900/50 border border-blue-700/60 px-2 py-0.5 rounded-full">
+                    {selectedModalities.map(m => MODALITIES[m]?.shortName || m).join(' + ')}
+                  </span>
+                </div>
 
-          {/* Barra de Seleção / Alteração do Setor de Retirada do Lote (Compacta) */}
-          <div className="bg-slate-900/90 border border-slate-800 rounded-xl px-2.5 py-1.5 mb-2 flex items-center justify-between gap-2 shrink-0 shadow-xs">
-            <div className="flex items-center gap-1 shrink-0 text-slate-300 font-bold text-[11px]">
-              <MapPin className="w-3.5 h-3.5 text-teal-400 shrink-0" />
-              <span>Setor do Lote:</span>
-            </div>
-
-            <div className="flex items-center gap-1.5 flex-1 min-w-[140px]">
-              <input
-                type="text"
-                list="scanner-sector-suggestions"
-                value={batchSector}
-                onChange={(e) => setBatchSector(e.target.value)}
-                placeholder="Ex: UTIN, Centro Cirúrgico, UTI..."
-                className="bg-slate-950 border border-slate-700 focus:border-teal-400 rounded-lg px-2 py-0.5 text-xs text-white placeholder-slate-500 flex-1 focus:outline-none"
-              />
-              <datalist id="scanner-sector-suggestions">
-                {availableSectors.map(s => (
-                  <option key={s} value={s} />
-                ))}
-              </datalist>
-
-              {stagedItems.length > 0 && batchSector && (
-                <button
-                  type="button"
-                  onClick={() => handleApplySectorToAllStaged(batchSector)}
-                  className="px-2 py-0.5 bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/40 rounded-lg text-[10px] font-bold shrink-0 transition"
-                  title="Aplicar este setor a todas as bombas da fila"
-                >
-                  Aplicar a todas
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Lista Vazia ou Cards das Bombas */}
-          {stagedItems.length === 0 ? (
-            <div className="flex-1 min-h-[90px] flex flex-col items-center justify-center text-center p-4 text-slate-500 border border-dashed border-slate-800/80 rounded-2xl bg-slate-900/20 my-auto">
-              <Layers className="w-6 h-6 mb-1 opacity-40 text-blue-400" />
-              <p className="text-xs font-semibold text-slate-300">Nenhuma bomba na fila ainda</p>
-              <p className="text-[11px] text-slate-500 mt-0.5 max-w-sm">
-                Aponte o laser vermelho da câmera para o código da bomba. Cada bomba bipada aparecerá aqui nesta lista instantaneamente!
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2 pb-2">
-              {stagedItems.map((item, idx) => {
-                const eq = item.equipment;
-                const match = item.match;
-                const isTopNewest = idx === 0;
-
-                return (
-                  <div
-                    key={`${eq.id}-${idx}`}
-                    className={`p-2.5 rounded-2xl flex flex-col gap-1.5 transition shadow-sm ${
-                      isTopNewest 
-                        ? 'bg-slate-800/95 border-2 border-emerald-500/70 ring-2 ring-emerald-500/20 shadow-emerald-950/50' 
-                        : 'bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800'
-                    }`}
+                {stagedItems.length > 0 && (
+                  <button
+                    onClick={handleClearStaged}
+                    className="text-xs text-red-400 hover:text-red-300 font-semibold flex items-center gap-1 transition px-2 py-0.5 rounded-lg hover:bg-red-500/10"
+                    title="Remover todos da lista"
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        {/* Número da bomba na fila */}
-                        <div className={`w-6 h-6 rounded-lg flex items-center justify-center font-extrabold text-xs shrink-0 border ${
-                          isTopNewest 
-                            ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black' 
-                            : 'bg-blue-600/20 text-blue-400 border-blue-500/30'
-                        }`}>
-                          {stagedItems.length - idx}
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Limpar Fila</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Barra de Seleção / Alteração do Setor de Retirada do Lote (Compacta) */}
+              <div className="bg-slate-900/90 border border-slate-800 rounded-xl px-2.5 py-1.5 mb-2 flex items-center justify-between gap-2 shrink-0 shadow-xs">
+                <div className="flex items-center gap-1 shrink-0 text-slate-300 font-bold text-[11px]">
+                  <MapPin className="w-3.5 h-3.5 text-teal-400 shrink-0" />
+                  <span>Setor do Lote:</span>
+                </div>
+
+                <div className="flex items-center gap-1.5 flex-1 min-w-[140px]">
+                  <input
+                    type="text"
+                    list="scanner-sector-suggestions"
+                    value={batchSector}
+                    onChange={(e) => setBatchSector(e.target.value)}
+                    placeholder="Ex: UTIN, Centro Cirúrgico, UTI..."
+                    className="bg-slate-950 border border-slate-700 focus:border-teal-400 rounded-lg px-2 py-0.5 text-xs text-white placeholder-slate-500 flex-1 focus:outline-none"
+                  />
+                  <datalist id="scanner-sector-suggestions">
+                    {availableSectors.map(s => (
+                      <option key={s} value={s} />
+                    ))}
+                  </datalist>
+
+                  {stagedItems.length > 0 && batchSector && (
+                    <button
+                      type="button"
+                      onClick={() => handleApplySectorToAllStaged(batchSector)}
+                      className="px-2 py-0.5 bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/40 rounded-lg text-[10px] font-bold shrink-0 transition"
+                      title="Aplicar este setor a todas as bombas da fila"
+                    >
+                      Aplicar a todas
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Lista Vazia ou Cards das Bombas */}
+              {stagedItems.length === 0 ? (
+                <div className="flex-1 min-h-[90px] flex flex-col items-center justify-center text-center p-4 text-slate-500 border border-dashed border-slate-800/80 rounded-2xl bg-slate-900/20 my-auto">
+                  <Layers className="w-6 h-6 mb-1 opacity-40 text-blue-400" />
+                  <p className="text-xs font-semibold text-slate-300">Nenhuma bomba na fila ainda</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5 max-w-sm">
+                    Aponte o laser vermelho da câmera para o código da bomba. Cada bomba bipada aparecerá aqui nesta lista instantaneamente!
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2 pb-2">
+                  {stagedItems.map((item, idx) => {
+                    const eq = item.equipment;
+                    const match = item.match;
+                    const isTopNewest = idx === 0;
+
+                    return (
+                      <div
+                        key={`${eq.id}-${idx}`}
+                        className={`p-2.5 rounded-2xl flex flex-col gap-1.5 transition shadow-sm ${isTopNewest
+                            ? 'bg-slate-800/95 border-2 border-emerald-500/70 ring-2 ring-emerald-500/20 shadow-emerald-950/50'
+                            : 'bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800'
+                          }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            {/* Número da bomba na fila */}
+                            <div className={`w-6 h-6 rounded-lg flex items-center justify-center font-extrabold text-xs shrink-0 border ${isTopNewest
+                                ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black'
+                                : 'bg-blue-600/20 text-blue-400 border-blue-500/30'
+                              }`}>
+                              {stagedItems.length - idx}
+                            </div>
+
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-extrabold text-white text-xs sm:text-sm truncate">
+                                  {eq.equipamento || 'Bomba de Infusão'}
+                                </span>
+
+                                {isTopNewest && (
+                                  <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse">
+                                    ⚡ Recém Bipada
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Botão de Remover */}
+                          <button
+                            onClick={() => handleRemoveStagedItem(eq.id)}
+                            className="p-1 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition shrink-0"
+                            title="Remover desta lista"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
 
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-extrabold text-white text-xs sm:text-sm truncate">
-                              {eq.equipamento || 'Bomba de Infusão'}
+                        {/* Informações detalhadas da bomba: Tag, Série, Setor e Modalidades */}
+                        <div className="flex items-center gap-1.5 text-[11px] text-slate-300 flex-wrap">
+                          {eq.tag && (
+                            <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/30 text-[10px]">
+                              🏷️ {eq.tag}
                             </span>
+                          )}
+                          {eq.serie && (
+                            <span className="font-mono text-slate-300 text-[10px] bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700/60">
+                              S/N: {eq.serie}
+                            </span>
+                          )}
+                          {(item.setorRetirada || eq.setor) && (
+                            <span className="text-[10px] text-teal-300 bg-teal-950/40 px-1.5 py-0.5 rounded border border-teal-800/60 flex items-center gap-1">
+                              <MapPin className="w-2.5 h-2.5 text-teal-400" />
+                              <span>{item.setorRetirada || eq.setor}</span>
+                            </span>
+                          )}
 
-                            {isTopNewest && (
-                              <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse">
-                                ⚡ Recém Bipada
+                          {/* Modalidades que serão aplicadas */}
+                          {selectedModalities.map(m => {
+                            const isAlready = isEquipmentChecked(eq, m, serviceConfig);
+                            const isCal = m === 'calibracao';
+                            const isPrev = m === 'preventiva';
+                            const isSeg = m === 'seguranca';
+                            const isExt = m === 'externa' || m === 'manutencao_externa';
+
+                            const colorClasses = isAlready
+                              ? 'bg-emerald-950/60 text-emerald-400 border-emerald-800'
+                              : isCal
+                                ? 'bg-blue-900/60 text-blue-300 border-blue-700'
+                                : isPrev
+                                  ? 'bg-emerald-900/60 text-emerald-300 border-emerald-700'
+                                  : isSeg
+                                    ? 'bg-amber-900/60 text-amber-300 border-amber-700'
+                                    : 'bg-purple-900/60 text-purple-300 border-purple-700';
+
+                            return (
+                              <span
+                                key={m}
+                                className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded-full border ${colorClasses}`}
+                              >
+                                {isAlready ? `✓ ${MODALITIES[m]?.shortName || m} OK` : `+ ${MODALITIES[m]?.shortName || m}`}
                               </span>
-                            )}
-                          </div>
+                            );
+                          })}
                         </div>
                       </div>
+                    );
+                  })}
+                </div>
+              )}
 
-                      {/* Botão de Remover */}
-                      <button
-                        onClick={() => handleRemoveStagedItem(eq.id)}
-                        className="p-1 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition shrink-0"
-                        title="Remover desta lista"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-
-                    {/* Informações detalhadas da bomba: Tag, Série, Setor e Modalidades */}
-                    <div className="flex items-center gap-1.5 text-[11px] text-slate-300 flex-wrap">
-                      {eq.tag && (
-                        <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/30 text-[10px]">
-                          🏷️ {eq.tag}
-                        </span>
-                      )}
-                      {eq.serie && (
-                        <span className="font-mono text-slate-300 text-[10px] bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700/60">
-                          S/N: {eq.serie}
-                        </span>
-                      )}
-                      {(item.setorRetirada || eq.setor) && (
-                        <span className="text-[10px] text-teal-300 bg-teal-950/40 px-1.5 py-0.5 rounded border border-teal-800/60 flex items-center gap-1">
-                          <MapPin className="w-2.5 h-2.5 text-teal-400" />
-                          <span>{item.setorRetirada || eq.setor}</span>
-                        </span>
-                      )}
-
-                      {/* Modalidades que serão aplicadas */}
-                      {selectedModalities.map(m => {
-                        const isAlready = isEquipmentChecked(eq, m, serviceConfig);
-                        const isCal = m === 'calibracao';
-                        const isPrev = m === 'preventiva';
-                        const isSeg = m === 'seguranca';
-                        const isExt = m === 'externa' || m === 'manutencao_externa';
-
-                        const colorClasses = isAlready 
-                          ? 'bg-emerald-950/60 text-emerald-400 border-emerald-800'
-                          : isCal
-                          ? 'bg-blue-900/60 text-blue-300 border-blue-700'
-                          : isPrev
-                          ? 'bg-emerald-900/60 text-emerald-300 border-emerald-700'
-                          : isSeg
-                          ? 'bg-amber-900/60 text-amber-300 border-amber-700'
-                          : 'bg-purple-900/60 text-purple-300 border-purple-700';
-
-                        return (
-                          <span
-                            key={m}
-                            className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded-full border ${colorClasses}`}
-                          >
-                            {isAlready ? `✓ ${MODALITIES[m]?.shortName || m} OK` : `+ ${MODALITIES[m]?.shortName || m}`}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
             </div>
-          )}
 
-        </div>
+            {/* Bottom Actions Bar (Linha Única Compacta e Eficiente) */}
+            <div className="p-2.5 sm:p-3 border-t border-slate-800 bg-slate-900/95 flex items-center justify-between gap-2 shrink-0 safe-area-bottom">
+              <button
+                onClick={onClose}
+                className="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition border border-slate-700/80 active:scale-95 shrink-0"
+              >
+                Fechar
+              </button>
 
-        {/* Bottom Actions Bar (Linha Única Compacta e Eficiente) */}
-        <div className="p-2.5 sm:p-3 border-t border-slate-800 bg-slate-900/95 flex items-center justify-between gap-2 shrink-0 safe-area-bottom">
-          <button
-            onClick={onClose}
-            className="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition border border-slate-700/80 active:scale-95 shrink-0"
-          >
-            Fechar
-          </button>
-
-          {stagedItems.length > 0 ? (
-            <button
-              onClick={handleConfirmBatchCheck}
-              className={`flex-1 py-2.5 px-3 text-white rounded-xl text-xs sm:text-sm font-extrabold shadow-lg transition active:scale-[0.98] flex items-center justify-center gap-2 truncate ${
-                isExternalMode
-                  ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-500 hover:from-purple-500 hover:to-indigo-400 shadow-purple-600/30'
-                  : 'bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 shadow-emerald-600/30'
-              }`}
-            >
-              <CheckCircle className="w-4 h-4 stroke-[2.5] shrink-0" />
-              <span className="truncate">
-                {isExternalMode
-                  ? `Confirmar Manut. Externa (${stagedItems.length} ${stagedItems.length === 1 ? 'bomba' : 'bombas'})`
-                  : `Confirmar Calibração Completa (${stagedItems.length} ${stagedItems.length === 1 ? 'bomba' : 'bombas'})`
-                }
-              </span>
-            </button>
-          ) : (
-            <div className="text-[11px] text-slate-400 font-medium truncate text-right pr-1">
-              {equipments.length} cadastradas • Bipe para listar
+              {stagedItems.length > 0 ? (
+                <button
+                  onClick={handleConfirmBatchCheck}
+                  className={`flex-1 py-2.5 px-3 text-white rounded-xl text-xs sm:text-sm font-extrabold shadow-lg transition active:scale-[0.98] flex items-center justify-center gap-2 truncate ${isExternalMode
+                      ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-500 hover:from-purple-500 hover:to-indigo-400 shadow-purple-600/30'
+                      : 'bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 shadow-emerald-600/30'
+                    }`}
+                >
+                  <CheckCircle className="w-4 h-4 stroke-[2.5] shrink-0" />
+                  <span className="truncate">
+                    {isExternalMode
+                      ? `Confirmar Manut. Externa (${stagedItems.length} ${stagedItems.length === 1 ? 'bomba' : 'bombas'})`
+                      : `Confirmar Calibração Completa (${stagedItems.length} ${stagedItems.length === 1 ? 'bomba' : 'bombas'})`
+                    }
+                  </span>
+                </button>
+              ) : (
+                <div className="text-[11px] text-slate-400 font-medium truncate text-right pr-1">
+                  {equipments.length} cadastradas • Bipe para listar
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
           </div> {/* Fim do PAINEL DA DIREITA */}
 
