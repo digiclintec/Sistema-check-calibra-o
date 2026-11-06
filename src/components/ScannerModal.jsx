@@ -2126,6 +2126,29 @@ export default function ScannerModal({
                           )}
                         </div>
 
+                        {/* DESTAQUE PRINCIPAL: SETOR DE RETIRADA / DESTINO PARA DEVOLUÇÃO */}
+                        <div className="p-3 rounded-xl bg-gradient-to-r from-emerald-950/80 via-slate-900 to-teal-950/80 border border-emerald-500/50 shadow-md flex items-center justify-between gap-3 mt-1.5">
+                          <div className="min-w-0">
+                            <span className="text-[10px] uppercase font-black text-emerald-400 tracking-wider flex items-center gap-1">
+                              <MapPin className="w-3.5 h-3.5 text-emerald-400 animate-bounce shrink-0" />
+                              <span>{lastScannedFeedback.equipment?.setor_retirada ? 'Retirada no Setor:' : 'Destino de Devolução:'}</span>
+                            </span>
+                            <div className="text-sm font-black text-emerald-200 truncate mt-0.5">
+                              📍 {lastScannedFeedback.equipment?.setor_retirada || lastScannedFeedback.equipment?.setor || 'Setor Geral / Não Informado'}
+                            </div>
+                            {lastScannedFeedback.equipment?.setor_retirada && lastScannedFeedback.equipment?.setor && lastScannedFeedback.equipment.setor_retirada.trim().toLowerCase() !== lastScannedFeedback.equipment.setor.trim().toLowerCase() && (
+                              <span className="text-[10px] text-slate-400 block mt-0.5">
+                                🏢 Cadastro Original: <strong>{lastScannedFeedback.equipment.setor}</strong>
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-right shrink-0">
+                            <span className="text-[10px] font-black px-2.5 py-1.5 rounded-lg bg-emerald-500 text-slate-950 uppercase shadow-sm block">
+                              Devolver Aqui ➔
+                            </span>
+                          </div>
+                        </div>
+
                         {/* Detalhes de Auditoria: Quem calibrou, Quando e Horário (100% legível, sem cortes) */}
                         <div className="p-2.5 rounded-xl bg-slate-950/80 border border-amber-500/30 text-xs text-amber-100/90 space-y-1 mt-1">
                           <div className="flex items-center gap-1.5 font-bold text-amber-300">

@@ -1357,6 +1357,7 @@ export default function App() {
       const meta = getCheckMeta(targetItem, 'externa');
       const whoSent = meta.user ? `por ${meta.user}` : '';
       const whenSent = meta.date ? ` em ${new Date(meta.date).toLocaleDateString('pt-BR')}` : '';
+      const setorDestino = targetItem.setor_retirada || targetItem.setor || 'Setor de Origem';
 
       setAlreadyScannedAlert({
         type: 'maintenance',
@@ -1364,11 +1365,11 @@ export default function App() {
         match: bestMatch,
         meta,
         title: '📦 BOMBA EM MANUTENÇÃO EXTERNA',
-        message: `Esta bomba já foi recolhida e registrada para MANUTENÇÃO EXTERNA ${whoSent}${whenSent}!`,
+        message: `Esta bomba já foi recolhida e registrada para MANUTENÇÃO EXTERNA ${whoSent}${whenSent}! Devolver em: ${setorDestino}`,
         timestamp: new Date().toLocaleTimeString('pt-BR')
       });
 
-      showToast('warning', `📦 EM MANUTENÇÃO EXTERNA: ${targetItem.equipamento} (${targetItem.tag || targetItem.serie}) já separada para conserto!`);
+      showToast('warning', `📦 EM MANUTENÇÃO EXTERNA: ${targetItem.equipamento} (${targetItem.tag || targetItem.serie}) • Devolver em: ${setorDestino}`);
       return {
         status: 'in_maintenance',
         equipment: targetItem,
@@ -1389,6 +1390,7 @@ export default function App() {
       const meta = getCheckMeta(targetItem, targetMods[0]);
       const whoChecked = meta.user ? `por ${meta.user}` : '';
       const whenChecked = meta.date ? ` em ${new Date(meta.date).toLocaleDateString('pt-BR')}` : '';
+      const setorDestino = targetItem.setor_retirada || targetItem.setor || 'Setor de Origem';
 
       setAlreadyScannedAlert({
         type: 'already_checked',
@@ -1396,11 +1398,11 @@ export default function App() {
         match: bestMatch,
         meta,
         title: '⚠️ BOMBA JÁ BIPADA E CONFERIDA',
-        message: `Esta bomba já possui [${appliedLabels}] concluída ${whoChecked}${whenChecked}! Bip bloqueado para evitar duplicação.`,
+        message: `Esta bomba já possui [${appliedLabels}] concluída ${whoChecked}${whenChecked}! Devolver em: ${setorDestino}. Bip bloqueado para evitar duplicação.`,
         timestamp: new Date().toLocaleTimeString('pt-BR')
       });
 
-      showToast('warning', `⚠️ JÁ CONFERIDO: ${targetItem.equipamento} (${targetItem.tag || targetItem.serie}) já possui [${appliedLabels}] OK ${whoChecked}!`);
+      showToast('warning', `⚠️ JÁ CONFERIDO: ${targetItem.equipamento} (${targetItem.tag || targetItem.serie}) já possui [${appliedLabels}] OK! • Devolver em: ${setorDestino}`);
       return {
         status: 'already_checked',
         equipment: targetItem,
