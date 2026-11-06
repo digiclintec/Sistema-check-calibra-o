@@ -28,12 +28,16 @@ import {
   Share2,
   ScanLine,
   RefreshCw,
-  Plus
+  Plus,
+  SwitchCamera,
+  Zap,
+  Crosshair,
+  ZoomIn
 } from 'lucide-react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { playSuccessSound, playBatchConfirmSound, triggerHapticAlert } from '../utils/audio';
 import { getSectorColor, getEffectiveSector, getSectorBadgeStyles } from '../utils/sectorColors';
-import { isNativeAndroidApp, scanWithNativeGoogleScanner } from '../utils/nativeBarcodeScanner';
+import { isNativeAndroidApp } from '../utils/nativeBarcodeScanner';
 import { extractCleanSerialNumber } from '../utils/gs1Parser';
 
 const SUPPORTED_FORMATS = [
@@ -49,6 +53,53 @@ const SUPPORTED_FORMATS = [
   Html5QrcodeSupportedFormats.QR_CODE,
   Html5QrcodeSupportedFormats.DATA_MATRIX,
 ];
+
+// Helpers para identificar lentes físicas do aparelho (Mesma regra da bipagem principal)
+const isUltraWideLens = (label) => {
+  const l = (label || '').toLowerCase();
+  return l.includes('ultra') || l.includes('super') || l.includes('0.5') || l.includes('0,5') || l.includes('ultrawide') || l.includes('wide-angle');
+};
+
+const isMainAutofocusLens = (label) => {
+  const l = (label || '').toLowerCase();
+  return l.includes('main') || l.includes('principal') || l.includes('primary');
+};
+
+const isTelephotoLens = (label) => {
+  const l = (label || '').toLowerCase();
+  return l.includes('tele') || l.includes('zoom') || l.includes('3x') || l.includes('5x');
+};
+
+const isFrontCamera = (label) => {
+  const l = (label || '').toLowerCase();
+  return l.includes('front') || l.includes('user') || l.includes('frontal') || l.includes('selfie') || l.includes('facing front') || l.includes('camera2 1');
+};
+
+// Algoritmo padronizado de seleção da Câmera Principal Traseira (Samsung, Motorola, Xiaomi, etc.)
+const selectBestRearAutofocusCamera = (allCameras) => {
+  if (!allCameras || allCameras.length === 0) return null;
+
+  const normalized = allCameras.map((c, i) => ({
+    id: c.deviceId || c.id || `cam-${i}`,
+    deviceId: c.deviceId || c.id || `cam-${i}`,
+    label: c.label || ''
+  }));
+
+  const rearCameras = normalized.filter(c => !isFrontCamera(c.label));
+
+  if (rearCameras.length === 0) return normalized[0];
+  if (rearCameras.length === 1) return rearCameras[0];
+
+  // 1. Prioriza sensor explicitamente marcado como 'main', 'principal' ou 'primary'
+  const labeledMain = rearCameras.find(c => isMainAutofocusLens(c.label));
+  if (labeledMain) return labeledMain;
+
+  // 2. Descarta lentes conhecidas como ultra-wide (0.5x que fica longe) ou telephoto
+  const nonUltra = rearCameras.filter(c => !isUltraWideLens(c.label) && !isTelephotoLens(c.label));
+  if (nonUltra.length > 0) return nonUltra[0];
+
+  return rearCameras[0];
+};
 
 export default function CarrinhoDevolucaoTab({
   equipments = [],
@@ -66,15 +117,29 @@ export default function CarrinhoDevolucaoTab({
   const [flashFeedback, setFlashFeedback] = useState(null);
   const [copySuccess, setCopySuccess] = useState(false);
   
-  // Camera scanner de devolução
+  // Camera scanner de devolução (Regra idêntica à de entrada com foco de perto)
   const [isCameraActive, setIsCameraActive] = useState(false);
+  const [isCameraStarting, setIsCameraStarting] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const [cameraError, setCameraError] = useState('');
   const [lastScannedDest, setLastScannedDest] = useState(null);
-  
+  const [cameras, setCameras] = useState([]);
+  const [selectedCamera, setSelectedCamera] = useState('');
+  const [torchOn, setTorchOn] = useState(false);
+  const [hasTorch, setHasTorch] = useState(false);
+  const [hasZoom, setHasZoom] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(1.5); // Padrão 1.5x (Foco de perto / macro como na bipagem principal)
+  const [zoomCaps, setZoomCaps] = useState(null);
+  const [reticleType, setReticleType] = useState('1d'); // '1d' (Linha Laser) | '2d' (Caixa QR)
+  const [focusFeedbackText, setFocusFeedbackText] = useState('');
+
   const quickSearchInputRef = useRef(null);
   const html5QrCodeRef = useRef(null);
   const lastScannedTimeRef = useRef(0);
   const lastScannedValRef = useRef('');
+  const isStartingRef = useRef(false);
+  const nativeDetectorActiveRef = useRef(false);
+  const nativeDetectorRafRef = useRef(null);
 
   // Chaves de persistência no localStorage por plano
   const planKey = planId || 'default';
@@ -164,23 +229,44 @@ export default function CarrinhoDevolucaoTab({
     return sectorGroups.map(g => g.name);
   }, [sectorGroups]);
 
+  // Presets de Zoom para aproximação da câmera (como na calibração)
+  const opticalPresets = useMemo(() => {
+    const minZ = zoomCaps?.min ?? 1;
+    const maxZ = zoomCaps?.max ?? 8;
+    return [
+      { label: '1.0x', fullName: '1.0x Nítida (50MP)', value: 1.0 },
+      { label: '1.5x', fullName: '1.5x Foco Próximo (Macro)', value: Math.min(1.5, maxZ) },
+      { label: '2.0x', fullName: '2.0x Telefoto', value: Math.min(2.0, maxZ) },
+    ];
+  }, [zoomCaps]);
+
+  const rearCamerasList = useMemo(() => {
+    return (cameras || []).filter(c => !isFrontCamera(c.label));
+  }, [cameras]);
+
+  const currentLensDisplay = useMemo(() => {
+    if (rearCamerasList.length > 1) {
+      const idx = rearCamerasList.findIndex(c => (c.id === selectedCamera || c.deviceId === selectedCamera));
+      const pos = idx >= 0 ? idx + 1 : 1;
+      return `🔄 Lente ${pos} de ${rearCamerasList.length}`;
+    }
+    return '🎯 50MP Principal';
+  }, [rearCamerasList, selectedCamera]);
+
   // Bombas filtradas na visualização geral
   const filteredEquipments = useMemo(() => {
     const query = searchTerm.toLowerCase().trim();
 
     return readyEquipments.filter(item => {
-      // Filtro de status no carrinho
       const isPacked = cartPackedIds.has(item.id);
       if (statusFilter === 'PACKED' && !isPacked) return false;
       if (statusFilter === 'UNPACKED' && isPacked) return false;
 
-      // Filtro de setor
       const targetSec = (item.setor_retirada || item.setor || 'Setor Não Definido').trim();
       if (selectedSectorFilter !== 'ALL' && targetSec !== selectedSectorFilter) {
         return false;
       }
 
-      // Busca textual
       if (!query) return true;
       const tag = (item.tag || '').toLowerCase();
       const serie = (item.serie || '').toLowerCase();
@@ -283,7 +369,6 @@ export default function CarrinhoDevolucaoTab({
       };
 
       // Adiciona na fila em série (o mais novo fica no topo)
-      // Se já estava na lista, move para o topo
       const filteredOld = scannedSeries.filter(s => s.equipment.id !== found.id);
       const updatedSeries = [newEntry, ...filteredOld];
       saveSeriesState(updatedSeries);
@@ -347,7 +432,6 @@ export default function CarrinhoDevolucaoTab({
     let text = `📦 RELAÇÃO DE DEVOLUÇÃO - ${hospitalName || 'HOSPITAL'}\n`;
     text += `Plano: ${planTitle || 'Geral'} | Total no Carrinho: ${scannedSeries.length} bombas\n\n`;
 
-    // Agrupa por setor
     const bySector = {};
     scannedSeries.forEach(item => {
       const sec = item.targetSector || 'Setor Não Definido';
@@ -368,85 +452,419 @@ export default function CarrinhoDevolucaoTab({
       setCopySuccess(true);
       setTimeout(() => setCopySuccess(false), 3000);
     } catch (e) {
-      alert('Não foi possível copiar automaticamente. Selecione e copie o texto.');
+      alert('Não foi possível copiar automaticamente.');
     }
   };
 
-  // Disparo de Câmera (Google Code Scanner nativo ou câmera web)
-  const handleTriggerScanner = async () => {
-    if (isNativeAndroidApp()) {
-      const res = await scanWithNativeGoogleScanner();
-      if (res.success && res.code) {
-        handleQuickLookup(res.code);
+  // =========================================================================
+  // SISTEMA DE CÂMERA IDÊNTICO À CALIBRAÇÃO (50MP PRINCIPAL + FOCO DE PERTO)
+  // =========================================================================
+
+  const stopScanner = async () => {
+    nativeDetectorActiveRef.current = false;
+    if (nativeDetectorRafRef.current) {
+      cancelAnimationFrame(nativeDetectorRafRef.current);
+      nativeDetectorRafRef.current = null;
+    }
+
+    try {
+      const videoEl = document.querySelector('#carrinho-barcode-reader video');
+      if (videoEl && videoEl.srcObject) {
+        videoEl.srcObject.getTracks().forEach(track => {
+          try { track.stop(); } catch (e) {}
+        });
+        videoEl.srcObject = null;
       }
-    } else {
-      setIsCameraActive(true);
+    } catch (e) {}
+
+    if (html5QrCodeRef.current) {
+      try {
+        if (html5QrCodeRef.current.isScanning) {
+          await html5QrCodeRef.current.stop();
+        }
+        await html5QrCodeRef.current.clear();
+      } catch (e) {}
+      html5QrCodeRef.current = null;
     }
+
+    setScanning(false);
+    setIsCameraStarting(false);
+    setTorchOn(false);
   };
 
-  // Inicialização do Scanner de Câmera HTML5 embutido
-  useEffect(() => {
-    if (!isCameraActive) {
-      if (html5QrCodeRef.current) {
+  // Calibra foco contínuo e macro de perto (5-15cm)
+  const setupTrackFocusAndQuality = async () => {
+    try {
+      const videoEl = document.querySelector('#carrinho-barcode-reader video');
+      const stream = videoEl?.srcObject;
+      const track = stream?.getVideoTracks()?.[0];
+      if (!track) return;
+
+      const caps = track.getCapabilities ? track.getCapabilities() : {};
+
+      if (caps.zoom) {
+        setZoomCaps(caps.zoom);
+        setHasZoom(true);
+      }
+      if (caps.torch) {
+        setHasTorch(true);
+      }
+
+      const advanced = [];
+      if (caps.focusMode && caps.focusMode.includes('continuous')) {
+        advanced.push({ focusMode: 'continuous' });
+      }
+      if (caps.exposureMode && caps.exposureMode.includes('continuous')) {
+        advanced.push({ exposureMode: 'continuous' });
+      }
+      if (caps.whiteBalanceMode && caps.whiteBalanceMode.includes('continuous')) {
+        advanced.push({ whiteBalanceMode: 'continuous' });
+      }
+      // Foco macro de perto (distância mínima)
+      if (caps.focusDistance) {
+        const macroDist = caps.focusDistance.min ?? 0.1;
+        advanced.push({ focusDistance: macroDist });
+      }
+
+      if (advanced.length > 0) {
         try {
-          html5QrCodeRef.current.stop().then(() => {
-            html5QrCodeRef.current?.clear();
-          }).catch(() => {});
+          await track.applyConstraints({ advanced });
         } catch (e) {}
       }
+
+      // Aplica o enquadramento de mais perto padrão (1.5x)
+      applyOpticalLensZoom(1.5, '1.5x Foco Próximo');
+    } catch (err) {
+      console.warn('[Carrinho Camera] Erro no setup de track:', err);
+    }
+  };
+
+  // Aplicação de zoom óptico e ampliação HD de perto
+  const applyOpticalLensZoom = async (zoomVal, labelOverride = '') => {
+    try {
+      const videoEl = document.querySelector('#carrinho-barcode-reader video');
+      const stream = videoEl?.srcObject;
+      const track = stream?.getVideoTracks()?.[0];
+      const caps = track?.getCapabilities ? track.getCapabilities() : {};
+
+      let applied = false;
+      let clampedZoom = zoomVal;
+
+      if (caps.zoom) {
+        const minZ = caps.zoom.min ?? 1;
+        const maxZ = caps.zoom.max ?? 8;
+        clampedZoom = Math.max(minZ, Math.min(maxZ, zoomVal));
+
+        try {
+          await track.applyConstraints({
+            advanced: [{ zoom: clampedZoom }]
+          });
+          applied = true;
+        } catch (e) {}
+      }
+
+      if (!applied && html5QrCodeRef.current?.applyVideoConstraints) {
+        try {
+          await html5QrCodeRef.current.applyVideoConstraints({ advanced: [{ zoom: clampedZoom }] });
+          applied = true;
+        } catch (e2) {}
+      }
+
+      setZoomLevel(clampedZoom);
+
+      // Super zoom HD no elemento de vídeo para visualização de mais perto
+      if (videoEl) {
+        if (!applied && clampedZoom > 1.05) {
+          videoEl.style.transform = `scale(${clampedZoom})`;
+          videoEl.style.transformOrigin = 'center center';
+          videoEl.style.transition = 'transform 0.2s cubic-bezier(0.2, 0, 0, 1)';
+        } else {
+          videoEl.style.transform = 'none';
+        }
+      }
+
+      if (labelOverride) {
+        setFocusFeedbackText(`✓ ${labelOverride}`);
+        setTimeout(() => setFocusFeedbackText(''), 1800);
+      }
+      return true;
+    } catch (err) {
+      console.warn('[Carrinho Camera] Erro ao aplicar zoom:', err);
+      return false;
+    }
+  };
+
+  // Alterna lanterna
+  const toggleTorch = async (e) => {
+    e?.stopPropagation();
+    if (!html5QrCodeRef.current) return;
+    try {
+      const videoEl = document.querySelector('#carrinho-barcode-reader video');
+      const stream = videoEl?.srcObject;
+      const track = stream?.getVideoTracks()?.[0];
+      if (track) {
+        const nextState = !torchOn;
+        await track.applyConstraints({
+          advanced: [{ torch: nextState }]
+        });
+        setTorchOn(nextState);
+        return;
+      }
+      if (html5QrCodeRef.current.applyVideoConstraints) {
+        const nextState = !torchOn;
+        await html5QrCodeRef.current.applyVideoConstraints({
+          advanced: [{ torch: nextState }]
+        });
+        setTorchOn(nextState);
+      }
+    } catch (err) {
+      console.warn('[Carrinho Camera] Erro ao alternar lanterna:', err);
+    }
+  };
+
+  // Alternar rapidamente entre as lentes traseiras físicas do aparelho
+  const handleToggleRearCamera = async () => {
+    if (rearCamerasList.length <= 1 || isStartingRef.current) return;
+    const currentIndex = rearCamerasList.findIndex(c => c.id === selectedCamera || c.deviceId === selectedCamera);
+    const nextIndex = (currentIndex + 1) % rearCamerasList.length;
+    const nextCam = rearCamerasList[nextIndex];
+
+    if (nextCam) {
+      setFocusFeedbackText(`🔄 Ativando Lente ${nextIndex + 1}...`);
+      await startScanner(nextCam.id);
+    }
+  };
+
+  // Foco de hardware central
+  const handleTriggerCenterFocus = async (e) => {
+    e?.stopPropagation();
+    try {
+      const videoEl = document.querySelector('#carrinho-barcode-reader video');
+      const stream = videoEl?.srcObject;
+      const track = stream?.getVideoTracks()?.[0];
+      if (track) {
+        const caps = track.getCapabilities ? track.getCapabilities() : {};
+        if (caps.pointsOfInterest) {
+          await track.applyConstraints({
+            advanced: [{ pointsOfInterest: [{ x: 0.5, y: 0.5 }] }]
+          });
+        }
+      }
+      setFocusFeedbackText('✓ Foco Centralizado');
+      setTimeout(() => setFocusFeedbackText(''), 1500);
+    } catch (e) {}
+  };
+
+  // Início do scanner com a câmera selecionada
+  const startScanner = async (cameraId, retryCount = 0) => {
+    if (isStartingRef.current && retryCount === 0) return;
+    isStartingRef.current = true;
+    setIsCameraStarting(true);
+    setCameraError('');
+
+    await stopScanner();
+    await new Promise(r => setTimeout(r, 120));
+
+    for (let i = 0; i < 8; i++) {
+      if (document.getElementById('carrinho-barcode-reader')) break;
+      await new Promise(r => setTimeout(r, 50));
+    }
+
+    try {
+      const html5QrCode = new Html5Qrcode('carrinho-barcode-reader', {
+        formatsToSupport: SUPPORTED_FORMATS,
+        verbose: false,
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true,
+        }
+      });
+      html5QrCodeRef.current = html5QrCode;
+
+      // Resolução Full HD 1080p para máxima nitidez de números e barras de perto
+      let videoConstraints;
+      if (cameraId) {
+        videoConstraints = {
+          deviceId: { exact: cameraId },
+          width: { ideal: 1920, min: 1280 },
+          height: { ideal: 1080, min: 720 },
+          frameRate: { ideal: 30, max: 60 }
+        };
+      } else {
+        videoConstraints = {
+          facingMode: "environment",
+          width: { ideal: 1920, min: 1280 },
+          height: { ideal: 1080, min: 720 },
+          frameRate: { ideal: 30, max: 60 }
+        };
+      }
+
+      const config = {
+        fps: 30,
+        videoConstraints: videoConstraints,
+        qrbox: (viewfinderWidth, viewfinderHeight) => {
+          const width = Math.floor(viewfinderWidth * 0.96);
+          const height = Math.floor(Math.min(viewfinderHeight * 0.85, 360));
+          return {
+            width: Math.max(width, 280),
+            height: Math.max(height, 150)
+          };
+        },
+        disableFlip: true,
+      };
+
+      const cameraConfig = cameraId
+        ? { deviceId: { exact: cameraId } }
+        : { facingMode: "environment" };
+
+      await html5QrCode.start(
+        cameraConfig,
+        config,
+        (decodedText) => {
+          const now = Date.now();
+          if (decodedText === lastScannedValRef.current && now - lastScannedTimeRef.current < 1200) {
+            return;
+          }
+          lastScannedValRef.current = decodedText;
+          lastScannedTimeRef.current = now;
+          handleQuickLookup(decodedText);
+        },
+        () => {}
+      );
+
+      setScanning(true);
+      setIsCameraStarting(false);
+      setCameraError('');
+      isStartingRef.current = false;
+
+      if (cameraId) {
+        setSelectedCamera(cameraId);
+        try {
+          localStorage.setItem('calibracheck_preferred_camera_v2', cameraId);
+        } catch (e) {}
+      }
+
+      // Ativa foco contínuo e modo macro de perto
+      setTimeout(() => {
+        setupTrackFocusAndQuality();
+      }, 350);
+
+      // Google AI BarcodeDetector contínuo a 30fps para leitura ultra rápida
+      if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
+        try {
+          const nativeDetector = new window.BarcodeDetector({
+            formats: ['code_128', 'code_39', 'code_93', 'ean_13', 'ean_8', 'data_matrix', 'qr_code', 'itf', 'upc_a', 'upc_e']
+          });
+
+          nativeDetectorActiveRef.current = true;
+          let isNativeDetecting = false;
+          const runNativeLoop = async () => {
+            if (!nativeDetectorActiveRef.current) return;
+            if (!isNativeDetecting) {
+              const videoEl = document.querySelector('#carrinho-barcode-reader video');
+              if (videoEl && videoEl.readyState >= 2 && !videoEl.paused) {
+                isNativeDetecting = true;
+                try {
+                  const barcodes = await nativeDetector.detect(videoEl);
+                  if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+                    const code = barcodes[0].rawValue;
+                    const now = Date.now();
+                    if (code !== lastScannedValRef.current || now - lastScannedTimeRef.current >= 1200) {
+                      lastScannedValRef.current = code;
+                      lastScannedTimeRef.current = now;
+                      handleQuickLookup(code);
+                    }
+                  }
+                } catch (e) {
+                } finally {
+                  isNativeDetecting = false;
+                }
+              }
+            }
+            if (nativeDetectorActiveRef.current) {
+              nativeDetectorRafRef.current = requestAnimationFrame(runNativeLoop);
+            }
+          };
+
+          nativeDetectorRafRef.current = requestAnimationFrame(runNativeLoop);
+        } catch (e) {}
+      }
+
+    } catch (err) {
+      console.warn(`[Carrinho Camera] Erro tentativa ${retryCount + 1}:`, err);
+      if (retryCount < 2 && cameraId) {
+        await new Promise(r => setTimeout(r, 200));
+        return startScanner(null, retryCount + 1);
+      }
+      isStartingRef.current = false;
+      setIsCameraStarting(false);
+      setScanning(false);
+      setCameraError('Não foi possível iniciar a câmera selecionada. Tente alternar a lente ou verificar permissões.');
+    }
+  };
+
+  // Efeito de inicialização da câmera com a MESMA regra de entrada (calibracheck_preferred_camera_v2)
+  useEffect(() => {
+    if (!isCameraActive) {
+      stopScanner();
       return;
     }
 
-    setCameraError('');
     let isMounted = true;
 
-    const startCamera = async () => {
+    const initCameraWithCalibrationRules = async () => {
       try {
-        await new Promise(r => setTimeout(r, 100));
-        if (!document.getElementById('carrinho-barcode-reader')) return;
+        // 1. Lê a câmera preferida salva na calibração
+        let savedCam = null;
+        try {
+          savedCam = localStorage.getItem('calibracheck_preferred_camera_v2');
+        } catch (e) {}
 
-        const scanner = new Html5Qrcode('carrinho-barcode-reader', {
-          formatsToSupport: SUPPORTED_FORMATS,
-          verbose: false
-        });
-        html5QrCodeRef.current = scanner;
-
-        await scanner.start(
-          { facingMode: 'environment' },
-          {
-            fps: 15,
-            qrbox: { width: 280, height: 160 },
-            aspectRatio: 1.777
-          },
-          (decodedText) => {
-            const now = Date.now();
-            if (decodedText === lastScannedValRef.current && now - lastScannedTimeRef.current < 1200) {
-              return; // Anti-repique rápido
-            }
-            lastScannedValRef.current = decodedText;
-            lastScannedTimeRef.current = now;
-            handleQuickLookup(decodedText);
-          },
-          () => {}
-        );
-      } catch (err) {
-        if (isMounted) {
-          setCameraError('Não foi possível iniciar a câmera. Verifique as permissões do navegador.');
+        // 2. Descobre câmeras disponíveis
+        let detected = [];
+        try {
+          detected = await Html5Qrcode.getCameras();
+        } catch (e) {
+          if (navigator.mediaDevices?.enumerateDevices) {
+            const raw = await navigator.mediaDevices.enumerateDevices();
+            detected = raw.filter(d => d.kind === 'videoinput');
+          }
         }
+
+        if (!isMounted) return;
+
+        const normalized = (detected || []).map((c, i) => ({
+          id: c.id || c.deviceId || `cam-${i}`,
+          deviceId: c.id || c.deviceId || `cam-${i}`,
+          label: c.label || ''
+        }));
+
+        if (normalized.length > 0) {
+          setCameras(normalized);
+        }
+
+        // 3. Escolhe a Lente Principal de 50MP com Autofoco de Perto (descarta Ultra-Wide)
+        let targetCam = null;
+        if (savedCam) {
+          targetCam = normalized.find(c => c.id === savedCam || c.deviceId === savedCam);
+        }
+        if (!targetCam) {
+          targetCam = selectBestRearAutofocusCamera(normalized);
+        }
+
+        const targetId = targetCam ? targetCam.id : null;
+        await startScanner(targetId);
+
+      } catch (err) {
+        console.warn('[Carrinho Camera] Falha no startup:', err);
+        if (isMounted) await startScanner(null);
       }
     };
 
-    startCamera();
+    initCameraWithCalibrationRules();
 
     return () => {
       isMounted = false;
-      if (html5QrCodeRef.current) {
-        try {
-          html5QrCodeRef.current.stop().then(() => {
-            html5QrCodeRef.current?.clear();
-          }).catch(() => {});
-        } catch (e) {}
-      }
+      stopScanner();
     };
   }, [isCameraActive]);
 
@@ -476,12 +894,12 @@ export default function CarrinhoDevolucaoTab({
           <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
             <button
               type="button"
-              onClick={handleTriggerScanner}
+              onClick={() => setIsCameraActive(true)}
               className="flex-1 md:flex-initial px-4 py-2.5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-blue-500/25 transition active:scale-95 flex items-center justify-center gap-2"
-              title="Abrir câmera para bipar bombas para devolução"
+              title="Abrir câmera Full HD com foco de perto para bipar para devolução"
             >
               <Camera className="w-4 h-4" />
-              <span>Bipar na Câmera</span>
+              <span>Bipar na Câmera (Foco de Perto)</span>
             </button>
 
             {scannedSeries.length > 0 && (
@@ -567,86 +985,301 @@ export default function CarrinhoDevolucaoTab({
         )}
       </div>
 
-      {/* SCANNER DE CÂMERA INTEGRADO PARA DEVOLUÇÃO */}
+      {/* ========================================================================= */}
+      {/* SCANNER DE CÂMERA PROFISSIONAL COM MESMA REGRA DA ENTRADA E FOCO DE PERTO */}
+      {/* ========================================================================= */}
       {isCameraActive && (
-        <div className="rounded-3xl bg-slate-900 border-2 border-blue-500 p-4 sm:p-5 text-white shadow-2xl relative animate-in zoom-in-95 duration-200">
+        <div className="rounded-3xl bg-slate-950 border-2 border-blue-500 p-4 sm:p-5 text-white shadow-2xl relative animate-in zoom-in-95 duration-200">
+          
+          {/* Header do Scanner */}
           <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-800">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <Camera className="w-5 h-5 text-blue-400" />
               <h3 className="font-extrabold text-sm sm:text-base">Scanner de Devolução Contínua</h3>
-              <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
-                Ao Vivo
+              <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                🎯 Câmera Principal (Foco de Perto)
               </span>
             </div>
+
             <button
               onClick={() => setIsCameraActive(false)}
-              className="p-1 rounded-full text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition"
               title="Fechar câmera"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-            {/* Viewfinder da Câmera */}
-            <div className="relative rounded-2xl overflow-hidden bg-black border border-slate-800 min-h-[220px] max-h-[300px] flex items-center justify-center">
-              <div id="carrinho-barcode-reader" className="w-full h-full"></div>
-              {cameraError && (
-                <div className="p-4 text-center text-red-400 text-xs">
-                  <AlertCircle className="w-6 h-6 mx-auto mb-1 text-red-500" />
-                  {cameraError}
-                </div>
-              )}
-            </div>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            
+            {/* Viewfinder da Câmera (Col 7 no Desktop) */}
+            <div className="lg:col-span-7 flex flex-col space-y-2">
+              <div className="relative rounded-2xl overflow-hidden bg-black border border-slate-800 h-[280px] sm:h-[340px] flex items-center justify-center shadow-inner">
+                
+                {/* Elemento de Vídeo com Enquadramento Total */}
+                <div 
+                  id="carrinho-barcode-reader" 
+                  className="w-full h-full flex items-center justify-center [&_video]:w-full [&_video]:h-full [&_video]:object-cover"
+                ></div>
 
-            {/* Painel do Último Setor Bipado */}
-            <div className="space-y-3">
-              {lastScannedDest ? (
-                <div className="p-4 rounded-2xl bg-slate-800/90 border border-slate-700 animate-in fade-in duration-150">
-                  <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                    Última Bomba Bipada:
+                {/* Linha Laser Vermelha (1D) ou Mira QR (2D) */}
+                {scanning && !cameraError && (
+                  <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-3">
+                    {reticleType === '1d' ? (
+                      <div className="relative w-[96%] max-w-[480px] h-[100px] sm:h-[120px] border-2 border-dashed border-red-500/80 rounded-2xl shadow-[0_0_25px_rgba(239,68,68,0.35)] flex items-center justify-center">
+                        <div className="absolute left-0 right-0 h-1 bg-gradient-to-r from-red-600 via-rose-300 to-red-600 shadow-[0_0_14px_#ef4444] animate-pulse"></div>
+                        <div className="absolute -top-1 -left-1 w-5 h-5 border-t-4 border-l-4 border-red-500 rounded-tl-lg"></div>
+                        <div className="absolute -top-1 -right-1 w-5 h-5 border-t-4 border-r-4 border-red-500 rounded-tr-lg"></div>
+                        <div className="absolute -bottom-1 -left-1 w-5 h-5 border-b-4 border-l-4 border-red-500 rounded-bl-lg"></div>
+                        <div className="absolute -bottom-1 -right-1 w-5 h-5 border-b-4 border-r-4 border-red-500 rounded-br-lg"></div>
+                      </div>
+                    ) : (
+                      <div className="relative w-[200px] h-[200px] border-2 border-dashed border-blue-500/80 rounded-2xl shadow-[0_0_25px_rgba(59,130,246,0.35)] flex items-center justify-center">
+                        <div className="absolute -top-1 -left-1 w-5 h-5 border-t-4 border-l-4 border-blue-500 rounded-tl-lg"></div>
+                        <div className="absolute -top-1 -right-1 w-5 h-5 border-t-4 border-r-4 border-blue-500 rounded-tr-lg"></div>
+                        <div className="absolute -bottom-1 -left-1 w-5 h-5 border-b-4 border-l-4 border-blue-500 rounded-bl-lg"></div>
+                        <div className="absolute -bottom-1 -right-1 w-5 h-5 border-b-4 border-r-4 border-blue-500 rounded-br-lg"></div>
+                      </div>
+                    )}
                   </div>
-                  <div className="text-base font-black text-white flex items-center gap-2">
-                    {lastScannedDest.equipment.equipamento}
-                  </div>
-                  <div className="flex items-center gap-2 mt-1 text-xs text-slate-300">
-                    <span className="font-mono bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded font-bold">
-                      Tag: {lastScannedDest.equipment.tag || lastScannedDest.equipment.codigoBarras}
-                    </span>
-                    {lastScannedDest.equipment.serie && (
-                      <span className="font-mono text-slate-400">
-                        S/N: {lastScannedDest.equipment.serie}
-                      </span>
+                )}
+
+                {/* BARRA SUPERIOR SOBRE O VÍDEO: LENTE + MIRA + LANTERNA */}
+                <div className="absolute top-2.5 left-2.5 right-2.5 z-20 flex items-center justify-between gap-1.5 pointer-events-auto">
+                  
+                  {/* Alternador 1D/2D */}
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setReticleType(r => r === '1d' ? '2d' : '1d')}
+                      className={`px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 border shadow-lg transition active:scale-95 ${
+                        reticleType === '1d'
+                          ? 'bg-red-500/25 text-red-200 border-red-500/50 shadow-red-500/20'
+                          : 'bg-blue-500/25 text-blue-200 border-blue-500/50 shadow-blue-500/20'
+                      }`}
+                    >
+                      <ScanLine className="w-3 h-3" />
+                      <span>{reticleType === '1d' ? '1D Laser' : '2D QR'}</span>
+                    </button>
+
+                    {/* Alternador de Lente Traseira Física */}
+                    {rearCamerasList.length > 1 ? (
+                      <button
+                        type="button"
+                        onClick={handleToggleRearCamera}
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-900/90 hover:bg-slate-800 text-blue-300 border border-blue-500/50 shadow-md backdrop-blur-xs transition active:scale-95"
+                        title="Alternar lentes traseiras do aparelho"
+                      >
+                        <SwitchCamera className="w-3 h-3 text-blue-400" />
+                        <span>{currentLensDisplay}</span>
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-950/85 text-blue-300 border border-blue-500/40 shadow-md">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
+                        <span>🎯 50MP Principal</span>
+                      </div>
                     )}
                   </div>
 
-                  <div className="mt-3 pt-3 border-t border-slate-700/80">
-                    <div className="text-xs text-slate-400 font-semibold mb-1">
-                      📍 Levar e Entregar no Setor:
+                  {/* Controles da Direita: Foco e Lanterna */}
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={handleTriggerCenterFocus}
+                      className="px-2.5 py-1 rounded-full bg-slate-900/90 hover:bg-slate-800 text-amber-300 font-bold text-[10px] flex items-center gap-1 border border-amber-500/40 shadow-lg transition active:scale-95"
+                      title="Refocar de perto agora (5-15cm)"
+                    >
+                      <Crosshair className="w-3 h-3 text-amber-400" />
+                      <span className="hidden xs:inline">Focar Perto</span>
+                    </button>
+
+                    {hasTorch && (
+                      <button
+                        type="button"
+                        onClick={toggleTorch}
+                        className={`p-1.5 rounded-full flex items-center justify-center shadow-lg transition border ${
+                          torchOn
+                            ? 'bg-amber-400 text-slate-950 border-amber-300 ring-2 ring-amber-400/50'
+                            : 'bg-slate-900/90 text-white hover:bg-slate-800 border-slate-700/80'
+                        }`}
+                        title={torchOn ? "Desligar lanterna" : "Ligar lanterna"}
+                      >
+                        <Zap className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Feedback de foco flutuante */}
+                {focusFeedbackText && (
+                  <div className="absolute top-12 left-1/2 -translate-x-1/2 z-20 px-3 py-1 bg-slate-900/95 text-emerald-400 text-[10px] font-bold rounded-full border border-emerald-500/50 shadow-lg">
+                    {focusFeedbackText}
+                  </div>
+                )}
+
+                {/* BARRA INFERIOR SOBRE O VÍDEO: PRESETS DE ZOOM DE PERTO */}
+                <div className="absolute bottom-2.5 left-2.5 right-2.5 z-20 flex items-center justify-between pointer-events-auto gap-2">
+                  <div className="flex items-center gap-1 bg-slate-950/90 backdrop-blur-md p-0.5 rounded-full border border-slate-700/80 shadow-lg">
+                    {opticalPresets.map(p => (
+                      <button
+                        key={p.label}
+                        type="button"
+                        onClick={() => applyOpticalLensZoom(p.value, p.fullName)}
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold transition active:scale-95 ${
+                          Math.abs(zoomLevel - p.value) < 0.15
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'text-slate-300 hover:text-white'
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="bg-slate-950/90 backdrop-blur-md text-emerald-300 border border-emerald-500/40 px-2.5 py-0.5 rounded-full text-[9px] font-bold shadow-lg flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
+                    <span>Macro 5-15cm Ativo</span>
+                  </div>
+                </div>
+
+                {/* Loading da Câmera */}
+                {isCameraStarting && !scanning && !cameraError && (
+                  <div className="absolute inset-0 z-15 flex flex-col items-center justify-center p-6 text-center bg-slate-950/90 space-y-2 animate-in fade-in">
+                    <div className="w-8 h-8 border-3 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+                    <p className="text-white font-bold text-xs">Iniciando câmera Full HD com foco de perto...</p>
+                    <p className="text-slate-400 text-[10px]">Sensor principal 50MP ativado</p>
+                  </div>
+                )}
+
+                {/* Erro de Câmera */}
+                {cameraError && (
+                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-4 text-center bg-slate-900/95 space-y-2">
+                    <AlertCircle className="w-8 h-8 text-amber-500" />
+                    <p className="text-white font-semibold text-xs">Câmera não iniciada</p>
+                    <p className="text-slate-400 text-[11px] max-w-sm">{cameraError}</p>
+                    <button
+                      onClick={() => startScanner(selectedCamera)}
+                      className="py-2 px-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" /> Tentar Novamente
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* PAINEL LATERAL: ÚLTIMO SETOR BIPADO E FILA DE RETORNO (Col 5 no Desktop) */}
+            <div className="lg:col-span-5 flex flex-col justify-between space-y-3">
+              
+              {/* Card Destaque: Setor de Destino da Última Bomba Bipada */}
+              {lastScannedDest ? (
+                <div className="p-4 rounded-2xl bg-slate-900/95 border-2 border-emerald-500/80 shadow-lg animate-in fade-in duration-150 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded-md">
+                      ✓ Bomba Bipada com Sucesso
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      #{scannedSeries.length} na fila
+                    </span>
+                  </div>
+
+                  <div>
+                    <h4 className="text-base font-extrabold text-white">
+                      {lastScannedDest.equipment.equipamento}
+                    </h4>
+                    <div className="flex items-center gap-2 mt-1 text-xs text-slate-300">
+                      <span className="font-mono bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded font-bold">
+                        Tag: {lastScannedDest.equipment.tag || lastScannedDest.equipment.codigoBarras}
+                      </span>
+                      {lastScannedDest.equipment.serie && (
+                        <span className="font-mono text-slate-400">
+                          S/N: {lastScannedDest.equipment.serie}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Banner Gigante do Setor de Destino */}
+                  <div className="pt-2 border-t border-slate-800">
+                    <div className="text-[11px] text-slate-400 font-bold mb-1 flex items-center gap-1">
+                      <MapPin className="w-3.5 h-3.5 text-blue-400" />
+                      <span>LEVAR E DEVOLVER PARA O SETOR:</span>
                     </div>
                     {(() => {
                       const color = getSectorColor(lastScannedDest.targetSector, sectorColors);
                       return (
                         <div
                           style={getSectorBadgeStyles(color)}
-                          className="px-3.5 py-2 rounded-xl text-sm font-black border flex items-center gap-2 shadow-md"
+                          className="px-4 py-2.5 rounded-2xl text-base font-black border flex items-center justify-between gap-2 shadow-md"
                         >
-                          <MapPin className="w-4 h-4 shrink-0" style={{ color: color.hex }} />
-                          <span className="text-base">{lastScannedDest.targetSector}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: color.hex }} />
+                            <span>{lastScannedDest.targetSector}</span>
+                          </div>
+                          <span className="text-xs font-bold opacity-80">Devolução</span>
                         </div>
                       );
                     })()}
                   </div>
                 </div>
               ) : (
-                <div className="p-5 text-center text-slate-400 border border-dashed border-slate-800 rounded-2xl">
-                  <ScanLine className="w-8 h-8 mx-auto mb-2 opacity-50 text-blue-400" />
-                  <p className="text-xs font-semibold text-slate-300">Aponte para o código da bomba</p>
-                  <p className="text-[11px] text-slate-500 mt-1">
-                    Conforme for bipando, o setor de destino aparecerá aqui e a bomba entrará direto na lista em série.
+                <div className="p-6 text-center text-slate-400 border border-dashed border-slate-800 rounded-2xl bg-slate-900/40 space-y-2">
+                  <ScanLine className="w-8 h-8 mx-auto text-blue-400 opacity-60 animate-pulse" />
+                  <p className="text-xs font-bold text-slate-200">Aponte a mira para o código da bomba</p>
+                  <p className="text-[11px] text-slate-500">
+                    A câmera usa a Lente Principal com autofoco e aproximação macro de 5 a 15cm para leitura instantânea de barras e etiquetas.
                   </p>
                 </div>
               )}
+
+              {/* Mini Prévia da Fila no Carrinho */}
+              <div className="p-3 rounded-2xl bg-slate-900/60 border border-slate-800 text-xs">
+                <div className="flex items-center justify-between text-slate-400 mb-2">
+                  <span className="font-bold flex items-center gap-1.5 text-white">
+                    <ListOrdered className="w-3.5 h-3.5 text-blue-400" />
+                    <span>Carga no Carrinho ({scannedSeries.length} bombas)</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsCameraActive(false)}
+                    className="text-blue-400 hover:underline font-bold text-[11px]"
+                  >
+                    Ver Lista Completa
+                  </button>
+                </div>
+
+                {scannedSeries.length === 0 ? (
+                  <p className="text-[11px] text-slate-500 italic">
+                    Nenhuma bomba bipada ainda. Bipando uma a uma, elas aparecerão listadas aqui em série.
+                  </p>
+                ) : (
+                  <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
+                    {scannedSeries.slice(0, 4).map((item, idx) => (
+                      <div 
+                        key={item.scanId || idx}
+                        className="px-2.5 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700/60 flex items-center justify-between gap-2 text-[11px]"
+                      >
+                        <div className="truncate font-semibold text-slate-200">
+                          <span className="font-mono text-blue-400 font-bold mr-1.5">
+                            #{scannedSeries.length - idx}
+                          </span>
+                          {item.equipment.equipamento} ({item.equipment.tag || item.equipment.serie})
+                        </div>
+                        <span className="text-[10px] font-bold text-emerald-400 shrink-0">
+                          {item.targetSector}
+                        </span>
+                      </div>
+                    ))}
+                    {scannedSeries.length > 4 && (
+                      <div className="text-center text-[10px] text-slate-400 pt-1">
+                        + {scannedSeries.length - 4} outras bombas na fila do carrinho
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
             </div>
           </div>
         </div>
@@ -1275,7 +1908,7 @@ export default function CarrinhoDevolucaoTab({
       <div className="p-4 rounded-2xl bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 text-xs text-blue-800 dark:text-blue-300 flex items-start gap-3">
         <Sparkles className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
         <div>
-          <strong>Dica de Produtividade Hospitalar:</strong> A lista menor em série permite conferir dezenas de bombas de uma vez só na tela. Bipando uma a uma com a câmera ou leitor de código de barras, a lista é construída sequencialmente em série com o setor de destino em destaque para rápida distribuição.
+          <strong>Câmera com Foco de Perto (50MP Nativo):</strong> A câmera de devolução utiliza as mesmas diretrizes de lente da conferência de entrada. Ela inicia com enquadramento de perto (1.5x) para leitura instantânea de etiquetas pequenas sem distorção.
         </div>
       </div>
 
