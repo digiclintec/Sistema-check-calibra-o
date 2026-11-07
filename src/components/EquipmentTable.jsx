@@ -343,17 +343,17 @@ export default function EquipmentTable({
         {/* Row 3: Quick Action Tools (Digitalizar Foto OCR & Ações em Massa com Senha) */}
         <div className="pt-2 border-t border-slate-200/60 dark:border-slate-800/60 flex flex-wrap items-center justify-between gap-2 w-full">
           
-          {/* Digitalizar Foto OCR Button & Novo Equipamento */}
+          {/* Digitalizar Foto OCR Button & Adicionar ao Plano */}
           <div className="flex items-center gap-2">
             {onOpenAddEquipment && (
               <button
                 type="button"
-                onClick={onOpenAddEquipment}
-                className="py-1.5 px-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm active:scale-95 transition"
-                title="Cadastrar um novo equipamento no plano"
+                onClick={() => onOpenAddEquipment(null, '')}
+                className="py-1.5 px-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-500/20 active:scale-95 transition"
+                title="Adicionar mais equipamentos ao plano da planilha (Manual, Anexar Excel ou Colar em Lote)"
               >
                 <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                <span>+ Cadastrar</span>
+                <span>+ Adicionar ao Plano</span>
               </button>
             )}
 
@@ -411,10 +411,20 @@ export default function EquipmentTable({
       {/* MOBILE VIEW: Touch-Optimized Cards for Android & iOS */}
       <div className="sm:hidden p-3 space-y-3">
         {filteredEquipments.length === 0 ? (
-          <div className="py-10 text-center text-slate-400">
-            <AlertCircle className="w-8 h-8 mx-auto text-slate-400 mb-2" />
+          <div className="py-10 text-center text-slate-400 space-y-2">
+            <AlertCircle className="w-8 h-8 mx-auto text-slate-400" />
             <p className="font-semibold text-slate-700 dark:text-slate-200 text-xs">Nenhum equipamento encontrado</p>
-            <p className="text-[11px] text-slate-400 mt-1">Ajuste os filtros ou a busca acima.</p>
+            <p className="text-[11px] text-slate-400">Ajuste os filtros ou adicione novos equipamentos ao plano.</p>
+            {onOpenAddEquipment && (
+              <button
+                type="button"
+                onClick={() => onOpenAddEquipment(null, searchQuery || quickCodeInput)}
+                className="mt-2 py-2 px-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition inline-flex items-center gap-1.5 shadow-sm active:scale-95"
+              >
+                <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                <span>+ Adicionar ao Plano</span>
+              </button>
+            )}
           </div>
         ) : (
           filteredEquipments.map((item) => {
@@ -702,8 +712,18 @@ export default function EquipmentTable({
                     <p className="text-xs max-w-md">
                       {activeFilter === 'checados'
                         ? 'Aponte a pistola leitora de código de barras ou abra a câmera para iniciar as conferências deste lote.'
-                        : 'Tente ajustar seus termos de busca ou mudar o filtro selecionado.'}
+                        : 'Tente ajustar seus termos de busca ou adicionar novos equipamentos ao plano da planilha.'}
                     </p>
+                    {onOpenAddEquipment && activeFilter !== 'checados' && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenAddEquipment(null, searchQuery || quickCodeInput)}
+                        className="mt-2 py-2 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm active:scale-95"
+                      >
+                        <Plus className="w-4 h-4 stroke-[3]" />
+                        <span>Adicionar {searchQuery ? `"${searchQuery}"` : 'equipamentos'} ao plano</span>
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>

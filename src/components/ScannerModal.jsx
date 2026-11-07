@@ -32,7 +32,8 @@ import {
   Rows2,
   Lock,
   Package,
-  Check
+  Check,
+  Plus
 } from 'lucide-react';
 import {
   playSuccessSound,
@@ -73,7 +74,8 @@ export default function ScannerModal({
   soundEnabled = true,
   activeModality = 'calibracao',
   onChangeModality,
-  serviceConfig = null
+  serviceConfig = null,
+  onOpenAddEquipment = null
 }) {
   const [cameras, setCameras] = useState([]);
   const [selectedCamera, setSelectedCamera] = useState('');
@@ -2267,6 +2269,20 @@ export default function ScannerModal({
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
+                      {lastScannedFeedback.status === 'not_found' && onOpenAddEquipment && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onClose();
+                            onOpenAddEquipment(null, lastScannedFeedback.code);
+                          }}
+                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-bold shadow-xs flex items-center gap-1 active:scale-95 transition"
+                          title="Cadastrar e adicionar este equipamento ao plano agora"
+                        >
+                          <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                          <span>+ Adicionar ao Plano</span>
+                        </button>
+                      )}
                       <span className="text-[10px] font-mono opacity-70">
                         {lastScannedFeedback.timestamp}
                       </span>

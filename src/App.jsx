@@ -296,7 +296,12 @@ export default function App() {
   const [undoCheckpoint, setUndoCheckpoint] = useState(null);
   const [alreadyScannedAlert, setAlreadyScannedAlert] = useState(null);
   const [editEquipmentModal, setEditEquipmentModal] = useState({ isOpen: false, equipment: null });
-  const [addEquipmentModal, setAddEquipmentModal] = useState({ isOpen: false, planId: null });
+  const [addEquipmentModal, setAddEquipmentModal] = useState({ 
+    isOpen: false, 
+    planId: null, 
+    initialCode: '', 
+    initialMode: 'manual' 
+  });
   const [abruptConfirmModal, setAbruptConfirmModal] = useState({
     isOpen: false,
     title: '',
@@ -528,6 +533,43 @@ export default function App() {
       const updatedList = [...equipments, newEq];
       await pushServerUpdate(updatedList, activeSheetName, `Cadastro do equipamento ${newEq.tag || newEq.serie}`);
       showToast('success', `Equipamento "${newEq.equipamento}" cadastrado!`);
+      return { success: true };
+    }
+  };
+
+  // Batch add equipments to plan (via Excel file, clipboard paste or continuous barcode scanning)
+  const handleBatchAddEquipments = async (equipmentsList, targetPlanId, skipDuplicates = true) => {
+    try {
+      const res = await fetch('/api/equipment/batch-create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hospitalId: activeHospitalId,
+          planId: targetPlanId || activePlanId,
+          equipments: equipmentsList,
+          skipDuplicates,
+          userEmail: currentUser?.email,
+          userName: currentUser?.name
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (data.equipments) {
+          setEquipments(data.equipments);
+        }
+        showToast('success', data.message || `${data.addedCount} equipamentos adicionados ao plano da planilha!`);
+        if (soundEnabled) playSuccessSound();
+        loadMonthlyPlans(activeHospitalId);
+        loadHospitals();
+        return { success: true };
+      } else {
+        return { success: false, message: data.message || 'Falha ao adicionar equipamentos em lote.' };
+      }
+    } catch (err) {
+      console.error('Erro ao adicionar em lote:', err);
+      const updatedList = [...equipments, ...equipmentsList];
+      await pushServerUpdate(updatedList, activeSheetName, `Adição de ${equipmentsList.length} equipamentos ao plano`);
+      showToast('success', `${equipmentsList.length} equipamentos adicionados ao plano!`);
       return { success: true };
     }
   };
@@ -1969,6 +2011,7 @@ export default function App() {
         onResetData={handleResetData}
         googleSheetUrl={googleSheetUrl}
         serviceConfig={serviceConfig}
+        onOpenAddEquipment={(targetPlanId, code, mode) => setAddEquipmentModal({ isOpen: true, planId: targetPlanId || activePlanId, initialCode: code || '', initialMode: mode || 'manual' })}
       />
 
       {/* Main Content Area */}
@@ -2041,7 +2084,7 @@ export default function App() {
               setActiveMainTab('conferencia');
               setIsScannerOpen(true);
             }}
-            onOpenAddEquipment={(targetPlanId) => setAddEquipmentModal({ isOpen: true, planId: targetPlanId || activePlanId })}
+            onOpenAddEquipment={(targetPlanId, code, mode) => setAddEquipmentModal({ isOpen: true, planId: targetPlanId || activePlanId, initialCode: code || '', initialMode: mode || 'manual' })}
             onEditEquipment={(eq) => setEditEquipmentModal({ isOpen: true, equipment: eq })}
           />
         ) : activeMainTab === 'devolucao' ? (
@@ -2074,7 +2117,7 @@ export default function App() {
             onOpenGoogleModal={() => setIsGoogleModalOpen(true)}
             onLoadSample={handleLoadSample}
             onDropFile={processFile}
-            onOpenAddEquipment={() => setAddEquipmentModal({ isOpen: true, planId: activePlanId })}
+            onOpenAddEquipment={(targetPlanId, code, mode) => setAddEquipmentModal({ isOpen: true, planId: activePlanId, initialCode: code || '', initialMode: mode || 'manual' })}
             hospitalName={activeHospital?.name}
           />
         ) : (
@@ -2108,7 +2151,7 @@ export default function App() {
               sectorColors={sectorColors}
               onOpenSectorColors={() => setIsSectorColorModalOpen(true)}
               onEditEquipment={(eq) => setEditEquipmentModal({ isOpen: true, equipment: eq })}
-              onOpenAddEquipment={() => setAddEquipmentModal({ isOpen: true, planId: activePlanId })}
+              onOpenAddEquipment={(targetPlanId, code, mode) => setAddEquipmentModal({ isOpen: true, planId: activePlanId, initialCode: code || '', initialMode: mode || 'manual' })}
             />
 
           </div>
@@ -2127,6 +2170,7 @@ export default function App() {
         activeModality={activeModality}
         onChangeModality={setActiveModality}
         serviceConfig={serviceConfig}
+        onOpenAddEquipment={(targetPlanId, code, mode) => setAddEquipmentModal({ isOpen: true, planId: targetPlanId || activePlanId, initialCode: code || '', initialMode: mode || 'manual' })}
       />
 
       {/* Agente Digitalizador de Número de Série por Foto / OCR */}
@@ -2140,6 +2184,7 @@ export default function App() {
         planTitle={activeSheetName}
         activeModality={activeModality}
         serviceConfig={serviceConfig}
+        onOpenAddEquipment={(targetPlanId, code, mode) => setAddEquipmentModal({ isOpen: true, planId: targetPlanId || activePlanId, initialCode: code || '', initialMode: mode || 'manual' })}
       />
 
       {/* Modal Inteligente de Confirmação com Senha para Ações em Lote */}
@@ -2296,12 +2341,15 @@ export default function App() {
       {/* Modal de Cadastro de Novo Equipamento no Plano */}
       <AddEquipmentModal
         isOpen={addEquipmentModal.isOpen}
-        onClose={() => setAddEquipmentModal({ isOpen: false, planId: null })}
+        onClose={() => setAddEquipmentModal({ isOpen: false, planId: null, initialCode: '', initialMode: 'manual' })}
         onSave={handleSaveNewEquipment}
+        onSaveBatch={handleBatchAddEquipments}
         plans={monthlyPlans}
         activePlanId={addEquipmentModal.planId || activePlanId}
         hospitalName={activeHospital?.name || 'Hospital'}
         existingSectors={Array.from(new Set(equipments.map(e => e.setor).filter(Boolean)))}
+        initialCode={addEquipmentModal.initialCode}
+        initialMode={addEquipmentModal.initialMode}
       />
 
       {/* Floating Mobile Bottom Action Bar (Thumb-friendly for Android & iOS) */}
@@ -2309,6 +2357,7 @@ export default function App() {
         onOpenScanner={() => setIsScannerOpen(true)}
         onOpenSerialScan={() => setIsSerialScanOpen(true)}
         onOpenInstall={() => setIsInstallModalOpen(true)}
+        onOpenAddEquipment={() => setAddEquipmentModal({ isOpen: true, planId: activePlanId, initialCode: '', initialMode: 'manual' })}
         activeFilter={activeFilter}
         onCycleFilter={handleCycleFilter}
         checkedCount={stats.checked}

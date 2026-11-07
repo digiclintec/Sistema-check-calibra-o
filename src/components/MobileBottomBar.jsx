@@ -1,10 +1,11 @@
 import React from 'react';
-import { Camera, ListFilter, Smartphone, Sparkles, Cpu, CheckSquare } from 'lucide-react';
+import { Camera, ListFilter, Smartphone, Sparkles, Cpu, CheckSquare, PlusCircle } from 'lucide-react';
 
 export default function MobileBottomBar({
   onOpenScanner,
   onOpenSerialScan,
   onOpenInstall,
+  onOpenAddEquipment,
   activeFilter,
   onCycleFilter,
   checkedCount,
@@ -58,6 +59,21 @@ export default function MobileBottomBar({
           BIPAR
         </span>
       </button>
+
+      {/* Adicionar Equipamento ao Plano */}
+      {onOpenAddEquipment && (
+        <button
+          type="button"
+          onClick={() => onOpenAddEquipment()}
+          className="flex flex-col items-center justify-center px-2 py-1 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 active:scale-95 transition"
+          title="Adicionar Novo Equipamento ao Plano"
+        >
+          <PlusCircle className="w-5 h-5 text-blue-500" />
+          <span className="text-[10px] font-bold mt-0.5 text-blue-600 dark:text-blue-400">
+            + Item
+          </span>
+        </button>
+      )}
 
       {/* Install Mobile App / APK Button */}
       <button

@@ -1072,6 +1072,124 @@ app.post('/api/equipment/create', (req, res) => {
   });
 });
 
+// Cadastrar múltiplos equipamentos em lote diretamente em um plano (via Excel complementar ou colar dados)
+app.post('/api/equipment/batch-create', (req, res) => {
+  const { hospitalId, planId, equipments, skipDuplicates = true, userEmail, userName } = req.body || {};
+  if (!Array.isArray(equipments) || equipments.length === 0) {
+    return res.status(400).json({ success: false, message: 'Nenhum equipamento enviado para adição.' });
+  }
+
+  const db = readDb();
+  const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
+  const hospIdx = (db.hospitals || []).findIndex(h => h.id === targetId);
+
+  if (hospIdx === -1) {
+    return res.status(404).json({ success: false, message: 'Hospital não encontrado.' });
+  }
+
+  const hospital = db.hospitals[hospIdx];
+  hospital.plans = hospital.plans || [];
+
+  const targetPlanId = planId || hospital.activePlanId || hospital.plans[0]?.id;
+  let targetPlan = hospital.plans.find(p => p.id === targetPlanId);
+
+  if (!targetPlan) {
+    const curYear = new Date().getFullYear();
+    targetPlan = {
+      id: 'plan_' + Date.now(),
+      title: `Plano Anual ${curYear}`,
+      tipo: 'anual',
+      ano: String(curYear),
+      mes: `Ano Todo / ${curYear}`,
+      dataInicio: `${curYear}-01-01`,
+      dataFim: `${curYear}-12-31`,
+      fileName: 'Cadastro_Manual.xlsx',
+      equipments: [],
+      createdAt: new Date().toISOString(),
+      lastUpdated: Date.now()
+    };
+    hospital.plans.push(targetPlan);
+    hospital.activePlanId = targetPlan.id;
+  }
+
+  targetPlan.equipments = targetPlan.equipments || [];
+
+  // Indexação de itens existentes para verificação inteligente de duplicatas
+  const existingKeys = new Set();
+  targetPlan.equipments.forEach(eq => {
+    if (eq.tag) existingKeys.add(String(eq.tag).trim().toLowerCase());
+    if (eq.serie) existingKeys.add(String(eq.serie).trim().toLowerCase());
+    if (eq.codigoBarras) existingKeys.add(String(eq.codigoBarras).trim().toLowerCase());
+  });
+
+  const addedEquipments = [];
+  const now = Date.now();
+
+  equipments.forEach((item, idx) => {
+    const tag = String(item.tag || '').trim();
+    const serie = String(item.serie || '').trim();
+    const barcode = String(item.codigoBarras || serie || tag || '').trim();
+
+    if (skipDuplicates) {
+      if ((tag && existingKeys.has(tag.toLowerCase())) ||
+          (serie && existingKeys.has(serie.toLowerCase())) ||
+          (barcode && existingKeys.has(barcode.toLowerCase()))) {
+        return; // Pula duplicado já existente
+      }
+    }
+
+    const eqId = item.id || 'EQP-' + now.toString(36) + '-' + idx + '-' + Math.random().toString(36).substring(2, 5);
+    const finalEq = {
+      ...item,
+      id: eqId,
+      tag: tag || barcode || eqId,
+      serie: serie || barcode || eqId,
+      codigoBarras: barcode || eqId,
+      equipamento: item.equipamento || item.nome || 'Equipamento',
+      fabricante: item.fabricante || 'Não especificado',
+      modelo: item.modelo || 'Padrão',
+      setor: item.setor || 'Geral',
+      dataCalibracao: item.dataCalibracao || null,
+      periodicidadeMeses: parseInt(item.periodicidadeMeses, 10) || 12,
+      validadeCalibracao: item.validadeCalibracao || item.proximaCalibracao || null,
+      proximaCalibracao: item.proximaCalibracao || item.validadeCalibracao || null,
+      statusCalibracao: item.statusCalibracao || 'Válido',
+      checado: Boolean(item.checado),
+      observacao: item.observacao || ''
+    };
+
+    targetPlan.equipments.push(finalEq);
+    addedEquipments.push(finalEq);
+
+    if (tag) existingKeys.add(tag.toLowerCase());
+    if (serie) existingKeys.add(serie.toLowerCase());
+    if (barcode) existingKeys.add(barcode.toLowerCase());
+  });
+
+  targetPlan.lastUpdated = now;
+
+  if (hospital.activePlanId === targetPlan.id || hospital.plans.length === 1) {
+    hospital.equipments = targetPlan.equipments;
+    hospital.activeSheetName = targetPlan.fileName || targetPlan.title;
+  }
+
+  const inspectorLabel = userName ? `${userName} (${userEmail})` : (userEmail || 'Sistema');
+  hospital.lastUpdated = now;
+  hospital.lastUpdatedBy = inspectorLabel;
+  db.lastUpdated = now;
+  saveDb(db);
+
+  res.json({
+    success: true,
+    message: `${addedEquipments.length} equipamentos adicionados ao plano "${targetPlan.title}" com sucesso!`,
+    addedCount: addedEquipments.length,
+    totalCount: targetPlan.equipments.length,
+    equipments: hospital.equipments,
+    planId: targetPlan.id,
+    planTitle: targetPlan.title
+  });
+});
+
 // Delete a monthly plan
 app.post('/api/plans/delete', (req, res) => {
   const { hospitalId, planId } = req.body || {};

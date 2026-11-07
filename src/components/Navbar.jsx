@@ -54,7 +54,8 @@ export default function Navbar({
   onUndo = null,
   onResetData = null,
   googleSheetUrl = '',
-  serviceConfig = null
+  serviceConfig = null,
+  onOpenAddEquipment = null
 }) {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const moreMenuRef = useRef(null);
@@ -307,6 +308,19 @@ export default function Navbar({
 
                   {/* Ações e Ferramentas */}
                   <div className="py-1">
+                    {onOpenAddEquipment && (
+                      <button
+                        onClick={() => {
+                          setShowMoreMenu(false);
+                          onOpenAddEquipment();
+                        }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold hover:bg-blue-50 dark:hover:bg-blue-900/30 transition text-blue-600 dark:text-blue-400"
+                      >
+                        <PlusCircle className="w-4 h-4 text-blue-500 shrink-0" />
+                        <span>+ Adicionar ao Plano</span>
+                      </button>
+                    )}
+
                     <button
                       onClick={() => {
                         setShowMoreMenu(false);
