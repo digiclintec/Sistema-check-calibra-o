@@ -794,7 +794,7 @@ export default function App() {
   }, [currentUser, syncWithServer]);
 
   // Push update to server com vinculação ao plano ativo
-  const pushServerUpdate = async (newEquipments, sheetName, actionDesc, gUrl = undefined) => {
+  const pushServerUpdate = async (newEquipments, sheetName, actionDesc, gUrl = undefined, gWebhookUrl = undefined) => {
     setEquipments(newEquipments);
     if (sheetName !== undefined) setActiveSheetName(sheetName);
 
@@ -811,6 +811,9 @@ export default function App() {
       };
       if (gUrl !== undefined) {
         body.googleSheetUrl = gUrl;
+      }
+      if (gWebhookUrl !== undefined) {
+        body.googleSheetWebhookUrl = gWebhookUrl;
       }
       const res = await fetch('/api/data', {
         method: 'POST',
@@ -1793,11 +1796,16 @@ export default function App() {
       recordUndoCheckpoint('Importação de Planilha Google', equipments, activeSheetName, googleSheetUrl);
     }
     const gUrl = data.googleSheetUrl || '';
+    const gWebhook = data.googleSheetWebhookUrl || '';
     setGoogleSheetUrl(gUrl);
     if (gUrl) {
       localStorage.setItem(`calibracheck_google_url_${activeHospitalId}`, gUrl);
     }
-    await pushServerUpdate(data.equipments, data.fileName, 'Planilha Google importada', gUrl);
+    if (gWebhook) {
+      setGoogleSheetWebhookUrl(gWebhook);
+      localStorage.setItem(`calibracheck_google_webhook_${activeHospitalId}`, gWebhook);
+    }
+    await pushServerUpdate(data.equipments, data.fileName, 'Planilha Google importada', gUrl, gWebhook || undefined);
     const checkedCount = (data.equipments || []).filter(e => e.checado).length;
     if (gUrl) {
       if (checkedCount > 0) {
