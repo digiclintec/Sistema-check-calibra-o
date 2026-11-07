@@ -50,6 +50,7 @@ import SectorColorModal from './components/SectorColorModal';
 import AbruptChangeConfirmModal from './components/AbruptChangeConfirmModal';
 import AlreadyScannedAlertModal from './components/AlreadyScannedAlertModal';
 import EditEquipmentModal from './components/EditEquipmentModal';
+import AddEquipmentModal from './components/AddEquipmentModal';
 
 import { parseSpreadsheetFile, exportToExcel } from './utils/sheetParser';
 import { SAMPLE_EQUIPMENT } from './utils/sampleData';
@@ -295,6 +296,7 @@ export default function App() {
   const [undoCheckpoint, setUndoCheckpoint] = useState(null);
   const [alreadyScannedAlert, setAlreadyScannedAlert] = useState(null);
   const [editEquipmentModal, setEditEquipmentModal] = useState({ isOpen: false, equipment: null });
+  const [addEquipmentModal, setAddEquipmentModal] = useState({ isOpen: false, planId: null });
   const [abruptConfirmModal, setAbruptConfirmModal] = useState({
     isOpen: false,
     title: '',
@@ -430,7 +432,7 @@ export default function App() {
     }
   };
 
-  // Create new monthly plan
+  // Create new monthly/annual plan
   const handleCreatePlan = async (planData) => {
     try {
       const res = await fetch('/api/plans/create', {
@@ -439,9 +441,14 @@ export default function App() {
         body: JSON.stringify({
           hospitalId: activeHospitalId,
           title: planData.title,
+          tipo: planData.tipo,
+          ano: planData.ano,
           mes: planData.mes,
+          dataInicio: planData.dataInicio,
+          dataFim: planData.dataFim,
+          descricao: planData.descricao,
           fileName: planData.fileName,
-          equipments: planData.equipments,
+          equipments: planData.equipments || [],
           userEmail: currentUser?.email,
           userName: currentUser?.name
         })
@@ -460,6 +467,68 @@ export default function App() {
       }
     } catch (err) {
       showToast('error', 'Falha ao salvar planejamento.');
+    }
+  };
+
+  // Update plan metadata
+  const handleUpdatePlan = async (planData) => {
+    try {
+      const res = await fetch('/api/plans/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hospitalId: activeHospitalId,
+          ...planData
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('success', 'Plano atualizado com sucesso!');
+        loadMonthlyPlans(activeHospitalId);
+        loadHospitals();
+      } else {
+        showToast('error', data.message || 'Erro ao atualizar plano.');
+      }
+    } catch (err) {
+      showToast('error', 'Falha ao atualizar plano.');
+    }
+  };
+
+  // Save new equipment directly to plan
+  const handleSaveNewEquipment = async (newEq, targetPlanId) => {
+    try {
+      const res = await fetch('/api/equipment/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hospitalId: activeHospitalId,
+          planId: targetPlanId || activePlanId,
+          equipment: newEq,
+          userEmail: currentUser?.email,
+          userName: currentUser?.name
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (data.equipments) {
+          setEquipments(data.equipments);
+        } else {
+          setEquipments(prev => [...prev, data.equipment || newEq]);
+        }
+        showToast('success', `Equipamento "${newEq.equipamento}" (${newEq.tag || newEq.serie}) cadastrado com sucesso!`);
+        if (soundEnabled) playSuccessSound();
+        loadMonthlyPlans(activeHospitalId);
+        loadHospitals();
+        return { success: true };
+      } else {
+        return { success: false, message: data.message || 'Erro ao cadastrar equipamento.' };
+      }
+    } catch (err) {
+      console.error('Erro ao cadastrar equipamento:', err);
+      const updatedList = [...equipments, newEq];
+      await pushServerUpdate(updatedList, activeSheetName, `Cadastro do equipamento ${newEq.tag || newEq.serie}`);
+      showToast('success', `Equipamento "${newEq.equipamento}" cadastrado!`);
+      return { success: true };
     }
   };
 
@@ -1100,7 +1169,13 @@ export default function App() {
             equipamento: updatedData.equipamento || eq.equipamento,
             modelo: updatedData.modelo || eq.modelo,
             fabricante: updatedData.fabricante || eq.fabricante,
-            setor: updatedData.setor || eq.setor
+            setor: updatedData.setor || eq.setor,
+            dataCalibracao: updatedData.dataCalibracao !== undefined ? updatedData.dataCalibracao : eq.dataCalibracao,
+            periodicidadeMeses: updatedData.periodicidadeMeses !== undefined ? updatedData.periodicidadeMeses : eq.periodicidadeMeses,
+            validadeCalibracao: updatedData.validadeCalibracao !== undefined ? updatedData.validadeCalibracao : eq.validadeCalibracao,
+            proximaCalibracao: updatedData.proximaCalibracao !== undefined ? updatedData.proximaCalibracao : eq.proximaCalibracao,
+            statusCalibracao: updatedData.statusCalibracao || eq.statusCalibracao,
+            observacao: updatedData.observacao !== undefined ? updatedData.observacao : eq.observacao
           };
         }
         return eq;
@@ -1959,12 +2034,15 @@ export default function App() {
             activePlanId={activePlanId}
             onSwitchPlan={handleSwitchPlan}
             onCreatePlan={handleCreatePlan}
+            onUpdatePlan={handleUpdatePlan}
             onDeletePlan={handleDeletePlan}
             hospitalName={activeHospital?.name}
             onNavigateToScanner={() => {
               setActiveMainTab('conferencia');
               setIsScannerOpen(true);
             }}
+            onOpenAddEquipment={(targetPlanId) => setAddEquipmentModal({ isOpen: true, planId: targetPlanId || activePlanId })}
+            onEditEquipment={(eq) => setEditEquipmentModal({ isOpen: true, equipment: eq })}
           />
         ) : activeMainTab === 'devolucao' ? (
           <CarrinhoDevolucaoTab
@@ -1996,6 +2074,7 @@ export default function App() {
             onOpenGoogleModal={() => setIsGoogleModalOpen(true)}
             onLoadSample={handleLoadSample}
             onDropFile={processFile}
+            onOpenAddEquipment={() => setAddEquipmentModal({ isOpen: true, planId: activePlanId })}
             hospitalName={activeHospital?.name}
           />
         ) : (
@@ -2029,6 +2108,7 @@ export default function App() {
               sectorColors={sectorColors}
               onOpenSectorColors={() => setIsSectorColorModalOpen(true)}
               onEditEquipment={(eq) => setEditEquipmentModal({ isOpen: true, equipment: eq })}
+              onOpenAddEquipment={() => setAddEquipmentModal({ isOpen: true, planId: activePlanId })}
             />
 
           </div>
@@ -2211,6 +2291,17 @@ export default function App() {
         hospitalName={activeHospital?.name || 'Hospital'}
         currentUser={currentUser}
         onSave={handleSaveEquipmentEdit}
+      />
+
+      {/* Modal de Cadastro de Novo Equipamento no Plano */}
+      <AddEquipmentModal
+        isOpen={addEquipmentModal.isOpen}
+        onClose={() => setAddEquipmentModal({ isOpen: false, planId: null })}
+        onSave={handleSaveNewEquipment}
+        plans={monthlyPlans}
+        activePlanId={addEquipmentModal.planId || activePlanId}
+        hospitalName={activeHospital?.name || 'Hospital'}
+        existingSectors={Array.from(new Set(equipments.map(e => e.setor).filter(Boolean)))}
       />
 
       {/* Floating Mobile Bottom Action Bar (Thumb-friendly for Android & iOS) */}

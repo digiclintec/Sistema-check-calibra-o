@@ -8,14 +8,16 @@ import {
   ShieldCheck, 
   Zap,
   ArrowRight,
-  FileText
+  FileText,
+  Plus
 } from 'lucide-react';
 
 export default function HeroBanner({ 
   onOpenFilePicker, 
   onOpenGoogleModal, 
   onLoadSample,
-  onDropFile
+  onDropFile,
+  onOpenAddEquipment
 }) {
   const [isHoveringDrop, setIsHoveringDrop] = useState(false);
 
@@ -40,8 +42,8 @@ export default function HeroBanner({
           O sistema detecta automaticamente os aparelhos, tags e códigos de barra para você começar a bipar e dar check na hora!
         </p>
 
-        {/* 3 Call to Action Options */}
-        <div className="pt-4 grid grid-cols-1 sm:grid-cols-3 gap-3.5 text-left">
+        {/* 4 Call to Action Options */}
+        <div className="pt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 text-left">
           
           {/* Option 1: File Upload (Drag & Drop Zone) */}
           <button
@@ -84,7 +86,35 @@ export default function HeroBanner({
             </div>
           </button>
 
-          {/* Option 2: Google Sheets / Copiar e Colar */}
+          {/* Option 2: Cadastrar Manualmente */}
+          {onOpenAddEquipment && (
+            <button
+              onClick={() => onOpenAddEquipment()}
+              className="p-5 rounded-2xl bg-gradient-to-br from-emerald-500/10 to-teal-500/5 dark:from-slate-800/90 dark:to-emerald-950/30 border border-emerald-300 dark:border-emerald-800/60 hover:border-emerald-500 hover:shadow-lg transition text-left group flex flex-col justify-between"
+            >
+              <div>
+                <div className="w-11 h-11 rounded-2xl bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                  <Plus className="w-6 h-6 stroke-[3]" />
+                </div>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-600 text-white">
+                    Sem Arquivo
+                  </span>
+                </div>
+                <h4 className="font-bold text-base text-slate-900 dark:text-white mb-1">
+                  Cadastrar Manualmente
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Adicione aparelhos, datas e previsão de calibração direto na tela
+                </p>
+              </div>
+              <div className="mt-4 text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                Novo Equipamento <ArrowRight className="w-3.5 h-3.5" />
+              </div>
+            </button>
+          )}
+
+          {/* Option 3: Google Sheets / Copiar e Colar */}
           <button
             onClick={onOpenGoogleModal}
             className="p-5 rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 hover:border-emerald-500 hover:shadow-lg transition text-left group flex flex-col justify-between"
@@ -95,11 +125,11 @@ export default function HeroBanner({
               </div>
               <div className="flex items-center gap-1.5 mb-1">
                 <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-300">
-                  Sem Baixar
+                  Google Drive
                 </span>
               </div>
               <h4 className="font-bold text-base text-slate-900 dark:text-white mb-1">
-                Copiar e Colar (Ctrl+V)
+                Planilha Google
               </h4>
               <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
                 Cole dados do Google Sheets ou link compartilhado
@@ -110,7 +140,7 @@ export default function HeroBanner({
             </div>
           </button>
 
-          {/* Option 3: Test Sample Data */}
+          {/* Option 4: Test Sample Data */}
           <button
             onClick={onLoadSample}
             className="p-5 rounded-2xl bg-gradient-to-br from-indigo-50 to-blue-50/50 dark:from-slate-800/90 dark:to-indigo-950/30 border border-indigo-200 dark:border-indigo-800/50 hover:border-indigo-500 hover:shadow-lg transition text-left group flex flex-col justify-between"

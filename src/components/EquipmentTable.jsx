@@ -30,7 +30,8 @@ import {
   Settings,
   Palette,
   Package,
-  Pencil
+  Pencil,
+  Plus
 } from 'lucide-react';
 import { extractCleanSerialNumber, parseCompositeBarcode } from '../utils/gs1Parser';
 import { MODALITIES, isEquipmentChecked, getCheckMeta } from '../utils/modalities';
@@ -51,7 +52,8 @@ export default function EquipmentTable({
   onOpenServiceConfig = null,
   sectorColors = {},
   onOpenSectorColors = null,
-  onEditEquipment = null
+  onEditEquipment = null,
+  onOpenAddEquipment = null
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSector, setSelectedSector] = useState('ALL');
@@ -341,8 +343,20 @@ export default function EquipmentTable({
         {/* Row 3: Quick Action Tools (Digitalizar Foto OCR & Ações em Massa com Senha) */}
         <div className="pt-2 border-t border-slate-200/60 dark:border-slate-800/60 flex flex-wrap items-center justify-between gap-2 w-full">
           
-          {/* Digitalizar Foto OCR Button */}
+          {/* Digitalizar Foto OCR Button & Novo Equipamento */}
           <div className="flex items-center gap-2">
+            {onOpenAddEquipment && (
+              <button
+                type="button"
+                onClick={onOpenAddEquipment}
+                className="py-1.5 px-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm active:scale-95 transition"
+                title="Cadastrar um novo equipamento no plano"
+              >
+                <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                <span>+ Cadastrar</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={onOpenSerialScan}
@@ -793,10 +807,20 @@ export default function EquipmentTable({
                       </div>
                     </td>
 
-                    <td className="py-3 px-4 text-slate-600 dark:text-slate-300 font-mono">
-                      <div className="flex items-center gap-1.5">
-                        <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                        <span>{item.validadeCalibracao || 'Não informada'}</span>
+                    <td className="py-3 px-4 font-mono">
+                      <div className="flex flex-col gap-1 items-start">
+                        <div className="flex items-center gap-1.5 font-extrabold text-slate-800 dark:text-slate-200">
+                          <Calendar className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                          <span>{item.validadeCalibracao || item.proximaCalibracao || 'Não informada'}</span>
+                        </div>
+                        {item.dataCalibracao && (
+                          <span className="text-[10px] text-slate-400 font-normal">
+                            Última: {item.dataCalibracao}
+                          </span>
+                        )}
+                        <div className="scale-90 origin-left">
+                          {getStatusBadge(item.statusCalibracao)}
+                        </div>
                       </div>
                     </td>
 

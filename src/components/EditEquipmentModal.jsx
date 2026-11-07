@@ -14,8 +14,10 @@ import {
   EyeOff, 
   Sparkles,
   ShieldCheck,
-  Check
+  Check,
+  Calendar
 } from 'lucide-react';
+import { calculateNextCalibration, computeCalibrationStatus } from './AddEquipmentModal';
 
 export default function EditEquipmentModal({
   isOpen,
@@ -32,6 +34,10 @@ export default function EditEquipmentModal({
   const [modelo, setModelo] = useState('');
   const [fabricante, setFabricante] = useState('');
   const [setor, setSetor] = useState('');
+  const [dataCalibracao, setDataCalibracao] = useState('');
+  const [periodicidadeMeses, setPeriodicidadeMeses] = useState('12');
+  const [validadeCalibracao, setValidadeCalibracao] = useState('');
+  const [observacao, setObservacao] = useState('');
   
   const [pin, setPin] = useState('');
   const [showPin, setShowPin] = useState(false);
@@ -50,6 +56,10 @@ export default function EditEquipmentModal({
       setModelo(equipment.modelo || '');
       setFabricante(equipment.fabricante || '');
       setSetor(equipment.setor || '');
+      setDataCalibracao(equipment.dataCalibracao || '');
+      setPeriodicidadeMeses(String(equipment.periodicidadeMeses || '12'));
+      setValidadeCalibracao(equipment.validadeCalibracao || equipment.proximaCalibracao || '');
+      setObservacao(equipment.observacao || '');
       setPin('');
       setError('');
       setShowAdvanced(false);
@@ -61,6 +71,24 @@ export default function EditEquipmentModal({
   }, [isOpen, equipment]);
 
   if (!isOpen || !equipment) return null;
+
+  const handleDataCalibracaoChange = (e) => {
+    const val = e.target.value;
+    setDataCalibracao(val);
+    if (val && periodicidadeMeses) {
+      const next = calculateNextCalibration(val, periodicidadeMeses);
+      setValidadeCalibracao(next);
+    }
+  };
+
+  const handlePeriodicidadeChange = (e) => {
+    const val = e.target.value;
+    setPeriodicidadeMeses(val);
+    if (dataCalibracao && val) {
+      const next = calculateNextCalibration(dataCalibracao, val);
+      setValidadeCalibracao(next);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -80,6 +108,7 @@ export default function EditEquipmentModal({
     setIsLoading(true);
 
     try {
+      const finalValidade = validadeCalibracao.trim();
       const updatedData = {
         ...equipment,
         tag: tag.trim(),
@@ -88,7 +117,13 @@ export default function EditEquipmentModal({
         equipamento: equipamento.trim() || equipment.equipamento,
         modelo: modelo.trim(),
         fabricante: fabricante.trim(),
-        setor: setor.trim() || equipment.setor || 'Geral'
+        setor: setor.trim() || equipment.setor || 'Geral',
+        dataCalibracao: dataCalibracao.trim() || null,
+        periodicidadeMeses: parseInt(periodicidadeMeses, 10) || 12,
+        validadeCalibracao: finalValidade || null,
+        proximaCalibracao: finalValidade || null,
+        statusCalibracao: finalValidade ? computeCalibrationStatus(finalValidade) : (equipment.statusCalibracao || 'Válido'),
+        observacao: observacao.trim()
       };
 
       const res = await onSave(updatedData, pin.trim());
@@ -337,6 +372,71 @@ export default function EditEquipmentModal({
                     placeholder="Ex: UTIN, UCINCO, Centro Cirúrgico..."
                     className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-medium"
                   />
+                </div>
+
+                {/* Previsão & Datas de Calibração */}
+                <div className="pt-2 border-t border-slate-200 dark:border-slate-700 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5 text-xs">
+                      <Calendar className="w-3.5 h-3.5 text-blue-500" />
+                      <span>Cronograma & Previsão de Calibração:</span>
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block mb-0.5">
+                        Data da Calibração:
+                      </label>
+                      <input
+                        type="date"
+                        value={dataCalibracao}
+                        onChange={handleDataCalibracaoChange}
+                        className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-mono text-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block mb-0.5">
+                        Periodicidade:
+                      </label>
+                      <select
+                        value={periodicidadeMeses}
+                        onChange={handlePeriodicidadeChange}
+                        className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-xs"
+                      >
+                        <option value="3">3 Meses (Trimestral)</option>
+                        <option value="6">6 Meses (Semestral)</option>
+                        <option value="12">12 Meses (Anual)</option>
+                        <option value="24">24 Meses (Bienal)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block mb-0.5">
+                        Previsão Próxima:
+                      </label>
+                      <input
+                        type="date"
+                        value={validadeCalibracao}
+                        onChange={(e) => setValidadeCalibracao(e.target.value)}
+                        className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-mono text-xs font-bold"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block mb-0.5">
+                      Observações Metrológicas:
+                    </label>
+                    <input
+                      type="text"
+                      value={observacao}
+                      onChange={(e) => setObservacao(e.target.value)}
+                      placeholder="Ex: Calibração acreditada RBC, lacre ok..."
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-xs"
+                    />
+                  </div>
                 </div>
               </div>
             )}

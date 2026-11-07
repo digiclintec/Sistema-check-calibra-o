@@ -792,28 +792,65 @@ app.post('/api/hospitals/switch', (req, res) => {
   res.json({ success: true, activeHospitalId: targetHospId || db.activeHospitalId });
 });
 
-// ---------------- MONTHLY CALIBRATION PLANS ROUTES ---------------- //
+// ---------------- MONTHLY & ANNUAL CALIBRATION PLANS ROUTES ---------------- //
 
-// List all monthly plans for a hospital
+// List all calibration plans for a hospital (with enriched metadata & equipments)
 app.get('/api/plans', (req, res) => {
   const db = readDb();
   const targetId = req.query.hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
   const hospital = (db.hospitals || []).find(h => h.id === targetId) || db.hospitals?.[0] || {};
   
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
   const plans = (hospital.plans || []).map(p => {
-    const total = (p.equipments || []).length;
-    const checked = (p.equipments || []).filter(e => e.checado).length;
+    const eqs = Array.isArray(p.equipments) ? p.equipments : [];
+    const total = eqs.length;
+    const checked = eqs.filter(e => e.checado).length;
     const pending = total - checked;
     const percent = total > 0 ? Math.round((checked / total) * 100) : 0;
+
+    // Estatísticas de validade e previsão das calibrações
+    let vencidos = 0;
+    let aVencer = 0;
+    let emDia = 0;
+
+    eqs.forEach(eq => {
+      const valDateStr = eq.validadeCalibracao || eq.proximaCalibracao;
+      if (!valDateStr) {
+        if (eq.statusCalibracao?.toLowerCase().includes('vencid')) vencidos++;
+        else emDia++;
+        return;
+      }
+      const d = new Date(valDateStr + 'T00:00:00');
+      if (isNaN(d.getTime())) {
+        emDia++;
+        return;
+      }
+      const diffDays = Math.ceil((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      if (diffDays < 0) vencidos++;
+      else if (diffDays <= 30) aVencer++;
+      else emDia++;
+    });
+
     return {
       id: p.id,
       title: p.title || p.fileName || 'Planejamento de Calibração',
+      tipo: p.tipo || (p.ano ? 'anual' : 'mensal'),
+      ano: p.ano || (p.mes && p.mes.match(/\d{4}/) ? p.mes.match(/\d{4}/)[0] : '2026'),
       mes: p.mes || 'Novembro/2026',
+      dataInicio: p.dataInicio || '',
+      dataFim: p.dataFim || '',
+      descricao: p.descricao || '',
       fileName: p.fileName || '',
       total,
       checked,
       pending,
       percent,
+      vencidos,
+      aVencer,
+      emDia,
+      equipments: eqs,
       createdAt: p.createdAt,
       lastUpdated: p.lastUpdated
     };
@@ -859,9 +896,9 @@ app.post('/api/plans/switch', (req, res) => {
   });
 });
 
-// Create new monthly plan
+// Create new monthly/annual plan (suporta plano em branco e manual)
 app.post('/api/plans/create', (req, res) => {
-  const { hospitalId, title, mes, fileName, equipments } = req.body || {};
+  const { hospitalId, title, mes, fileName, equipments, tipo, ano, dataInicio, dataFim, descricao } = req.body || {};
   const db = readDb();
   const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
   const hospIdx = (db.hospitals || []).findIndex(h => h.id === targetId);
@@ -874,10 +911,17 @@ app.post('/api/plans/create', (req, res) => {
   hospital.plans = hospital.plans || [];
 
   const newPlanId = 'plan_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+  const detectedAno = String(ano || (mes && mes.match(/\d{4}/) ? mes.match(/\d{4}/)[0] : new Date().getFullYear())).trim();
+  
   const newPlan = {
     id: newPlanId,
-    title: String(title || fileName || 'Planejamento de Calibração').trim(),
-    mes: String(mes || 'Novembro/2026').trim(),
+    title: String(title || fileName || `Plano Anual ${detectedAno}`).trim(),
+    tipo: String(tipo || 'anual').trim(),
+    ano: detectedAno,
+    mes: String(mes || `Ano Todo / ${detectedAno}`).trim(),
+    dataInicio: String(dataInicio || `${detectedAno}-01-01`).trim(),
+    dataFim: String(dataFim || `${detectedAno}-12-31`).trim(),
+    descricao: String(descricao || '').trim(),
     fileName: String(fileName || '').trim(),
     equipments: Array.isArray(equipments) ? equipments : [],
     createdAt: new Date().toISOString(),
@@ -894,11 +938,137 @@ app.post('/api/plans/create', (req, res) => {
 
   res.json({
     success: true,
-    message: 'Novo planejamento criado e ativado com sucesso!',
+    message: `Plano "${newPlan.title}" criado e ativado com sucesso!`,
     plan: newPlan,
     activePlanId: newPlanId,
     equipments: newPlan.equipments,
     activeSheetName: hospital.activeSheetName
+  });
+});
+
+// Update an existing plan metadata
+app.post('/api/plans/update', (req, res) => {
+  const { hospitalId, planId, title, mes, ano, tipo, dataInicio, dataFim, descricao } = req.body || {};
+  const db = readDb();
+  const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
+  const hospIdx = (db.hospitals || []).findIndex(h => h.id === targetId);
+
+  if (hospIdx === -1) {
+    return res.status(404).json({ success: false, message: 'Hospital não encontrado.' });
+  }
+
+  const hospital = db.hospitals[hospIdx];
+  const plan = (hospital.plans || []).find(p => p.id === planId);
+  if (!plan) {
+    return res.status(404).json({ success: false, message: 'Planejamento não encontrado.' });
+  }
+
+  if (title) plan.title = String(title).trim();
+  if (mes) plan.mes = String(mes).trim();
+  if (ano) plan.ano = String(ano).trim();
+  if (tipo) plan.tipo = String(tipo).trim();
+  if (dataInicio !== undefined) plan.dataInicio = String(dataInicio).trim();
+  if (dataFim !== undefined) plan.dataFim = String(dataFim).trim();
+  if (descricao !== undefined) plan.descricao = String(descricao).trim();
+  plan.lastUpdated = Date.now();
+  hospital.lastUpdated = Date.now();
+  db.lastUpdated = Date.now();
+  saveDb(db);
+
+  res.json({
+    success: true,
+    message: 'Plano atualizado com sucesso.',
+    plan
+  });
+});
+
+// Cadastrar novo equipamento diretamente em um plano
+app.post('/api/equipment/create', (req, res) => {
+  const { hospitalId, planId, equipment, userEmail, userName } = req.body || {};
+  if (!equipment) {
+    return res.status(400).json({ success: false, message: 'Dados do equipamento não fornecidos.' });
+  }
+
+  const db = readDb();
+  const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
+  const hospIdx = (db.hospitals || []).findIndex(h => h.id === targetId);
+
+  if (hospIdx === -1) {
+    return res.status(404).json({ success: false, message: 'Hospital não encontrado.' });
+  }
+
+  const hospital = db.hospitals[hospIdx];
+  hospital.plans = hospital.plans || [];
+
+  // Encontra o plano alvo ou usa o ativo
+  const targetPlanId = planId || hospital.activePlanId || hospital.plans[0]?.id;
+  let targetPlan = hospital.plans.find(p => p.id === targetPlanId);
+
+  // Se ainda não existir nenhum plano, cria um Plano Anual padrão
+  if (!targetPlan) {
+    const curYear = new Date().getFullYear();
+    targetPlan = {
+      id: 'plan_' + Date.now(),
+      title: `Plano Anual ${curYear}`,
+      tipo: 'anual',
+      ano: String(curYear),
+      mes: `Ano Todo / ${curYear}`,
+      dataInicio: `${curYear}-01-01`,
+      dataFim: `${curYear}-12-31`,
+      fileName: 'Cadastro_Manual.xlsx',
+      equipments: [],
+      createdAt: new Date().toISOString(),
+      lastUpdated: Date.now()
+    };
+    hospital.plans.push(targetPlan);
+    hospital.activePlanId = targetPlan.id;
+  }
+
+  targetPlan.equipments = targetPlan.equipments || [];
+
+  // Prepara o objeto do equipamento garantindo unicidade
+  const eqId = equipment.id || 'EQP-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 6);
+  const finalEq = {
+    ...equipment,
+    id: eqId,
+    tag: equipment.tag || equipment.codigoBarras || eqId,
+    serie: equipment.serie || equipment.codigoBarras || eqId,
+    codigoBarras: equipment.codigoBarras || equipment.serie || equipment.tag || eqId,
+    equipamento: equipment.equipamento || 'Equipamento',
+    fabricante: equipment.fabricante || 'Não especificado',
+    modelo: equipment.modelo || 'Padrão',
+    setor: equipment.setor || 'Geral',
+    dataCalibracao: equipment.dataCalibracao || null,
+    periodicidadeMeses: parseInt(equipment.periodicidadeMeses, 10) || 12,
+    validadeCalibracao: equipment.validadeCalibracao || equipment.proximaCalibracao || null,
+    proximaCalibracao: equipment.proximaCalibracao || equipment.validadeCalibracao || null,
+    statusCalibracao: equipment.statusCalibracao || 'Válido',
+    checado: Boolean(equipment.checado),
+    observacao: equipment.observacao || ''
+  };
+
+  targetPlan.equipments.push(finalEq);
+  targetPlan.lastUpdated = Date.now();
+
+  // Se o plano for o ativo, atualiza também a lista principal do hospital
+  if (hospital.activePlanId === targetPlan.id || hospital.plans.length === 1) {
+    hospital.equipments = targetPlan.equipments;
+    hospital.activeSheetName = targetPlan.fileName || targetPlan.title;
+  }
+
+  const inspectorLabel = userName ? `${userName} (${userEmail})` : (userEmail || 'Sistema');
+  hospital.lastUpdated = Date.now();
+  hospital.lastUpdatedBy = inspectorLabel;
+  db.lastUpdated = Date.now();
+  saveDb(db);
+
+  res.json({
+    success: true,
+    message: `Equipamento "${finalEq.equipamento}" cadastrado com sucesso no plano "${targetPlan.title}"!`,
+    equipment: finalEq,
+    planId: targetPlan.id,
+    planTitle: targetPlan.title,
+    equipments: hospital.equipments
   });
 });
 
