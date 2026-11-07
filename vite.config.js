@@ -993,6 +993,41 @@ function apiServerPlugin() {
             return res.end(JSON.stringify({ success: true, message: `${payloadItems.length} equipamentos gravados no Google Sheets!` }));
           }
 
+          // Format / Padronizar Google Sheet colors
+          if (req.url === '/api/format-google-sheet' && req.method === 'POST') {
+            const { hospitalId, planId, webhookUrl } = parsedBody;
+            const db = readDb();
+            const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
+            const hospital = (db.hospitals || []).find(h => h.id === targetId);
+            if (!hospital) {
+              res.statusCode = 404;
+              return res.end(JSON.stringify({ success: false, message: 'Hospital não encontrado' }));
+            }
+            const targetPlan = (hospital.plans || []).find(p => p.id === (planId || hospital.activePlanId));
+            const targetWebhook = (webhookUrl || (targetPlan && targetPlan.googleSheetWebhookUrl) || hospital.googleSheetWebhookUrl || '').trim();
+            if (!targetWebhook) {
+              res.statusCode = 400;
+              return res.end(JSON.stringify({ success: false, message: 'Nenhum Webhook configurado' }));
+            }
+            const sheetUrl = (targetPlan && targetPlan.googleSheetUrl) || hospital.googleSheetUrl || '';
+            const sheetId = extractSpreadsheetId(sheetUrl);
+            const targetSheetName = (targetPlan && (targetPlan.sheetName || targetPlan.fileName || targetPlan.title)) || hospital.sheetName || hospital.activeSheetName || '';
+
+            const formatRes = await sendCheckToGoogleWebhook(targetWebhook, {
+              action: 'padronizar',
+              hospitalId: hospital.id,
+              planId: targetPlan ? targetPlan.id : null,
+              spreadsheetUrl: sheetUrl,
+              spreadsheetId: sheetId,
+              sheetName: targetSheetName
+            });
+            if (!formatRes.success) {
+              res.statusCode = 500;
+              return res.end(JSON.stringify({ success: false, message: formatRes.error || 'Erro ao padronizar' }));
+            }
+            return res.end(JSON.stringify({ success: true, message: 'Todas as cores e formatações da planilha foram padronizadas com sucesso!', data: formatRes.data }));
+          }
+
           // Toggle check
           if (req.url === '/api/toggle-check' && req.method === 'POST') {
             const { id, userEmail, userName, hospitalId, modality = 'calibracao' } = parsedBody;

@@ -1111,27 +1111,26 @@ export default function App() {
     }
 
     try {
-      targetMods.forEach(m => {
-        fetch('/api/toggle-check', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id,
-            modality: m,
-            hospitalId: activeHospitalId,
-            planId: activePlanId,
-            userEmail: currentUser?.email,
-            userName: currentUser?.name
-          })
-        }).then(res => res.json()).then(data => {
-          if (data.success && data.lastUpdated) {
-            lastUpdatedServerRef.current = data.lastUpdated;
-            if (googleSheetWebhookUrl) {
-              showToast('success', `🤖 Agente: [${target.tag || target.equipamento}] gravado com sucesso na planilha Google!`);
-            }
+      fetch('/api/toggle-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id,
+          modalities: targetMods,
+          modality: targetMods.length === 1 ? targetMods[0] : 'all',
+          hospitalId: activeHospitalId,
+          planId: activePlanId,
+          userEmail: currentUser?.email,
+          userName: currentUser?.name
+        })
+      }).then(res => res.json()).then(data => {
+        if (data.success && data.lastUpdated) {
+          lastUpdatedServerRef.current = data.lastUpdated;
+          if (googleSheetWebhookUrl) {
+            showToast('success', `🤖 Agente: [${target.tag || target.equipamento}] gravado com sucesso na planilha Google!`);
           }
-        }).catch(() => {});
-      });
+        }
+      }).catch(() => {});
     } catch (e) {}
 
     const modLabels = targetMods.map(m => MODALITIES[m]?.shortName || m).join(' + ');

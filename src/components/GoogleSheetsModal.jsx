@@ -42,6 +42,7 @@ export default function GoogleSheetsModal({
   const [loading, setLoading] = useState(false);
   const [testingWebhook, setTestingWebhook] = useState(false);
   const [pushingAll, setPushingAll] = useState(false);
+  const [formattingSheet, setFormattingSheet] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -240,6 +241,40 @@ export default function GoogleSheetsModal({
       setError(`Erro ao gravar na planilha: ${err.message}`);
     } finally {
       setPushingAll(false);
+    }
+  };
+
+  // Padronizar cores de todas as linhas da planilha Google (1 Clique)
+  const handleFormatGoogleSheet = async () => {
+    const targetUrl = (webhookUrl || currentGoogleSheetWebhookUrl || '').trim();
+    if (!targetUrl) {
+      setError('Insira ou configure a URL do Webhook do Google Apps Script primeiro.');
+      return;
+    }
+
+    setFormattingSheet(true);
+    setError('');
+    setSuccessMsg('');
+
+    try {
+      const res = await fetch('/api/format-google-sheet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hospitalId,
+          planId,
+          webhookUrl: targetUrl
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Falha ao padronizar cores da planilha.');
+      }
+      setSuccessMsg('🎨 ' + (data.message || 'Todas as cores foram padronizadas com sucesso no Google Sheets!'));
+    } catch (err) {
+      setError(`Erro na padronização: ${err.message}`);
+    } finally {
+      setFormattingSheet(false);
     }
   };
 
@@ -488,15 +523,28 @@ export default function GoogleSheetsModal({
                         {equipments.length} equipamentos no plano atual ({equipments.filter(e => e.checado || e.check_calibracao).length} conferidos)
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={handlePushAllToGoogleSheet}
-                      disabled={pushingAll || (!webhookUrl.trim() && !currentGoogleSheetWebhookUrl)}
-                      className="py-2 px-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-blue-600/30 disabled:opacity-50"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${pushingAll ? 'animate-spin' : ''}`} />
-                      {pushingAll ? 'Gravando no Google...' : 'Gravar Calibrações na Planilha Google Agora'}
-                    </button>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={handleFormatGoogleSheet}
+                        disabled={formattingSheet || (!webhookUrl.trim() && !currentGoogleSheetWebhookUrl)}
+                        className="py-2 px-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-emerald-600/30 disabled:opacity-50"
+                        title="Padroniza e pinta todas as linhas da planilha com o verde oficial #E6F4EA"
+                      >
+                        <Sparkles className={`w-3.5 h-3.5 ${formattingSheet ? 'animate-spin' : ''}`} />
+                        {formattingSheet ? 'Padronizando Cores...' : '🎨 Padronizar Cores da Planilha'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handlePushAllToGoogleSheet}
+                        disabled={pushingAll || (!webhookUrl.trim() && !currentGoogleSheetWebhookUrl)}
+                        className="py-2 px-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-blue-600/30 disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${pushingAll ? 'animate-spin' : ''}`} />
+                        {pushingAll ? 'Gravando no Google...' : 'Gravar Todas no Google Agora'}
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}

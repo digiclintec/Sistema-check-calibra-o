@@ -2032,6 +2032,61 @@ app.post('/api/push-all-to-google-sheet', async (req, res) => {
   }
 });
 
+// Route 7: Padronizar Todas as Cores e Linhas da Planilha Google (1 Clique)
+app.post('/api/format-google-sheet', async (req, res) => {
+  const { hospitalId, planId, webhookUrl } = req.body || {};
+  const db = readDb();
+  const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
+  const hospital = (db.hospitals || []).find(h => h.id === targetId);
+
+  if (!hospital) {
+    return res.status(404).json({ success: false, message: 'Hospital ativo não encontrado.' });
+  }
+
+  const targetPlan = (hospital.plans || []).find(p => p.id === (planId || hospital.activePlanId));
+  const targetWebhook = (webhookUrl || (targetPlan && targetPlan.googleSheetWebhookUrl) || hospital.googleSheetWebhookUrl || '').trim();
+
+  if (!targetWebhook) {
+    return res.status(400).json({
+      success: false,
+      message: 'Nenhum Webhook configurado. Configure a URL na aba "Gravação no Google Sheets".'
+    });
+  }
+
+  const sheetUrl = (targetPlan && targetPlan.googleSheetUrl) || hospital.googleSheetUrl || '';
+  const sheetId = extractSpreadsheetId(sheetUrl);
+  const targetSheetName = (targetPlan && (targetPlan.sheetName || targetPlan.fileName || targetPlan.title)) || hospital.sheetName || hospital.activeSheetName || '';
+
+  try {
+    const result = await sendCheckToGoogleWebhook(targetWebhook, {
+      action: 'padronizar',
+      hospitalId: hospital.id,
+      planId: targetPlan ? targetPlan.id : null,
+      spreadsheetUrl: sheetUrl,
+      spreadsheetId: sheetId,
+      sheetName: targetSheetName
+    });
+
+    if (!result.success) {
+      return res.status(500).json({
+        success: false,
+        message: 'Falha ao padronizar cores no Google Sheets: ' + (result.error || 'Erro desconhecido')
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Todas as cores e formatações da planilha foram padronizadas com sucesso com o verde oficial!',
+      data: result.data
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: 'Erro ao conectar ao Google Apps Script: ' + err.message
+    });
+  }
+});
+
 // Background Auto-Sync Worker for all hospitals connected to Google Sheets (Executa a cada 25s)
 setInterval(async () => {
   try {
@@ -2077,7 +2132,7 @@ setInterval(async () => {
 
 // Check or Uncheck an equipment inside active hospital with multi-modality support
 app.post('/api/toggle-check', (req, res) => {
-  const { id, modality = 'calibracao', userEmail, userName, hospitalId, planId, setorRetirada } = req.body || {};
+  const { id, modality = 'calibracao', modalities, userEmail, userName, hospitalId, planId, setorRetirada } = req.body || {};
   if (!id) {
     return res.status(400).json({ success: false, message: 'ID do equipamento não informado.' });
   }
@@ -2114,43 +2169,57 @@ app.post('/api/toggle-check', (req, res) => {
   const nowIso = new Date().toISOString();
   const nowTimestamp = Date.now();
 
-  let nextChecked = false;
-  if (modality === 'externa' || modality === 'manutencao_externa') {
-    nextChecked = !Boolean(item.check_externa);
-    item.check_externa = nextChecked;
-    item.data_externa = nextChecked ? nowIso : null;
-    item.usuario_externa = nextChecked ? inspectorLabel : null;
-    item.motivo_externa = nextChecked ? 'Calibração e conserto por equipe externa terceirizada' : null;
-    if (nextChecked) {
-      // Conforme solicitado: Manutenção externa não é calibração interna
-      item.check_calibracao = false;
-      item.data_calibracao = null;
-      item.usuario_calibracao = null;
-    }
-  } else if (modality === 'preventiva') {
-    nextChecked = !Boolean(item.check_preventiva);
-    item.check_preventiva = nextChecked;
-    item.data_preventiva = nextChecked ? nowIso : null;
-    item.usuario_preventiva = nextChecked ? inspectorLabel : null;
-  } else if (modality === 'seguranca') {
-    nextChecked = !Boolean(item.check_seguranca);
-    item.check_seguranca = nextChecked;
-    item.data_seguranca = nextChecked ? nowIso : null;
-    item.usuario_seguranca = nextChecked ? inspectorLabel : null;
+  // Suporte a "Todas de uma vez" (Calibração + Preventiva + TSE)
+  let targetMods = [];
+  if (Array.isArray(modalities) && modalities.length > 0) {
+    targetMods = modalities;
+  } else if (modality === 'all' || modality === 'todos' || modality === 'geral' || modality === 'all_at_once') {
+    targetMods = ['calibracao', 'preventiva', 'seguranca'];
+  } else if (hospital.serviceConfig?.executionMode === 'all_at_once' && modality !== 'externa' && modality !== 'manutencao_externa') {
+    targetMods = ['calibracao', 'preventiva', 'seguranca'];
   } else {
-    // calibracao (padrão)
-    nextChecked = !Boolean(item.check_calibracao !== undefined ? item.check_calibracao : item.checado);
-    item.check_calibracao = nextChecked;
-    item.data_calibracao = nextChecked ? nowIso : null;
-    item.usuario_calibracao = nextChecked ? inspectorLabel : null;
-    if (nextChecked) {
-      // Se marcou calibração interna, desmarca externa
-      item.check_externa = false;
-      item.data_externa = null;
-      item.usuario_externa = null;
-      item.motivo_externa = null;
-    }
+    targetMods = [modality];
   }
+
+  const allAlreadyChecked = targetMods.every(m => {
+    if (m === 'externa' || m === 'manutencao_externa') return Boolean(item.check_externa);
+    if (m === 'preventiva') return Boolean(item.check_preventiva);
+    if (m === 'seguranca') return Boolean(item.check_seguranca);
+    return Boolean(item.check_calibracao !== undefined ? item.check_calibracao : item.checado);
+  });
+  const nextChecked = !allAlreadyChecked;
+
+  targetMods.forEach(m => {
+    if (m === 'externa' || m === 'manutencao_externa') {
+      item.check_externa = nextChecked;
+      item.data_externa = nextChecked ? nowIso : null;
+      item.usuario_externa = nextChecked ? inspectorLabel : null;
+      item.motivo_externa = nextChecked ? 'Calibração e conserto por equipe externa terceirizada' : null;
+      if (nextChecked) {
+        item.check_calibracao = false;
+        item.data_calibracao = null;
+        item.usuario_calibracao = null;
+      }
+    } else if (m === 'preventiva') {
+      item.check_preventiva = nextChecked;
+      item.data_preventiva = nextChecked ? nowIso : null;
+      item.usuario_preventiva = nextChecked ? inspectorLabel : null;
+    } else if (m === 'seguranca') {
+      item.check_seguranca = nextChecked;
+      item.data_seguranca = nextChecked ? nowIso : null;
+      item.usuario_seguranca = nextChecked ? inspectorLabel : null;
+    } else {
+      item.check_calibracao = nextChecked;
+      item.data_calibracao = nextChecked ? nowIso : null;
+      item.usuario_calibracao = nextChecked ? inspectorLabel : null;
+      if (nextChecked) {
+        item.check_externa = false;
+        item.data_externa = null;
+        item.usuario_externa = null;
+        item.motivo_externa = null;
+      }
+    }
+  });
 
   // Se foi informado setor de retirada (coleta) da bomba
   if (setorRetirada) {
@@ -2200,10 +2269,8 @@ app.post('/api/toggle-check', (req, res) => {
   if (webhookUrl) {
     const checkedItem = list[idx] || item;
     const statusText = nextChecked ? (
-      modality === 'externa' || modality === 'manutencao_externa' ? 'MANUTENÇÃO EXTERNA' :
-      modality === 'preventiva' ? 'PREVENTIVA OK' :
-      modality === 'seguranca' ? 'SEGURANÇA ELÉTRICA OK' : 'CONFERIDO / CALIBRADO'
-    ) : 'NÃO CONFERIDO';
+      targetMods.includes('externa') ? 'MANUTENÇÃO EXTERNA' : 'CONFERIDO / OK'
+    ) : 'PENDENTE';
 
     const sheetUrl = (targetPlan && targetPlan.googleSheetUrl) || hospital.googleSheetUrl || '';
     const sheetId = extractSpreadsheetId(sheetUrl);
@@ -2225,7 +2292,8 @@ app.post('/api/toggle-check', (req, res) => {
       modelo: checkedItem.modelo || '',
       setor: checkedItem.setor || '',
       setorRetirada: checkedItem.setor_retirada || '',
-      modality,
+      modalities: targetMods,
+      modality: targetMods.length === 1 ? targetMods[0] : 'all',
       checked: nextChecked,
       statusText,
       dataCheck: checkedItem.dataCheck || nowIso,
