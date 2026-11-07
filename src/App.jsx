@@ -471,6 +471,7 @@ export default function App() {
           dataInicio: planData.dataInicio,
           dataFim: planData.dataFim,
           descricao: planData.descricao,
+          googleSheetUrl: planData.googleSheetUrl,
           fileName: planData.fileName,
           equipments: planData.equipments || [],
           userEmail: currentUser?.email,

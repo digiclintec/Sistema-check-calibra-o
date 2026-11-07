@@ -159,7 +159,8 @@ export default function GoogleSheetsModal({
       if (!res.ok || !data.success) {
         throw new Error(data.message || 'Falha ao testar conexão com o Webhook.');
       }
-      setSuccessMsg('✅ Conexão validada com sucesso! A planilha do Google respondeu e está pronta para receber calibrações em tempo real.');
+      const sheetName = data.data?.spreadsheetTitle || data.data?.spreadsheetName || '';
+      setSuccessMsg(`✅ Conexão validada com sucesso! A planilha do Google respondeu${sheetName ? ` (${sheetName})` : ''} e está pronta para receber calibrações em tempo real.`);
     } catch (err) {
       setError(`Erro no teste do Webhook: ${err.message}`);
     } finally {
@@ -371,22 +372,37 @@ export default function GoogleSheetsModal({
               </div>
 
               {/* Passo a Passo em 4 Etapas */}
+              {/* Caixa Informativa: Script Universal */}
+              <div className="bg-gradient-to-r from-blue-900/40 via-indigo-900/30 to-purple-900/40 border border-blue-500/30 rounded-2xl p-3.5 flex items-start gap-3">
+                <Sparkles className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                <div className="text-xs space-y-1">
+                  <p className="font-bold text-white">
+                    🌟 Script Universal: Implante uma única vez e use em todas as planilhas e planos!
+                  </p>
+                  <p className="text-slate-300 leading-relaxed">
+                    Você <strong>não</strong> precisa criar um script novo para cada planilha. Esta mesma URL de Webhook funciona para todos os hospitais e planos anuais que você cadastrar no CalibraCheck.
+                  </p>
+                </div>
+              </div>
+
               <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-4 space-y-3">
                 <h5 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
                   <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                  Como ativar em 4 passos rápidos:
+                  Como ativar em 4 passos rápidos (ou atualizar o script):
                 </h5>
 
                 <div className="space-y-2.5 text-xs text-slate-300">
                   <div className="flex items-start gap-2.5">
                     <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center shrink-0 border border-emerald-500/30">1</span>
-                    <span className="leading-relaxed">Na sua planilha aberta no Google Sheets, clique no menu <strong>Extensões</strong> ➔ <strong>Apps Script</strong>.</span>
+                    <span className="leading-relaxed">
+                      Abra uma nova aba e acesse <strong><a href="https://script.new" target="_blank" rel="noreferrer" className="text-blue-400 underline hover:text-blue-300">https://script.new</a></strong> (ou na sua planilha vá em <em>Extensões ➔ Apps Script</em>).
+                    </span>
                   </div>
 
                   <div className="flex items-start gap-2.5">
                     <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center shrink-0 border border-emerald-500/30">2</span>
                     <div className="flex-1 space-y-1.5">
-                      <span className="leading-relaxed block">Apague o código que estiver lá e cole o nosso script de integração:</span>
+                      <span className="leading-relaxed block">Cole o script atualizado (com coloração verde automática e compatibilidade universal):</span>
                       <button
                         type="button"
                         onClick={handleCopyScript}
@@ -397,7 +413,7 @@ export default function GoogleSheetsModal({
                         }`}
                       >
                         {copiedCode ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                        {copiedCode ? 'Código Copiado com Sucesso!' : 'Copiar Código do Apps Script (1 Clique)'}
+                        {copiedCode ? 'Código Copiado com Sucesso!' : 'Copiar Script Pronto com Cores Verdes (1 Clique)'}
                       </button>
                     </div>
                   </div>
@@ -405,7 +421,7 @@ export default function GoogleSheetsModal({
                   <div className="flex items-start gap-2.5">
                     <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center shrink-0 border border-emerald-500/30">3</span>
                     <span className="leading-relaxed">
-                      Clique no ícone de <strong>Salvar (Disquete)</strong> ➔ No topo direito, clique em <strong>Implantar</strong> ➔ <strong>Nova Implantação</strong> ➔ Tipo: <strong>App da Web</strong> ➔ Em <em>Quem pode acessar</em> selecione <strong>Qualquer pessoa</strong> ➔ Clique em <strong>Implantar</strong>.
+                      Clique no ícone de <strong>Salvar (Disquete 💾)</strong> ➔ No topo direito, clique em <strong>Implantar</strong> ➔ <strong>Nova Implantação</strong> (se já implantou antes, clique em <em>Gerenciar implantações ➔ Editar ➔ Versão: Nova versão</em>) ➔ Em <em>Quem pode acessar</em> selecione <strong>Qualquer pessoa</strong> ➔ Clique em <strong>Implantar</strong>.
                     </span>
                   </div>
 

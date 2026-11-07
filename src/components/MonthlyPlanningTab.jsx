@@ -25,7 +25,8 @@ import {
   TrendingUp,
   ShieldAlert,
   Search,
-  Pencil
+  Pencil,
+  Zap
 } from 'lucide-react';
 import { parseEquipmentFile } from '../utils/fileEquipmentParser.js';
 
@@ -72,6 +73,7 @@ export default function MonthlyPlanningTab({
   const [newDataInicio, setNewDataInicio] = useState(() => `${new Date().getFullYear()}-01-01`);
   const [newDataFim, setNewDataFim] = useState(() => `${new Date().getFullYear()}-12-31`);
   const [newDescricao, setNewDescricao] = useState('');
+  const [newGoogleSheetUrl, setNewGoogleSheetUrl] = useState('');
 
   // Importação de arquivo Excel
   const [parsedFileResult, setParsedFileResult] = useState(null);
@@ -290,6 +292,7 @@ export default function MonthlyPlanningTab({
       dataInicio: newDataInicio,
       dataFim: newDataFim,
       descricao: newDescricao.trim(),
+      googleSheetUrl: newGoogleSheetUrl.trim(),
       fileName: createMode === 'excel' && parsedFileResult ? parsedFileResult.fileName : 'Cadastro_Manual.xlsx',
       equipments: createMode === 'excel' && parsedFileResult ? parsedFileResult.equipments : []
     });
@@ -297,6 +300,7 @@ export default function MonthlyPlanningTab({
     setIsCreateModalOpen(false);
     setNewTitle('');
     setNewDescricao('');
+    setNewGoogleSheetUrl('');
     setParsedFileResult(null);
     setParseError('');
   };
@@ -637,23 +641,29 @@ export default function MonthlyPlanningTab({
 
                     {/* Botões do Rodapé do Card */}
                     <div className="pt-4 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between gap-2 flex-wrap">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         {isActive ? (
-                          <button
-                            onClick={onNavigateToScanner}
-                            className="py-2 px-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs active:scale-95"
-                          >
-                            <Sparkles className="w-3.5 h-3.5" />
-                            <span>Validando Agora (Bipar)</span>
-                            <ArrowRight className="w-3.5 h-3.5" />
-                          </button>
+                          <>
+                            <span className="py-1.5 px-3 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs">
+                              <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
+                              <span>Plano Ativo no Momento</span>
+                            </span>
+                            <button
+                              onClick={onNavigateToScanner}
+                              className="py-2 px-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs active:scale-95"
+                            >
+                              <span>Bipar neste Plano</span>
+                              <ArrowRight className="w-3.5 h-3.5" />
+                            </button>
+                          </>
                         ) : (
                           <button
-                            onClick={() => onSwitchPlan(plan.id)}
-                            className="py-2 px-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs active:scale-95"
+                            onClick={() => onSwitchPlan && onSwitchPlan(plan.id)}
+                            className="py-2 px-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-blue-500/20 active:scale-95"
+                            title="Ativar este plano como foco de calibração"
                           >
-                            <Check className="w-3.5 h-3.5" />
-                            <span>Validar Este Plano</span>
+                            <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
+                            <span>⚡ Ativar Este Plano de Calibração</span>
                           </button>
                         )}
 
@@ -1130,6 +1140,28 @@ export default function MonthlyPlanningTab({
                   rows={2}
                   className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 resize-none"
                 />
+              </div>
+
+              {/* Link Opcional da Planilha Google Sheets */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Link da Planilha Google Sheets (Opcional)
+                  </label>
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
+                    <Sparkles className="w-3 h-3" /> Gravação em tempo real
+                  </span>
+                </div>
+                <input
+                  type="url"
+                  value={newGoogleSheetUrl}
+                  onChange={(e) => setNewGoogleSheetUrl(e.target.value)}
+                  placeholder="https://docs.google.com/spreadsheets/d/.../edit"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
+                />
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  Deixe em branco para usar a planilha padrão do hospital ou cole o link específico deste plano.
+                </p>
               </div>
 
               {/* Se o modo for Excel, exibe o drop zone do arquivo */}

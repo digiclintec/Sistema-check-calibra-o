@@ -12,6 +12,7 @@ import {
   Building2,
   Sparkles,
   Calendar,
+  CalendarDays,
   FileCheck,
   ShieldCheck,
   PlusCircle,
@@ -146,6 +147,38 @@ export default function Navbar({
                 </option>
               </select>
             </div>
+
+            {/* Seletor Rápido de Plano de Calibração Ativo */}
+            {Array.isArray(monthlyPlans) && monthlyPlans.length > 0 && (
+              <div 
+                className="hidden lg:flex items-center gap-1.5 bg-blue-50/90 dark:bg-blue-950/40 hover:bg-blue-100/70 dark:hover:bg-blue-900/40 px-2 sm:px-2.5 py-1.5 rounded-xl border border-blue-200/80 dark:border-blue-800/80 transition shadow-xs w-36 sm:w-44 max-w-[200px] shrink min-w-0"
+                title={`Plano de Calibração Ativo: ${monthlyPlans.find(p => p.id === activePlanId)?.title || 'Selecione'}`}
+              >
+                <CalendarDays className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                <select
+                  value={activePlanId || ''}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '__MANAGE_PLANS__') {
+                      if (onChangeMainTab) onChangeMainTab('planejamento');
+                    } else if (onSwitchPlan) {
+                      onSwitchPlan(val);
+                    }
+                  }}
+                  className="bg-transparent text-[11px] sm:text-xs font-bold text-blue-900 dark:text-blue-200 focus:outline-none cursor-pointer truncate w-full"
+                >
+                  {monthlyPlans.map(p => (
+                    <option key={p.id} value={p.id} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-semibold">
+                      📋 {p.title || `Plano ${p.ano || ''}`}
+                    </option>
+                  ))}
+                  <option disabled className="bg-slate-200 dark:bg-slate-800 text-slate-500">──────────</option>
+                  <option value="__MANAGE_PLANS__" className="bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 font-bold">
+                    ⚙️ Gerenciar Todos os Planos...
+                  </option>
+                </select>
+              </div>
+            )}
           </div>
 
           {/* CENTRO: Abas de Navegação (Visível EXCLUSIVAMENTE em Desktop xl+ >= 1280px para espaço amplo) */}

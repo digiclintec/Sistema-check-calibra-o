@@ -898,7 +898,7 @@ app.post('/api/plans/switch', (req, res) => {
 
 // Create new monthly/annual plan (suporta plano em branco e manual)
 app.post('/api/plans/create', (req, res) => {
-  const { hospitalId, title, mes, fileName, equipments, tipo, ano, dataInicio, dataFim, descricao } = req.body || {};
+  const { hospitalId, title, mes, fileName, equipments, tipo, ano, dataInicio, dataFim, descricao, googleSheetUrl } = req.body || {};
   const db = readDb();
   const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
   const hospIdx = (db.hospitals || []).findIndex(h => h.id === targetId);
@@ -912,6 +912,7 @@ app.post('/api/plans/create', (req, res) => {
 
   const newPlanId = 'plan_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
   const detectedAno = String(ano || (mes && mes.match(/\d{4}/) ? mes.match(/\d{4}/)[0] : new Date().getFullYear())).trim();
+  const cleanSheetUrl = String(googleSheetUrl || '').trim();
   
   const newPlan = {
     id: newPlanId,
@@ -922,6 +923,7 @@ app.post('/api/plans/create', (req, res) => {
     dataInicio: String(dataInicio || `${detectedAno}-01-01`).trim(),
     dataFim: String(dataFim || `${detectedAno}-12-31`).trim(),
     descricao: String(descricao || '').trim(),
+    googleSheetUrl: cleanSheetUrl,
     fileName: String(fileName || '').trim(),
     equipments: Array.isArray(equipments) ? equipments : [],
     createdAt: new Date().toISOString(),
@@ -932,6 +934,7 @@ app.post('/api/plans/create', (req, res) => {
   hospital.activePlanId = newPlanId;
   hospital.equipments = newPlan.equipments;
   hospital.activeSheetName = newPlan.fileName || newPlan.title;
+  if (cleanSheetUrl) hospital.googleSheetUrl = cleanSheetUrl;
   hospital.lastUpdated = Date.now();
   db.lastUpdated = Date.now();
   saveDb(db);
@@ -1458,6 +1461,14 @@ app.post('/api/data', (req, res) => {
 
 // ---------------- GOOGLE SHEETS LIVE SYNC ENGINE ---------------- //
 
+function extractSpreadsheetId(url) {
+  if (!url || typeof url !== 'string') return null;
+  const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/) ||
+                url.match(/\/file\/d\/([a-zA-Z0-9-_]+)/) ||
+                url.match(/[?&]id=([a-zA-Z0-9-_]+)/);
+  return match ? match[1] : null;
+}
+
 // Helper: Send check update to Google Sheets Webhook (Google Apps Script)
 async function sendCheckToGoogleWebhook(webhookUrl, payload) {
   if (!webhookUrl || typeof webhookUrl !== 'string' || !webhookUrl.startsWith('http')) {
@@ -1860,14 +1871,22 @@ app.post('/api/save-google-webhook', (req, res) => {
 
 // Route 5: Testar Conexão com o Webhook do Google Apps Script
 app.post('/api/test-google-webhook', async (req, res) => {
-  const { webhookUrl, hospitalId } = req.body || {};
+  const { webhookUrl, hospitalId, planId } = req.body || {};
   let targetUrl = (webhookUrl || '').trim();
 
+  const db = readDb();
+  const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
+  const hospital = (db.hospitals || []).find(h => h.id === targetId);
+  const targetPlan = (hospital?.plans || []).find(p => p.id === (planId || hospital?.activePlanId)) || (hospital?.plans || [])[0];
+  const sheetUrl = (targetPlan && targetPlan.googleSheetUrl) || hospital?.googleSheetUrl || '';
+  const sheetId = extractSpreadsheetId(sheetUrl);
+
   if (!targetUrl) {
-    const db = readDb();
-    const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
-    const hospital = (db.hospitals || []).find(h => h.id === targetId);
-    targetUrl = (hospital?.googleSheetWebhookUrl || '').trim();
+    targetUrl = (
+      (targetPlan && targetPlan.googleSheetWebhookUrl) ||
+      hospital?.googleSheetWebhookUrl ||
+      (hospital?.googleSheetUrl && hospital.googleSheetUrl.includes('script.google.com') ? hospital.googleSheetUrl : '')
+    ).trim();
   }
 
   if (!targetUrl) {
@@ -1878,6 +1897,8 @@ app.post('/api/test-google-webhook', async (req, res) => {
     const result = await sendCheckToGoogleWebhook(targetUrl, {
       action: 'ping',
       test: true,
+      spreadsheetUrl: sheetUrl,
+      spreadsheetId: sheetId,
       timestamp: new Date().toISOString()
     });
 
@@ -1888,9 +1909,10 @@ app.post('/api/test-google-webhook', async (req, res) => {
       });
     }
 
+    const sheetName = result.data?.spreadsheetTitle || result.data?.spreadsheetName || 'Planilha Google';
     return res.json({
       success: true,
-      message: 'Conexão validada com sucesso! O Google Sheets respondeu à ponte do CalibraCheck.',
+      message: `Conexão validada com sucesso! O Google Sheets respondeu à ponte do CalibraCheck (${sheetName}).`,
       data: result.data
     });
   } catch (err) {
@@ -1969,11 +1991,18 @@ app.post('/api/push-all-to-google-sheet', async (req, res) => {
     };
   });
 
+  const sheetUrl = (targetPlan && targetPlan.googleSheetUrl) || hospital.googleSheetUrl || '';
+  const sheetId = extractSpreadsheetId(sheetUrl);
+  const targetSheetName = (targetPlan && (targetPlan.sheetName || targetPlan.fileName || targetPlan.title)) || hospital.sheetName || hospital.activeSheetName || '';
+
   try {
     const result = await sendCheckToGoogleWebhook(targetWebhook, {
       action: 'push_all',
       hospitalId: hospital.id,
       planId: targetPlan ? targetPlan.id : null,
+      spreadsheetUrl: sheetUrl,
+      spreadsheetId: sheetId,
+      sheetName: targetSheetName,
       totalCount: payloadItems.length,
       items: payloadItems
     });
@@ -2161,7 +2190,13 @@ app.post('/api/toggle-check', (req, res) => {
   saveDb(db);
 
   // Sincronização Bidirecional instantânea com Google Sheets via Webhook (Single Item)
-  const webhookUrl = (hospital.googleSheetWebhookUrl || (hospital.googleSheetUrl && hospital.googleSheetUrl.includes('script.google.com') ? hospital.googleSheetUrl : '')).trim();
+  const webhookUrl = (
+    (targetPlan && targetPlan.googleSheetWebhookUrl) ||
+    (targetPlan && targetPlan.googleSheetUrl && targetPlan.googleSheetUrl.includes('script.google.com') ? targetPlan.googleSheetUrl : '') ||
+    hospital.googleSheetWebhookUrl ||
+    (hospital.googleSheetUrl && hospital.googleSheetUrl.includes('script.google.com') ? hospital.googleSheetUrl : '')
+  ).trim();
+
   if (webhookUrl) {
     const checkedItem = list[idx] || item;
     const statusText = nextChecked ? (
@@ -2170,10 +2205,17 @@ app.post('/api/toggle-check', (req, res) => {
       modality === 'seguranca' ? 'SEGURANÇA ELÉTRICA OK' : 'CONFERIDO / CALIBRADO'
     ) : 'NÃO CONFERIDO';
 
+    const sheetUrl = (targetPlan && targetPlan.googleSheetUrl) || hospital.googleSheetUrl || '';
+    const sheetId = extractSpreadsheetId(sheetUrl);
+    const targetSheetName = (targetPlan && (targetPlan.sheetName || targetPlan.fileName || targetPlan.title)) || hospital.sheetName || hospital.activeSheetName || '';
+
     sendCheckToGoogleWebhook(webhookUrl, {
       action: 'check',
       hospitalId: hospital.id,
       planId: targetPlan ? targetPlan.id : (planId || null),
+      spreadsheetUrl: sheetUrl,
+      spreadsheetId: sheetId,
+      sheetName: targetSheetName,
       id: checkedItem.id,
       idec: checkedItem.codigoBarras || checkedItem.tag || checkedItem.id,
       tag: checkedItem.tag || '',
@@ -2368,8 +2410,18 @@ app.post('/api/batch-check', (req, res) => {
   saveDb(db);
 
   // Sincronização em Lote Bidirecional com Google Sheets via Webhook
-  const webhookUrlBatch = (hospital.googleSheetWebhookUrl || (hospital.googleSheetUrl && hospital.googleSheetUrl.includes('script.google.com') ? hospital.googleSheetUrl : '')).trim();
+  const webhookUrlBatch = (
+    (targetPlan && targetPlan.googleSheetWebhookUrl) ||
+    (targetPlan && targetPlan.googleSheetUrl && targetPlan.googleSheetUrl.includes('script.google.com') ? targetPlan.googleSheetUrl : '') ||
+    hospital.googleSheetWebhookUrl ||
+    (hospital.googleSheetUrl && hospital.googleSheetUrl.includes('script.google.com') ? hospital.googleSheetUrl : '')
+  ).trim();
+
   if (webhookUrlBatch && checkedCount > 0) {
+    const sheetUrl = (targetPlan && targetPlan.googleSheetUrl) || hospital.googleSheetUrl || '';
+    const sheetId = extractSpreadsheetId(sheetUrl);
+    const targetSheetName = (targetPlan && (targetPlan.sheetName || targetPlan.fileName || targetPlan.title)) || hospital.sheetName || hospital.activeSheetName || '';
+
     const updatedItems = list.filter(it => {
       const itId = String(it.id || '').toLowerCase();
       const itBarcode = String(it.codigoBarras || '').toLowerCase();
@@ -2396,6 +2448,9 @@ app.post('/api/batch-check', (req, res) => {
       action: 'batch_check',
       hospitalId: hospital.id,
       planId: targetPlan ? targetPlan.id : (planId || null),
+      spreadsheetUrl: sheetUrl,
+      spreadsheetId: sheetId,
+      sheetName: targetSheetName,
       count: updatedItems.length,
       items: updatedItems,
       user: inspectorLabel
@@ -2481,13 +2536,26 @@ app.post('/api/equipment/update-sector', (req, res) => {
   saveDb(db);
 
   // Sincronização de Setor com Google Sheets via Webhook
-  const webhookUrlSector = (hospital.googleSheetWebhookUrl || (hospital.googleSheetUrl && hospital.googleSheetUrl.includes('script.google.com') ? hospital.googleSheetUrl : '')).trim();
+  const webhookUrlSector = (
+    (targetPlan && targetPlan.googleSheetWebhookUrl) ||
+    (targetPlan && targetPlan.googleSheetUrl && targetPlan.googleSheetUrl.includes('script.google.com') ? targetPlan.googleSheetUrl : '') ||
+    hospital.googleSheetWebhookUrl ||
+    (hospital.googleSheetUrl && hospital.googleSheetUrl.includes('script.google.com') ? hospital.googleSheetUrl : '')
+  ).trim();
+
   if (webhookUrlSector) {
     const updatedEq = list[idx];
+    const sheetUrl = (targetPlan && targetPlan.googleSheetUrl) || hospital.googleSheetUrl || '';
+    const sheetId = extractSpreadsheetId(sheetUrl);
+    const targetSheetName = (targetPlan && (targetPlan.sheetName || targetPlan.fileName || targetPlan.title)) || hospital.sheetName || hospital.activeSheetName || '';
+
     sendCheckToGoogleWebhook(webhookUrlSector, {
       action: 'check',
       hospitalId: hospital.id,
       planId: targetPlan ? targetPlan.id : (planId || null),
+      spreadsheetUrl: sheetUrl,
+      spreadsheetId: sheetId,
+      sheetName: targetSheetName,
       id: updatedEq.id,
       idec: updatedEq.codigoBarras || updatedEq.tag || updatedEq.id,
       tag: updatedEq.tag || '',

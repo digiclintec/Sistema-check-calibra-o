@@ -1,19 +1,27 @@
 /**
  * Código do Google Apps Script para Sincronização Bidirecional com CalibraCheck.
  * Permite que a planilha do Google receba e marque IDECs conferidos em tempo real.
+ * 
+ * SCRIPT UNIVERSAL: Funciona para qualquer planilha, hospital ou plano anual!
  */
 export const GOOGLE_APPS_SCRIPT_CODE = `/**
  * ==============================================================================
- * CALIBRACHECK - SCRIPT DE INTEGRAÇÃO BIDIRECIONAL EM TEMPO REAL
+ * CALIBRACHECK - AGENTE DE INTEGRAÇÃO UNIVERSAL EM TEMPO REAL
  * ==============================================================================
- * Como instalar em 30 segundos (SEM PRECISAR ABRIR PELO MENU DE EXTENSÕES):
- * 1. Abra uma nova aba no navegador e acerte: https://script.new
+ * 🌟 ESTE SCRIPT É UNIVERSAL:
+ * - Funciona para QUALQUER planilha do Google e QUALQUER plano de calibração!
+ * - Você só precisa criar este Webhook UMA ÚNICA VEZ e pode usar a mesma URL
+ *   em todos os seus planos e hospitais no CalibraCheck!
+ *
+ * Como instalar em 30 segundos (SEM PRECISAR ABRIR PELO MENU DA PLANILHA):
+ * 1. Abra uma nova aba no navegador e acesse: https://script.new
  * 2. Apague qualquer código na tela e cole todo este arquivo.
  * 3. Clique no ícone de salvar (Disquete 💾) ou Ctrl+S.
  * 4. No canto superior direito, clique em "Implantar" > "Nova implantação".
- * 5. Clique no ícone de engrenagem ⚙️ ao lado de "Selecione o tipo" e escolha "App da Web".
+ *    (OBS: Se já tiver implantado antes, clique em "Gerenciar implantações" > "Editar (Lápis)" > "Versão: Nova versão" > "Implantar").
+ * 5. Clique no ícone de engrenagem ⚙️ (ao lado de Selecione o tipo) e escolha "App da Web".
  * 6. Preencha:
- *    - Descrição: "CalibraCheck Sync"
+ *    - Descrição: "CalibraCheck Universal Sync"
  *    - Executar como: "Eu (seu email)"
  *    - Quem pode acessar: "Qualquer pessoa" (MUITO IMPORTANTE!)
  * 7. Clique em "Implantar" e copie o link da URL do App da Web (termina em /exec).
@@ -21,20 +29,32 @@ export const GOOGLE_APPS_SCRIPT_CODE = `/**
  * ==============================================================================
  */
 
-// ID da Planilha do Hospital Geral Dr. Luiz Buaiz
+// Planilha padrão de fallback (caso o sistema não envie o ID no payload)
 var DEFAULT_SPREADSHEET_ID = "1Wn6I7f3hdxVeVWg7lsmKkbo8BRXrnv-8sJ6-3ydUi6Q";
 
+function extractSpreadsheetId(url) {
+  if (!url || typeof url !== 'string') return null;
+  var match = url.match(/\\/spreadsheets\\/d\\/([a-zA-Z0-9-_]+)/) ||
+              url.match(/\\/file\\/d\\/([a-zA-Z0-9-_]+)/) ||
+              url.match(/[?&]id=([a-zA-Z0-9-_]+)/);
+  return match ? match[1] : null;
+}
+
 function getSpreadsheet(payload) {
-  var targetId = (payload && payload.spreadsheetId) || DEFAULT_SPREADSHEET_ID;
-  try {
-    if (targetId) {
+  var targetId = (payload && (payload.spreadsheetId || (payload.spreadsheetUrl ? extractSpreadsheetId(payload.spreadsheetUrl) : null))) || DEFAULT_SPREADSHEET_ID;
+  if (targetId) {
+    try {
       return SpreadsheetApp.openById(targetId);
-    }
-  } catch (err) {}
+    } catch (err) {}
+  }
   try {
-    return SpreadsheetApp.getActiveSpreadsheet();
-  } catch (err2) {
+    var active = SpreadsheetApp.getActiveSpreadsheet();
+    if (active) return active;
+  } catch (err2) {}
+  try {
     return SpreadsheetApp.openById(DEFAULT_SPREADSHEET_ID);
+  } catch (err3) {
+    return null;
   }
 }
 
@@ -52,16 +72,27 @@ function doPost(e) {
     var action = payload.action || 'check';
     var ss = getSpreadsheet(payload);
 
+    var sheetTitle = "Planilha Google";
+    try {
+      if (ss) sheetTitle = ss.getName();
+    } catch (eTitle) {}
+
     if (action === 'ping') {
       return responseJson({
         success: true,
         message: "Agente conectado com sucesso!",
-        spreadsheetTitle: ss.getName(),
+        spreadsheetTitle: sheetTitle,
         timestamp: new Date().toISOString()
       });
     }
 
+    if (!ss) {
+      return responseJson({ success: false, message: "Planilha não encontrada. Verifique se o ID ou URL foi informado." });
+    }
+
     var sheet = payload.sheetName ? ss.getSheetByName(payload.sheetName) : (ss.getActiveSheet() || ss.getSheets()[0]);
+    if (!sheet) sheet = ss.getSheets()[0];
+
     var dataRange = sheet.getDataRange();
     var values = dataRange.getValues();
 
@@ -134,6 +165,11 @@ function doPost(e) {
       if (colStatusGeral === -1 && (h.indexOf('status geral') !== -1 || h === 'status')) colStatusGeral = c;
     }
 
+    // Garante que regras de formatação condicional existentes não sobrescrevam o verde de CONFERIDO
+    if (colCalibStatus !== -1) ensureConditionalFormattingGreen(sheet, colCalibStatus + 1);
+    if (colPrevStatus !== -1) ensureConditionalFormattingGreen(sheet, colPrevStatus + 1);
+    if (colSegStatus !== -1) ensureConditionalFormattingGreen(sheet, colSegStatus + 1);
+
     // Se a planilha não possuir colunas de calibração, cria automaticamente
     if (colCalibStatus === -1) {
       colCalibStatus = headers.length;
@@ -191,29 +227,61 @@ function doPost(e) {
           var dateText = isChecked ? (item.dataCheck ? formatDateString(item.dataCheck) : nowFmt) : '';
 
           if (modality === 'calibracao' || !modality) {
-            if (colCalibStatus !== -1) sheet.getRange(r + 1, colCalibStatus + 1).setValue(isChecked ? 'CONFERIDO / OK' : 'PENDENTE');
-            if (colCalibData !== -1) sheet.getRange(r + 1, colCalibData + 1).setValue(dateText);
-            if (colCalibResp !== -1) sheet.getRange(r + 1, colCalibResp + 1).setValue(userText);
+            if (colCalibStatus !== -1) {
+              sheet.getRange(r + 1, colCalibStatus + 1)
+                   .setValue(isChecked ? 'CONFERIDO / OK' : 'PENDENTE')
+                   .setBackground(isChecked ? '#E6F4EA' : '#FCE8E6')
+                   .setFontColor(isChecked ? '#137333' : '#C5221F')
+                   .setFontWeight(isChecked ? 'bold' : 'normal');
+            }
+            if (colCalibData !== -1) {
+              sheet.getRange(r + 1, colCalibData + 1).setValue(dateText).setBackground('#FFFFFF').setFontColor('#202124');
+            }
+            if (colCalibResp !== -1) {
+              sheet.getRange(r + 1, colCalibResp + 1).setValue(userText).setBackground('#FFFFFF').setFontColor('#202124');
+            }
           } else if (modality === 'preventiva') {
-            if (colPrevStatus !== -1) sheet.getRange(r + 1, colPrevStatus + 1).setValue(isChecked ? 'CONFERIDO / OK' : 'PENDENTE');
-            if (colPrevData !== -1) sheet.getRange(r + 1, colPrevData + 1).setValue(dateText);
-            if (colPrevResp !== -1) sheet.getRange(r + 1, colPrevResp + 1).setValue(userText);
+            if (colPrevStatus !== -1) {
+              sheet.getRange(r + 1, colPrevStatus + 1)
+                   .setValue(isChecked ? 'CONFERIDO / OK' : 'PENDENTE')
+                   .setBackground(isChecked ? '#E6F4EA' : '#FCE8E6')
+                   .setFontColor(isChecked ? '#137333' : '#C5221F')
+                   .setFontWeight(isChecked ? 'bold' : 'normal');
+            }
+            if (colPrevData !== -1) sheet.getRange(r + 1, colPrevData + 1).setValue(dateText).setBackground('#FFFFFF').setFontColor('#202124');
+            if (colPrevResp !== -1) sheet.getRange(r + 1, colPrevResp + 1).setValue(userText).setBackground('#FFFFFF').setFontColor('#202124');
           } else if (modality === 'seguranca') {
-            if (colSegStatus !== -1) sheet.getRange(r + 1, colSegStatus + 1).setValue(isChecked ? 'CONFERIDO / OK' : 'PENDENTE');
-            if (colSegData !== -1) sheet.getRange(r + 1, colSegData + 1).setValue(dateText);
-            if (colSegResp !== -1) sheet.getRange(r + 1, colSegResp + 1).setValue(userText);
+            if (colSegStatus !== -1) {
+              sheet.getRange(r + 1, colSegStatus + 1)
+                   .setValue(isChecked ? 'CONFERIDO / OK' : 'PENDENTE')
+                   .setBackground(isChecked ? '#E6F4EA' : '#FCE8E6')
+                   .setFontColor(isChecked ? '#137333' : '#C5221F')
+                   .setFontWeight(isChecked ? 'bold' : 'normal');
+            }
+            if (colSegData !== -1) sheet.getRange(r + 1, colSegData + 1).setValue(dateText).setBackground('#FFFFFF').setFontColor('#202124');
+            if (colSegResp !== -1) sheet.getRange(r + 1, colSegResp + 1).setValue(userText).setBackground('#FFFFFF').setFontColor('#202124');
           } else if (modality === 'externa' || modality === 'manutencao_externa') {
-            if (colExtStatus !== -1) sheet.getRange(r + 1, colExtStatus + 1).setValue(isChecked ? 'ENVIADA / TERCEIRIZADA' : 'NÃO ENVIADA');
-            if (colExtData !== -1) sheet.getRange(r + 1, colExtData + 1).setValue(dateText);
-            if (colExtResp !== -1) sheet.getRange(r + 1, colExtResp + 1).setValue(userText);
+            if (colExtStatus !== -1) {
+              sheet.getRange(r + 1, colExtStatus + 1)
+                   .setValue(isChecked ? 'ENVIADA / TERCEIRIZADA' : 'NÃO ENVIADA')
+                   .setBackground(isChecked ? '#FEF7E0' : '#FCE8E6')
+                   .setFontColor(isChecked ? '#B06000' : '#C5221F')
+                   .setFontWeight(isChecked ? 'bold' : 'normal');
+            }
+            if (colExtData !== -1) sheet.getRange(r + 1, colExtData + 1).setValue(dateText).setBackground('#FFFFFF').setFontColor('#202124');
+            if (colExtResp !== -1) sheet.getRange(r + 1, colExtResp + 1).setValue(userText).setBackground('#FFFFFF').setFontColor('#202124');
           }
 
           if (colSetorRetirada !== -1 && item.setorRetirada) {
-            sheet.getRange(r + 1, colSetorRetirada + 1).setValue(String(item.setorRetirada));
+            sheet.getRange(r + 1, colSetorRetirada + 1).setValue(String(item.setorRetirada)).setBackground('#FFFFFF');
           }
 
           if (colStatusGeral !== -1) {
-            sheet.getRange(r + 1, colStatusGeral + 1).setValue(isChecked ? 'CONFERIDO / CALIBRADO' : 'PENDENTE');
+            sheet.getRange(r + 1, colStatusGeral + 1)
+                 .setValue(isChecked ? '100% CONCLUÍDO' : 'PENDENTE')
+                 .setBackground(isChecked ? '#CEEAD6' : '#FCE8E6')
+                 .setFontColor(isChecked ? '#0D652D' : '#C5221F')
+                 .setFontWeight(isChecked ? 'bold' : 'normal');
           }
 
           updatedCount++;
@@ -240,17 +308,52 @@ function doPost(e) {
 
 function doGet(e) {
   try {
-    var ss = getSpreadsheet();
+    var ss = getSpreadsheet(e ? e.parameter : null);
+    var sheetTitle = "Planilha Google";
+    var rows = 0;
+    try {
+      if (ss) {
+        sheetTitle = ss.getName();
+        rows = ss.getActiveSheet().getLastRow();
+      }
+    } catch (e2) {}
     return responseJson({
       status: 'online',
-      service: 'CalibraCheck Google Sheets Webhook',
-      spreadsheetName: ss.getName(),
-      rows: ss.getActiveSheet().getLastRow(),
+      service: 'CalibraCheck Google Sheets Webhook Universal',
+      spreadsheetName: sheetTitle,
+      rows: rows,
       time: new Date().toISOString()
     });
   } catch (err) {
     return responseJson({ success: false, error: err.toString() });
   }
+}
+
+function ensureConditionalFormattingGreen(sheet, colIndex) {
+  if (!sheet || colIndex <= 0) return;
+  try {
+    var rules = sheet.getConditionalFormatRules() || [];
+    var alreadyHasGreen = false;
+    for (var i = 0; i < rules.length; i++) {
+      var cond = rules[i].getBooleanCondition();
+      if (cond && String(cond.getCriteriaValues()).toUpperCase().indexOf('CONFERIDO') !== -1) {
+        alreadyHasGreen = true;
+        break;
+      }
+    }
+    if (!alreadyHasGreen) {
+      var numRows = Math.max(20, sheet.getLastRow());
+      var rule = SpreadsheetApp.newConditionalFormatRule()
+        .whenTextContains('CONFERIDO')
+        .setBackground('#E6F4EA')
+        .setFontColor('#137333')
+        .setBold(true)
+        .setRanges([sheet.getRange(2, colIndex, numRows, 1)])
+        .build();
+      rules.push(rule);
+      sheet.setConditionalFormatRules(rules);
+    }
+  } catch (eCond) {}
 }
 
 function formatDateString(isoOrStr) {

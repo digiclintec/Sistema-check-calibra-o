@@ -177,6 +177,14 @@ function apiServerPlugin() {
     } catch (e) {}
   }
 
+  function extractSpreadsheetId(url) {
+    if (!url || typeof url !== 'string') return null;
+    const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/) ||
+                  url.match(/\/file\/d\/([a-zA-Z0-9-_]+)/) ||
+                  url.match(/[?&]id=([a-zA-Z0-9-_]+)/);
+    return match ? match[1] : null;
+  }
+
   async function sendCheckToGoogleWebhook(webhookUrl, payload) {
     if (!webhookUrl || typeof webhookUrl !== 'string' || !webhookUrl.startsWith('http')) {
       return { success: false, message: 'URL de webhook inválida' };
@@ -903,22 +911,37 @@ function apiServerPlugin() {
 
           // Test Google Webhook
           if (req.url === '/api/test-google-webhook' && req.method === 'POST') {
-            const { webhookUrl } = parsedBody;
-            if (!webhookUrl || !webhookUrl.startsWith('http')) {
+            const { webhookUrl, hospitalId, planId } = parsedBody;
+            const db = readDb();
+            const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
+            const hospital = (db.hospitals || []).find(h => h.id === targetId);
+            const targetPlan = (hospital?.plans || []).find(p => p.id === (planId || hospital?.activePlanId)) || (hospital?.plans || [])[0];
+            const sheetUrl = (targetPlan && targetPlan.googleSheetUrl) || hospital?.googleSheetUrl || '';
+            const sheetId = extractSpreadsheetId(sheetUrl);
+            const targetUrl = (webhookUrl || (targetPlan && targetPlan.googleSheetWebhookUrl) || hospital?.googleSheetWebhookUrl || '').trim();
+
+            if (!targetUrl || !targetUrl.startsWith('http')) {
               res.statusCode = 400;
               return res.end(JSON.stringify({ success: false, message: 'URL de webhook inválida' }));
             }
-            const testResult = await sendCheckToGoogleWebhook(webhookUrl, { action: 'ping', test: true });
+            const testResult = await sendCheckToGoogleWebhook(targetUrl, {
+              action: 'ping',
+              test: true,
+              spreadsheetUrl: sheetUrl,
+              spreadsheetId: sheetId,
+              timestamp: new Date().toISOString()
+            });
             if (!testResult.success) {
               res.statusCode = 400;
               return res.end(JSON.stringify({ success: false, message: testResult.error || 'Falha ao conectar' }));
             }
-            return res.end(JSON.stringify({ success: true, message: 'Conexão validada com sucesso!', data: testResult.data }));
+            const sheetName = testResult.data?.spreadsheetTitle || testResult.data?.spreadsheetName || 'Planilha Google';
+            return res.end(JSON.stringify({ success: true, message: `Conexão validada com sucesso! (${sheetName})`, data: testResult.data }));
           }
 
           // Push all equipments to Google Sheets
           if (req.url === '/api/push-all-to-google-sheet' && req.method === 'POST') {
-            const { hospitalId, webhookUrl } = parsedBody;
+            const { hospitalId, planId, webhookUrl } = parsedBody;
             const db = readDb();
             const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
             const hospital = (db.hospitals || []).find(h => h.id === targetId);
@@ -926,12 +949,17 @@ function apiServerPlugin() {
               res.statusCode = 404;
               return res.end(JSON.stringify({ success: false, message: 'Hospital não encontrado' }));
             }
-            const targetWebhook = (webhookUrl || hospital.googleSheetWebhookUrl || '').trim();
+            const targetPlan = (hospital.plans || []).find(p => p.id === (planId || hospital.activePlanId));
+            const targetWebhook = (webhookUrl || (targetPlan && targetPlan.googleSheetWebhookUrl) || hospital.googleSheetWebhookUrl || '').trim();
             if (!targetWebhook) {
               res.statusCode = 400;
               return res.end(JSON.stringify({ success: false, message: 'Nenhum Webhook configurado' }));
             }
-            const list = hospital.equipments || [];
+            const sheetUrl = (targetPlan && targetPlan.googleSheetUrl) || hospital.googleSheetUrl || '';
+            const sheetId = extractSpreadsheetId(sheetUrl);
+            const targetSheetName = (targetPlan && (targetPlan.sheetName || targetPlan.fileName || targetPlan.title)) || hospital.sheetName || hospital.activeSheetName || '';
+
+            const list = targetPlan ? (targetPlan.equipments || []) : (hospital.equipments || []);
             const payloadItems = list.map(item => ({
               id: item.id,
               idec: item.codigoBarras || item.tag || item.id,
@@ -949,6 +977,10 @@ function apiServerPlugin() {
             const pushRes = await sendCheckToGoogleWebhook(targetWebhook, {
               action: 'push_all',
               hospitalId: hospital.id,
+              planId: targetPlan ? targetPlan.id : null,
+              spreadsheetUrl: sheetUrl,
+              spreadsheetId: sheetId,
+              sheetName: targetSheetName,
               totalCount: payloadItems.length,
               items: payloadItems
             });
