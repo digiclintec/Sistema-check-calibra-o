@@ -147,10 +147,16 @@ export default function AddEquipmentModal({
   initialCode = '',
   initialMode = 'manual' // 'manual' | 'excel' | 'paste' | 'scanner'
 }) {
-  // Aba ativa: 'manual' (1 por 1), 'excel' (Anexar Planilha), 'paste' (Colar do Excel), 'scanner' (Bipagem contínua)
+  // Aba ativa: 'manual' (1 por 1), 'excel' (Anexar Arquivo), 'paste' (Colar do Excel), 'scanner' (Bipagem contínua)
   const [activeTab, setActiveTab] = useState(initialMode || 'manual');
   const [selectedPlanId, setSelectedPlanId] = useState(activePlanId || plans[0]?.id || '');
   const [skipDuplicates, setSkipDuplicates] = useState(true);
+
+  // Blindagem de Plano Ativo: Sempre vincula estritamente ao plano em execução no momento
+  const activePlan = plans.find(p => p.id === (selectedPlanId || activePlanId)) || plans[0] || null;
+  const effectivePlanId = activePlan?.id || selectedPlanId || activePlanId;
+  const targetPlanTitle = activePlan?.title || 'Plano Ativo';
+  const targetPlanTotal = activePlan?.total || (activePlan?.equipments?.length || 0);
 
   // --- FORMULÁRIO INDIVIDUAL (MANUAL) ---
   const [equipamento, setEquipamento] = useState('');
@@ -379,7 +385,7 @@ export default function AddEquipmentModal({
         observacao: observacao.trim()
       };
 
-      const res = await onSave(newEquipment, selectedPlanId);
+      const res = await onSave(newEquipment, effectivePlanId);
       if (res && res.success === false) {
         setError(res.message || 'Falha ao cadastrar equipamento.');
       } else {
@@ -404,7 +410,7 @@ export default function AddEquipmentModal({
 
     try {
       if (onSaveBatch) {
-        const res = await onSaveBatch(itemsToSave, selectedPlanId, skipDuplicates);
+        const res = await onSaveBatch(itemsToSave, effectivePlanId, skipDuplicates);
         if (res && res.success === false) {
           setError(res.message || 'Erro ao adicionar equipamentos em lote.');
         } else {
@@ -413,7 +419,7 @@ export default function AddEquipmentModal({
       } else {
         // Fallback: salva um por um se onSaveBatch não estiver definido
         for (const item of itemsToSave) {
-          await onSave(item, selectedPlanId);
+          await onSave(item, effectivePlanId);
         }
         onClose();
       }
@@ -470,35 +476,42 @@ export default function AddEquipmentModal({
           </div>
         </div>
 
-        {/* Seleção do Plano Alvo (Fixo e Visível no Topo) */}
-        {plans.length > 0 && (
-          <div className="p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between gap-3 text-xs mb-3 shrink-0">
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <Layers className="w-4 h-4 text-blue-500 shrink-0" />
-              <span className="font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">Plano de Destino:</span>
-              <select
-                value={selectedPlanId}
-                onChange={(e) => setSelectedPlanId(e.target.value)}
-                className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 truncate max-w-full"
-              >
-                {plans.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.title} ({p.total || 0} itens)
-                  </option>
-                ))}
-              </select>
+        {/* Plano Ativo Vinculado (Blindagem Total contra Mistura de Dados) */}
+        <div className="p-3 rounded-2xl bg-gradient-to-r from-blue-50/90 via-indigo-50/50 to-slate-50/90 dark:from-blue-950/40 dark:via-indigo-950/20 dark:to-slate-900/60 border border-blue-200 dark:border-blue-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs mb-3 shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-blue-500/25">
+              <Layers className="w-4 h-4" />
             </div>
-            <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400 cursor-pointer select-none shrink-0">
-              <input
-                type="checkbox"
-                checked={skipDuplicates}
-                onChange={(e) => setSkipDuplicates(e.target.checked)}
-                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-              />
-              <span>Pular duplicados</span>
-            </label>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-900/60 px-2 py-0.5 rounded-md flex items-center gap-1">
+                  🔒 Plano Ativo Selecionado
+                </span>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                  • Inserção direta sem risco de misturar com outros planos
+                </span>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                <span className="text-slate-900 dark:text-white font-extrabold text-sm truncate">
+                  {targetPlanTitle}
+                </span>
+                <span className="text-xs text-slate-500 dark:text-slate-400 font-mono font-semibold">
+                  ({targetPlanTotal} {targetPlanTotal === 1 ? 'equipamento atual' : 'equipamentos atuais'})
+                </span>
+              </div>
+            </div>
           </div>
-        )}
+
+          <label className="flex items-center gap-2 text-[11px] font-bold text-slate-700 dark:text-slate-300 cursor-pointer select-none shrink-0 bg-white dark:bg-slate-900/90 hover:bg-slate-100 dark:hover:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 transition">
+            <input
+              type="checkbox"
+              checked={skipDuplicates}
+              onChange={(e) => setSkipDuplicates(e.target.checked)}
+              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span>Evitar duplicados (Tag/Série)</span>
+          </label>
+        </div>
 
         {/* 4 MODOS DE ENTRADA: Segmented Tabs */}
         <div className="grid grid-cols-4 gap-1 sm:gap-1.5 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-2xl mb-3 shrink-0 text-xs">
@@ -788,7 +801,7 @@ export default function AddEquipmentModal({
                 className="py-2.5 px-5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl font-bold shadow-md shadow-emerald-500/20 flex items-center gap-1.5 disabled:opacity-50"
               >
                 <Check className="w-4 h-4 stroke-[3]" />
-                <span>Adicionar ao Plano</span>
+                <span>Adicionar ao Plano Ativo ("{targetPlanTitle}")</span>
               </button>
             </div>
 
@@ -952,7 +965,7 @@ export default function AddEquipmentModal({
               >
                 <Plus className="w-4 h-4 stroke-[3]" />
                 <span>
-                  {parsedExcelResult ? `Acrescentar ${parsedExcelResult.total} Itens ao Plano` : 'Selecione um Arquivo'}
+                  {parsedExcelResult ? `Acrescentar ${parsedExcelResult.total} Itens ao Plano Ativo ("${targetPlanTitle}")` : 'Selecione um Arquivo'}
                 </span>
               </button>
             </div>
@@ -1080,7 +1093,7 @@ export default function AddEquipmentModal({
               >
                 <Plus className="w-4 h-4 stroke-[3]" />
                 <span>
-                  {pastedEquipments.length > 0 ? `Adicionar ${pastedEquipments.length} Itens ao Plano` : 'Cole os Dados'}
+                  {pastedEquipments.length > 0 ? `Adicionar ${pastedEquipments.length} Itens ao Plano Ativo ("${targetPlanTitle}")` : 'Cole os Dados'}
                 </span>
               </button>
             </div>
@@ -1212,7 +1225,7 @@ export default function AddEquipmentModal({
               >
                 <Plus className="w-4 h-4 stroke-[3]" />
                 <span>
-                  {scannerQueue.length > 0 ? `Salvar ${scannerQueue.length} Bipados no Plano` : 'Bipe os Códigos'}
+                  {scannerQueue.length > 0 ? `Salvar ${scannerQueue.length} Bipados no Plano Ativo ("${targetPlanTitle}")` : 'Bipe os Códigos'}
                 </span>
               </button>
             </div>
