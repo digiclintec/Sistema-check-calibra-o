@@ -27,7 +27,7 @@ import {
   Search,
   Pencil
 } from 'lucide-react';
-import { parseSpreadsheetFile } from '../utils/sheetParser';
+import { parseEquipmentFile } from '../utils/fileEquipmentParser.js';
 
 const MONTH_NAMES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -245,7 +245,7 @@ export default function MonthlyPlanningTab({
     return counts;
   }, [allEquipmentsWithPlan, selectedCronogramaYear]);
 
-  // Upload de arquivo
+  // Upload de arquivo (CSV, PDF, XLS ou XLSX)
   const handleFileSelect = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -253,13 +253,13 @@ export default function MonthlyPlanningTab({
     setIsParsingFile(true);
     setParseError('');
     try {
-      const result = await parseSpreadsheetFile(file);
+      const result = await parseEquipmentFile(file);
       setParsedFileResult(result);
       if (!newTitle) {
         setNewTitle(result.fileName.replace(/\.[^/.]+$/, ""));
       }
     } catch (err) {
-      setParseError(err.message || 'Erro ao ler arquivo da planilha.');
+      setParseError(err.message || 'Erro ao ler arquivo selecionado (CSV, PDF, XLS ou XLSX).');
       setParsedFileResult(null);
     } finally {
       setIsParsingFile(false);
@@ -1143,7 +1143,7 @@ export default function MonthlyPlanningTab({
                     type="file"
                     ref={fileInputRef}
                     onChange={handleFileSelect}
-                    accept=".xlsx, .xls, .csv"
+                    accept=".xlsx, .xls, .csv, .pdf, application/pdf, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel, text/csv"
                     className="hidden"
                   />
 
@@ -1154,7 +1154,7 @@ export default function MonthlyPlanningTab({
                     {isParsingFile ? (
                       <div className="flex flex-col items-center justify-center space-y-1">
                         <Clock className="w-6 h-6 text-blue-500 animate-spin" />
-                        <span className="text-xs text-slate-500">Lendo planilha...</span>
+                        <span className="text-xs text-slate-500">Lendo e analisando arquivo...</span>
                       </div>
                     ) : parsedFileResult ? (
                       <div className="flex flex-col items-center justify-center space-y-1 text-emerald-600 dark:text-emerald-400">
@@ -1170,7 +1170,7 @@ export default function MonthlyPlanningTab({
                         <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
                           Clique para escolher o arquivo
                         </span>
-                        <span className="text-[11px] text-slate-400">.xlsx, .xls ou .csv</span>
+                        <span className="text-[11px] text-slate-400">CSV, PDF, XLSX ou XLS</span>
                       </div>
                     )}
                   </div>

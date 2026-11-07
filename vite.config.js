@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { PDFParse } from 'pdf-parse';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -184,7 +185,7 @@ function apiServerPlugin() {
 
         let body = '';
         req.on('data', chunk => { body += chunk; });
-        req.on('end', () => {
+        req.on('end', async () => {
           let parsedBody = {};
           if (body) {
             try { parsedBody = JSON.parse(body); } catch (e) {}
@@ -1031,6 +1032,32 @@ function apiServerPlugin() {
             saveDb(db);
 
             return res.end(JSON.stringify({ success: true, message: 'Planilha do hospital limpa com sucesso.' }));
+          }
+
+          // PDF text extraction route for calibration reports & equipment lists
+          if (req.url === '/api/parse-pdf-calibrations' && req.method === 'POST') {
+            try {
+              const { pdfBase64 } = parsedBody || {};
+              if (!pdfBase64) {
+                res.statusCode = 400;
+                return res.end(JSON.stringify({ success: false, message: 'Arquivo PDF não fornecido.' }));
+              }
+              const cleanBase64 = pdfBase64.replace(/^data:application\/pdf;base64,/, '').replace(/\s/g, '');
+              const buffer = Buffer.from(cleanBase64, 'base64');
+              const parser = new PDFParse({ data: buffer });
+              const textResult = await parser.getText();
+              const fullText = typeof textResult === 'string' ? textResult : (textResult?.text || '');
+              const lines = fullText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+              return res.end(JSON.stringify({
+                success: true,
+                text: fullText,
+                lines,
+                totalLines: lines.length
+              }));
+            } catch (err) {
+              res.statusCode = 500;
+              return res.end(JSON.stringify({ success: false, message: 'Erro ao processar o arquivo PDF: ' + err.message }));
+            }
           }
 
           next();

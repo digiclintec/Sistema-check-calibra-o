@@ -21,35 +21,13 @@ import {
   Filter,
   FileText
 } from 'lucide-react';
-import { parseSpreadsheetFile } from '../utils/sheetParser';
+import { 
+  parseEquipmentFile, 
+  calculateNextCalibration, 
+  computeCalibrationStatus 
+} from '../utils/fileEquipmentParser.js';
 
-export function calculateNextCalibration(dateStr, months = 12) {
-  if (!dateStr) return '';
-  try {
-    const d = new Date(dateStr + 'T00:00:00');
-    if (isNaN(d.getTime())) return '';
-    d.setMonth(d.getMonth() + parseInt(months, 10));
-    return d.toISOString().split('T')[0];
-  } catch (e) {
-    return '';
-  }
-}
-
-export function computeCalibrationStatus(validadeStr) {
-  if (!validadeStr) return 'Válido';
-  try {
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-    const target = new Date(validadeStr + 'T00:00:00');
-    if (isNaN(target.getTime())) return 'Válido';
-    const diffDays = Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    if (diffDays < 0) return 'Vencido';
-    if (diffDays <= 30) return 'A Vencer';
-    return 'Válido';
-  } catch (e) {
-    return 'Válido';
-  }
-}
+export { calculateNextCalibration, computeCalibrationStatus };
 
 export function parsePastedExcelText(text, defaultSetor = 'Geral') {
   if (!text || !text.trim()) return [];
@@ -188,10 +166,11 @@ export default function AddEquipmentModal({
   const [statusCalibracao, setStatusCalibracao] = useState('Válido');
   const [observacao, setObservacao] = useState('');
 
-  // --- MODO 2: IMPORTAR PLANILHA COMPLEMENTAR (.xlsx, .csv) ---
+  // --- MODO 2: IMPORTAR ARQUIVO (CSV, PDF, XLS, XLSX) ---
   const [isParsingExcel, setIsParsingExcel] = useState(false);
   const [parsedExcelResult, setParsedExcelResult] = useState(null);
   const [excelError, setExcelError] = useState('');
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
   const fileInputRef = useRef(null);
 
   // --- MODO 3: COLAR EM LOTE (Ctrl+V) ---
@@ -285,22 +264,36 @@ export default function AddEquipmentModal({
     setStatusCalibracao(computeCalibrationStatus(val));
   };
 
-  // --- Handlers para Importação de Planilha Complementar ---
-  const handleSelectExcelFile = async (e) => {
-    const file = e.target.files?.[0];
+  // --- Handlers para Importação de Arquivo (CSV, PDF, XLS, XLSX) ---
+  const processUploadedFile = async (file) => {
     if (!file) return;
-
     setIsParsingExcel(true);
     setExcelError('');
     try {
-      const result = await parseSpreadsheetFile(file);
+      const result = await parseEquipmentFile(file, batchDefaultSetor);
       setParsedExcelResult(result);
     } catch (err) {
-      setExcelError(err.message || 'Erro ao ler arquivo da planilha complementar.');
+      setExcelError(err.message || 'Erro ao processar o arquivo selecionado.');
       setParsedExcelResult(null);
     } finally {
       setIsParsingExcel(false);
+    }
+  };
+
+  const handleSelectExcelFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      await processUploadedFile(file);
       e.target.value = '';
+    }
+  };
+
+  const handleFileDrop = async (e) => {
+    e.preventDefault();
+    setIsDraggingFile(false);
+    const file = e.dataTransfer?.files?.[0];
+    if (file) {
+      await processUploadedFile(file);
     }
   };
 
@@ -530,9 +523,10 @@ export default function AddEquipmentModal({
                 ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
                 : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
             }`}
+            title="Importar equipamentos via arquivo CSV, PDF, XLS ou XLSX"
           >
             <UploadCloud className="w-3.5 h-3.5 shrink-0" />
-            <span className="truncate">Anexar Excel</span>
+            <span className="truncate">CSV / PDF / XLS</span>
           </button>
 
           <button
@@ -802,17 +796,17 @@ export default function AddEquipmentModal({
         )}
 
         {/* ============================================================
-            ABA 2: IMPORTAR PLANILHA COMPLEMENTAR (.xlsx, .csv)
+            ABA 2: IMPORTAR ARQUIVO (CSV, PDF, XLS, XLSX)
         ============================================================ */}
         {activeTab === 'excel' && (
           <div className="space-y-4 overflow-y-auto flex-1 pr-1 text-xs">
-            <div className="p-3.5 rounded-2xl bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/50">
-              <h4 className="font-bold text-emerald-900 dark:text-emerald-300 flex items-center gap-1.5 mb-1">
+            <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-50/80 via-teal-50/50 to-blue-50/50 dark:from-emerald-950/30 dark:via-teal-950/20 dark:to-blue-950/20 border border-emerald-200 dark:border-emerald-900/50">
+              <h4 className="font-bold text-emerald-900 dark:text-emerald-300 flex items-center gap-1.5 mb-1 text-xs sm:text-sm">
                 <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                <span>Acrescentar Lista de Equipamentos via Arquivo</span>
+                <span>Acrescentar Equipamentos via Arquivo (CSV, PDF, XLS ou XLSX)</span>
               </h4>
-              <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
-                Suba uma nova planilha Excel (.xlsx, .xls ou .csv). Os equipamentos dela serão somados aos que já existem na planilha ativa, sem apagar os checks ou histórico já conferidos.
+              <p className="text-slate-600 dark:text-slate-400 leading-relaxed text-[11px] sm:text-xs">
+                Selecione ou arraste qualquer arquivo nos formatos <strong>.CSV</strong>, <strong>.PDF</strong> (laudos ou relatórios de calibração) ou <strong>Excel (.xlsx, .xls)</strong>. Os aparelhos encontrados serão incorporados diretamente ao plano sem apagar os dados ou conferências já realizadas.
               </p>
             </div>
 
@@ -820,67 +814,121 @@ export default function AddEquipmentModal({
               type="file"
               ref={fileInputRef}
               onChange={handleSelectExcelFile}
-              accept=".xlsx, .xls, .csv"
+              accept=".xlsx, .xls, .csv, .pdf, application/pdf, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel, text/csv"
               className="hidden"
             />
 
             <div 
               onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-emerald-500 rounded-3xl p-6 text-center cursor-pointer transition bg-slate-50 dark:bg-slate-800/40"
+              onDragOver={(e) => { e.preventDefault(); setIsDraggingFile(true); }}
+              onDragLeave={() => setIsDraggingFile(false)}
+              onDrop={handleFileDrop}
+              className={`border-2 border-dashed rounded-3xl p-6 sm:p-7 text-center cursor-pointer transition ${
+                isDraggingFile 
+                  ? 'border-emerald-500 bg-emerald-50/60 dark:bg-emerald-950/50 ring-4 ring-emerald-500/20 scale-[0.99]' 
+                  : 'border-slate-300 dark:border-slate-700 hover:border-emerald-500 bg-slate-50/80 dark:bg-slate-800/40 hover:bg-slate-100/70 dark:hover:bg-slate-800/70'
+              }`}
             >
               {isParsingExcel ? (
-                <div className="flex flex-col items-center justify-center space-y-1">
-                  <Clock className="w-7 h-7 text-emerald-500 animate-spin" />
-                  <span className="font-bold text-slate-700 dark:text-slate-300">Lendo e mapeando colunas da planilha...</span>
+                <div className="flex flex-col items-center justify-center space-y-2 py-3">
+                  <Clock className="w-9 h-9 text-emerald-500 animate-spin" />
+                  <span className="font-extrabold text-sm text-slate-800 dark:text-slate-200">
+                    Lendo e analisando arquivo...
+                  </span>
+                  <span className="text-xs text-slate-400">
+                    Extraindo dados de tabelas, laudos e certificados
+                  </span>
                 </div>
               ) : parsedExcelResult ? (
-                <div className="flex flex-col items-center justify-center space-y-1.5 text-emerald-600 dark:text-emerald-400">
-                  <CheckCircle2 className="w-8 h-8" />
-                  <span className="font-extrabold text-sm text-slate-900 dark:text-white">{parsedExcelResult.fileName}</span>
-                  <span className="text-xs bg-emerald-100 dark:bg-emerald-950 px-3 py-1 rounded-full font-bold">
-                    {parsedExcelResult.total} equipamentos detectados e prontos para acrescentar!
+                <div className="flex flex-col items-center justify-center space-y-2 text-emerald-600 dark:text-emerald-400 py-1">
+                  <CheckCircle2 className="w-9 h-9" />
+                  
+                  <div className="flex items-center gap-2 flex-wrap justify-center">
+                    <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full ${
+                      parsedExcelResult.fileType === 'pdf'
+                        ? 'bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900'
+                        : parsedExcelResult.fileType === 'csv'
+                        ? 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-900'
+                        : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900'
+                    }`}>
+                      {parsedExcelResult.fileType === 'pdf' ? '📄 Documento PDF' : parsedExcelResult.fileType === 'csv' ? '📊 Arquivo CSV' : '📗 Planilha Excel'}
+                    </span>
+                    <span className="font-extrabold text-sm text-slate-900 dark:text-white truncate max-w-xs sm:max-w-md">
+                      {parsedExcelResult.fileName}
+                    </span>
+                  </div>
+
+                  <span className="text-xs bg-emerald-100 dark:bg-emerald-950 px-3.5 py-1 rounded-full font-bold">
+                    ✓ {parsedExcelResult.total} equipamentos detectados e prontos para adicionar!
+                  </span>
+
+                  <span className="text-[11px] text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 underline cursor-pointer pt-1">
+                    Clique para trocar de arquivo
                   </span>
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center space-y-1.5">
-                  <UploadCloud className="w-8 h-8 text-slate-400 mb-1" />
-                  <span className="font-bold text-slate-800 dark:text-slate-200 text-sm">
-                    Clique aqui para selecionar a planilha complementar
+                <div className="flex flex-col items-center justify-center space-y-2">
+                  <UploadCloud className="w-10 h-10 text-emerald-500 mb-0.5 animate-bounce duration-1000" />
+                  <span className="font-extrabold text-slate-900 dark:text-white text-sm">
+                    Clique aqui ou arraste o arquivo (CSV, PDF, XLS ou XLSX)
                   </span>
-                  <span className="text-slate-400">Formatos aceitos: .xlsx, .xls ou .csv</span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400 max-w-sm">
+                    Reconhece tabelas, laudos de calibração, inventários hospitalares e relatórios técnicos
+                  </span>
+                  <div className="flex items-center gap-1.5 pt-1.5 flex-wrap justify-center">
+                    <span className="px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 text-[10px] font-black border border-blue-200 dark:border-blue-900">.CSV</span>
+                    <span className="px-2 py-0.5 rounded-md bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 text-[10px] font-black border border-rose-200 dark:border-rose-900">.PDF</span>
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 text-[10px] font-black border border-emerald-200 dark:border-emerald-900">.XLSX</span>
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 text-[10px] font-black border border-emerald-200 dark:border-emerald-900">.XLS</span>
+                  </div>
                 </div>
               )}
             </div>
 
             {excelError && (
-              <p className="text-xs text-rose-500 flex items-center gap-1 font-semibold">
-                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                <span>{excelError}</span>
-              </p>
+              <div className="p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-xs text-rose-700 dark:text-rose-300 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-rose-500" />
+                <span className="font-semibold">{excelError}</span>
+              </div>
             )}
 
             {/* Prévia dos equipamentos lidos */}
             {parsedExcelResult && parsedExcelResult.equipments && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 dark:text-slate-400">
-                  <span>Prévia dos primeiros itens:</span>
-                  <span>Total: {parsedExcelResult.total} itens</span>
+                  <span>Prévia dos primeiros itens lidos:</span>
+                  <span className="font-mono text-emerald-600 dark:text-emerald-400">Total: {parsedExcelResult.total} itens</span>
                 </div>
-                <div className="max-h-40 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800 text-[11px]">
+                <div className="max-h-48 overflow-y-auto rounded-2xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800 text-[11px] bg-white dark:bg-slate-900">
                   {parsedExcelResult.equipments.slice(0, 10).map((eq, i) => (
-                    <div key={i} className="p-2 flex items-center justify-between gap-2 hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                    <div key={i} className="p-2.5 flex items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
                       <div className="min-w-0 truncate">
-                        <span className="font-bold text-slate-800 dark:text-slate-200 block truncate">{eq.equipamento || eq.nome}</span>
-                        <span className="text-slate-400 font-mono text-[10px]">Tag: {eq.tag || '-'} | S/N: {eq.serie || '-'}</span>
+                        <span className="font-extrabold text-slate-900 dark:text-white block truncate">
+                          {eq.equipamento || eq.nome || 'Equipamento'}
+                        </span>
+                        <div className="flex items-center gap-2 text-[10px] text-slate-400 font-mono flex-wrap mt-0.5">
+                          {eq.tag && <span>Tag: <strong className="text-slate-600 dark:text-slate-300">{eq.tag}</strong></span>}
+                          {eq.serie && <span>• S/N: <strong className="text-slate-600 dark:text-slate-300">{eq.serie}</strong></span>}
+                          {(eq.fabricante || eq.modelo) && (
+                            <span className="text-slate-500 font-sans">• {eq.fabricante} {eq.modelo}</span>
+                          )}
+                        </div>
                       </div>
-                      <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 shrink-0">
-                        {eq.setor || 'Geral'}
-                      </span>
+                      <div className="text-right shrink-0">
+                        <span className="px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold block text-[10px]">
+                          {eq.setor || 'Geral'}
+                        </span>
+                        {eq.validadeCalibracao && (
+                          <span className="text-[10px] text-slate-400 font-mono block mt-0.5">
+                            Val: {eq.validadeCalibracao}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   ))}
                   {parsedExcelResult.equipments.length > 10 && (
-                    <div className="p-2 text-center text-slate-400 font-semibold bg-slate-50 dark:bg-slate-800/60">
-                      ... e mais {parsedExcelResult.equipments.length - 10} equipamentos
+                    <div className="p-2.5 text-center text-slate-500 font-bold bg-slate-50 dark:bg-slate-800/60 text-[11px]">
+                      ... e mais {parsedExcelResult.equipments.length - 10} equipamentos encontrados no arquivo
                     </div>
                   )}
                 </div>
@@ -900,11 +948,11 @@ export default function AddEquipmentModal({
                 type="button"
                 disabled={!parsedExcelResult || isLoading}
                 onClick={() => handleSubmitBatch(parsedExcelResult.equipments, parsedExcelResult.fileName)}
-                className="py-2.5 px-5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white rounded-xl font-bold shadow-md shadow-emerald-500/20 flex items-center gap-1.5"
+                className="py-2.5 px-5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white rounded-xl font-bold shadow-md shadow-emerald-500/20 flex items-center gap-1.5 transition active:scale-95"
               >
                 <Plus className="w-4 h-4 stroke-[3]" />
                 <span>
-                  {parsedExcelResult ? `Acrescentar ${parsedExcelResult.total} Itens ao Plano` : 'Selecione uma Planilha'}
+                  {parsedExcelResult ? `Acrescentar ${parsedExcelResult.total} Itens ao Plano` : 'Selecione um Arquivo'}
                 </span>
               </button>
             </div>
