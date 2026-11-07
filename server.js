@@ -7,7 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
-import { parseWorkbookBuffer } from './src/utils/sheetParser.js';
+import { parseWorkbookBuffer, parseCsvText } from './src/utils/sheetParser.js';
 import { PDFParse } from 'pdf-parse';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1257,6 +1257,8 @@ app.get('/api/data', (req, res) => {
     equipments,
     activeSheetName,
     googleSheetUrl: hospital.googleSheetUrl || '',
+    googleSheetWebhookUrl: hospital.googleSheetWebhookUrl || '',
+    lastGoogleSheetPush: hospital.lastGoogleSheetPush || null,
     googleSheetAutoSync: hospital.googleSheetAutoSync !== false,
     lastGoogleSheetSync: hospital.lastGoogleSheetSync || null,
     googleSheetSyncStatus: hospital.googleSheetSyncStatus || 'idle',
@@ -1382,6 +1384,7 @@ app.post('/api/data', (req, res) => {
     serviceConfig, 
     sectorColors,
     googleSheetUrl,
+    googleSheetWebhookUrl,
     googleSheetAutoSync
   } = req.body || {};
   const db = readDb();
@@ -1415,6 +1418,9 @@ app.post('/api/data', (req, res) => {
 
   if (googleSheetUrl !== undefined) {
     db.hospitals[idx].googleSheetUrl = googleSheetUrl;
+  }
+  if (googleSheetWebhookUrl !== undefined) {
+    db.hospitals[idx].googleSheetWebhookUrl = (googleSheetWebhookUrl || '').trim();
   }
   if (googleSheetAutoSync !== undefined) {
     db.hospitals[idx].googleSheetAutoSync = googleSheetAutoSync;
@@ -1452,6 +1458,46 @@ app.post('/api/data', (req, res) => {
 
 // ---------------- GOOGLE SHEETS LIVE SYNC ENGINE ---------------- //
 
+// Helper: Send check update to Google Sheets Webhook (Google Apps Script)
+async function sendCheckToGoogleWebhook(webhookUrl, payload) {
+  if (!webhookUrl || typeof webhookUrl !== 'string' || !webhookUrl.startsWith('http')) {
+    return { success: false, message: 'URL de webhook inválida' };
+  }
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+    const res = await fetch(webhookUrl.trim(), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json, text/plain, */*'
+      },
+      body: JSON.stringify(payload),
+      redirect: 'follow',
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+
+    const text = await res.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      data = { rawText: text };
+    }
+
+    if (!res.ok) {
+      console.warn('[GoogleSheet Webhook] Resposta não-OK:', res.status, text.substring(0, 200));
+      return { success: false, status: res.status, data };
+    }
+    console.log('[GoogleSheet Webhook] Sincronização executada com sucesso:', data?.message || data);
+    return { success: true, status: res.status, data };
+  } catch (err) {
+    console.error('[GoogleSheet Webhook] Erro ao enviar para o Google Sheets:', err.message);
+    return { success: false, error: err.message };
+  }
+}
+
 // Helper: Fetch binary data from Google Sheets / Drive and parse
 async function fetchAndParseGoogleSheet(url) {
   if (!url || typeof url !== 'string') {
@@ -1459,6 +1505,35 @@ async function fetchAndParseGoogleSheet(url) {
   }
 
   const cleanUrl = url.trim();
+
+  // Suporte a Google Apps Script Webhook (URL /exec)
+  if (cleanUrl.includes('script.google.com/macros/s/')) {
+    try {
+      const exportUrl = cleanUrl.includes('?') ? `${cleanUrl}&action=export_csv` : `${cleanUrl}?action=export_csv`;
+      const response = await fetch(exportUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) CalibraCheck-GoogleSync'
+        },
+        redirect: 'follow'
+      });
+      const text = await response.text();
+      if (text && text.length > 10 && !text.includes('accounts.google.com')) {
+        const parsed = parseCsvText(text, 'Google Sheets (Apps Script)');
+        if (parsed && parsed.equipments && parsed.equipments.length > 0) {
+          return {
+            ...parsed,
+            cleanUrl,
+            sheetName: parsed.sheetName || 'Apps Script',
+            googleSheetWebhookUrl: cleanUrl,
+            isAppsScript: true
+          };
+        }
+      }
+    } catch (appsScriptErr) {
+      console.warn('[fetchAndParseGoogleSheet] Falha ao ler Apps Script CSV:', appsScriptErr.message);
+    }
+  }
+
   const match = cleanUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/) ||
                 cleanUrl.match(/\/file\/d\/([a-zA-Z0-9-_]+)/) ||
                 cleanUrl.match(/[?&]id=([a-zA-Z0-9-_]+)/);
@@ -1759,6 +1834,175 @@ app.post('/api/unlink-google-sheet', (req, res) => {
   res.json({ success: true, message: 'Link do Google Sheets desvinculado com sucesso.' });
 });
 
+// Route 4: Salvar Webhook do Google Apps Script para Gravação Bidirecional
+app.post('/api/save-google-webhook', (req, res) => {
+  const { hospitalId, webhookUrl } = req.body || {};
+  const db = readDb();
+  const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
+  const idx = (db.hospitals || []).findIndex(h => h.id === targetId);
+
+  if (idx === -1) {
+    return res.status(404).json({ success: false, message: 'Hospital ativo não encontrado.' });
+  }
+
+  const cleanWebhook = (webhookUrl || '').trim();
+  db.hospitals[idx].googleSheetWebhookUrl = cleanWebhook;
+  db.hospitals[idx].lastUpdated = Date.now();
+  db.lastUpdated = Date.now();
+  saveDb(db);
+
+  res.json({
+    success: true,
+    message: cleanWebhook ? 'Webhook de gravação no Google Sheets configurado com sucesso!' : 'Webhook removido.',
+    googleSheetWebhookUrl: cleanWebhook
+  });
+});
+
+// Route 5: Testar Conexão com o Webhook do Google Apps Script
+app.post('/api/test-google-webhook', async (req, res) => {
+  const { webhookUrl, hospitalId } = req.body || {};
+  let targetUrl = (webhookUrl || '').trim();
+
+  if (!targetUrl) {
+    const db = readDb();
+    const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
+    const hospital = (db.hospitals || []).find(h => h.id === targetId);
+    targetUrl = (hospital?.googleSheetWebhookUrl || '').trim();
+  }
+
+  if (!targetUrl) {
+    return res.status(400).json({ success: false, message: 'Nenhuma URL de Webhook fornecida para teste.' });
+  }
+
+  try {
+    const result = await sendCheckToGoogleWebhook(targetUrl, {
+      action: 'ping',
+      test: true,
+      timestamp: new Date().toISOString()
+    });
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: 'Não foi possível validar o Webhook do Google Sheets: ' + (result.error || 'Verifique se a implantação do Apps Script está configurada como "Qualquer pessoa" (Anyone).')
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Conexão validada com sucesso! O Google Sheets respondeu à ponte do CalibraCheck.',
+      data: result.data
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: 'Erro ao conectar ao Google Apps Script: ' + err.message
+    });
+  }
+});
+
+// Route 6: Gravar/Enviar Todas as Calibrações Atuais na Planilha Google
+app.post('/api/push-all-to-google-sheet', async (req, res) => {
+  const { hospitalId, planId, webhookUrl, onlyChecked = false } = req.body || {};
+  const db = readDb();
+  const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
+  const idx = (db.hospitals || []).findIndex(h => h.id === targetId);
+
+  if (idx === -1) {
+    return res.status(404).json({ success: false, message: 'Hospital ativo não encontrado.' });
+  }
+
+  const hospital = db.hospitals[idx];
+  const targetWebhook = (webhookUrl || hospital.googleSheetWebhookUrl || (hospital.googleSheetUrl && hospital.googleSheetUrl.includes('script.google.com') ? hospital.googleSheetUrl : '')).trim();
+
+  if (!targetWebhook) {
+    return res.status(400).json({
+      success: false,
+      message: 'Nenhum Webhook do Google Apps Script configurado. Configure a URL na aba "Gravação no Google Sheets".'
+    });
+  }
+
+  let targetPlan = null;
+  if (planId && Array.isArray(hospital.plans)) {
+    targetPlan = hospital.plans.find(p => p.id === planId);
+  } else if (hospital.activePlanId && Array.isArray(hospital.plans)) {
+    targetPlan = hospital.plans.find(p => p.id === hospital.activePlanId);
+  }
+
+  const list = targetPlan ? (targetPlan.equipments || []) : (hospital.equipments || []);
+  let itemsToSync = list;
+  if (onlyChecked) {
+    itemsToSync = list.filter(e => e.checado || e.check_calibracao || e.check_preventiva || e.check_seguranca || e.check_externa);
+  }
+
+  if (itemsToSync.length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'Nenhum equipamento encontrado para gravação na planilha.'
+    });
+  }
+
+  const payloadItems = itemsToSync.map(item => {
+    const isChecked = Boolean(item.checado || item.check_calibracao || item.check_preventiva || item.check_seguranca || item.check_externa);
+    let statusText = 'NÃO CONFERIDO';
+    if (isChecked) {
+      if (item.check_externa) statusText = 'MANUTENÇÃO EXTERNA';
+      else if (item.check_preventiva && !item.check_calibracao) statusText = 'PREVENTIVA OK';
+      else if (item.check_seguranca && !item.check_calibracao) statusText = 'SEGURANÇA ELÉTRICA OK';
+      else statusText = 'CONFERIDO / CALIBRADO';
+    }
+
+    return {
+      id: item.id,
+      idec: item.codigoBarras || item.tag || item.id,
+      tag: item.tag || '',
+      serie: item.serie || '',
+      codigoBarras: item.codigoBarras || '',
+      equipamento: item.equipamento || '',
+      modelo: item.modelo || '',
+      setor: item.setor || '',
+      setorRetirada: item.setor_retirada || '',
+      checked: isChecked,
+      statusText: isChecked ? statusText : '',
+      dataCheck: item.dataCheck || item.data_calibracao || item.data_preventiva || '',
+      user: item.conferidoPor || item.usuario_calibracao || item.usuario_preventiva || 'Técnico CalibraCheck'
+    };
+  });
+
+  try {
+    const result = await sendCheckToGoogleWebhook(targetWebhook, {
+      action: 'push_all',
+      hospitalId: hospital.id,
+      planId: targetPlan ? targetPlan.id : null,
+      totalCount: payloadItems.length,
+      items: payloadItems
+    });
+
+    if (!result.success) {
+      return res.status(500).json({
+        success: false,
+        message: 'Erro ao gravar na planilha Google: ' + (result.error || 'Resposta inválida do Webhook')
+      });
+    }
+
+    hospital.googleSheetWebhookUrl = targetWebhook;
+    hospital.lastGoogleSheetPush = Date.now();
+    saveDb(db);
+
+    return res.json({
+      success: true,
+      message: `${payloadItems.length} equipamentos enviados e gravados com sucesso na planilha Google!`,
+      updatedCount: result.data?.updatedCount || payloadItems.length,
+      data: result.data
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: 'Falha na comunicação com o Google Apps Script: ' + err.message
+    });
+  }
+});
+
 // Background Auto-Sync Worker for all hospitals connected to Google Sheets (Executa a cada 25s)
 setInterval(async () => {
   try {
@@ -1915,6 +2159,37 @@ app.post('/api/toggle-check', (req, res) => {
   hospital.lastUpdatedBy = inspectorLabel;
   db.lastUpdated = nowTimestamp;
   saveDb(db);
+
+  // Sincronização Bidirecional instantânea com Google Sheets via Webhook (Single Item)
+  const webhookUrl = (hospital.googleSheetWebhookUrl || (hospital.googleSheetUrl && hospital.googleSheetUrl.includes('script.google.com') ? hospital.googleSheetUrl : '')).trim();
+  if (webhookUrl) {
+    const checkedItem = list[idx] || item;
+    const statusText = nextChecked ? (
+      modality === 'externa' || modality === 'manutencao_externa' ? 'MANUTENÇÃO EXTERNA' :
+      modality === 'preventiva' ? 'PREVENTIVA OK' :
+      modality === 'seguranca' ? 'SEGURANÇA ELÉTRICA OK' : 'CONFERIDO / CALIBRADO'
+    ) : 'NÃO CONFERIDO';
+
+    sendCheckToGoogleWebhook(webhookUrl, {
+      action: 'check',
+      hospitalId: hospital.id,
+      planId: targetPlan ? targetPlan.id : (planId || null),
+      id: checkedItem.id,
+      idec: checkedItem.codigoBarras || checkedItem.tag || checkedItem.id,
+      tag: checkedItem.tag || '',
+      serie: checkedItem.serie || '',
+      codigoBarras: checkedItem.codigoBarras || '',
+      equipamento: checkedItem.equipamento || '',
+      modelo: checkedItem.modelo || '',
+      setor: checkedItem.setor || '',
+      setorRetirada: checkedItem.setor_retirada || '',
+      modality,
+      checked: nextChecked,
+      statusText,
+      dataCheck: checkedItem.dataCheck || nowIso,
+      user: inspectorLabel
+    }).catch(err => console.error('[GoogleSheet Webhook Async Error]', err.message));
+  }
 
   res.json({
     success: true,
@@ -2092,6 +2367,41 @@ app.post('/api/batch-check', (req, res) => {
   db.lastUpdated = nowTimestamp;
   saveDb(db);
 
+  // Sincronização em Lote Bidirecional com Google Sheets via Webhook
+  const webhookUrlBatch = (hospital.googleSheetWebhookUrl || (hospital.googleSheetUrl && hospital.googleSheetUrl.includes('script.google.com') ? hospital.googleSheetUrl : '')).trim();
+  if (webhookUrlBatch && checkedCount > 0) {
+    const updatedItems = list.filter(it => {
+      const itId = String(it.id || '').toLowerCase();
+      const itBarcode = String(it.codigoBarras || '').toLowerCase();
+      const itTag = String(it.tag || '').toLowerCase();
+      const itSerie = String(it.serie || '').toLowerCase();
+      return idSet.has(itId) || idSet.has(itBarcode) || idSet.has(itTag) || idSet.has(itSerie);
+    }).map(it => ({
+      id: it.id,
+      idec: it.codigoBarras || it.tag || it.id,
+      tag: it.tag || '',
+      serie: it.serie || '',
+      codigoBarras: it.codigoBarras || '',
+      equipamento: it.equipamento || '',
+      modelo: it.modelo || '',
+      setor: it.setor || '',
+      setorRetirada: it.setor_retirada || '',
+      checked: true,
+      statusText: 'CONFERIDO / CALIBRADO',
+      dataCheck: it.dataCheck || nowIso,
+      user: inspectorLabel
+    }));
+
+    sendCheckToGoogleWebhook(webhookUrlBatch, {
+      action: 'batch_check',
+      hospitalId: hospital.id,
+      planId: targetPlan ? targetPlan.id : (planId || null),
+      count: updatedItems.length,
+      items: updatedItems,
+      user: inspectorLabel
+    }).catch(err => console.error('[GoogleSheet Batch Webhook Async Error]', err.message));
+  }
+
   res.json({
     success: true,
     message: `${checkedCount} equipamentos conferidos com sucesso para [${modality.toUpperCase()}]!`,
@@ -2169,6 +2479,27 @@ app.post('/api/equipment/update-sector', (req, res) => {
   hospital.lastUpdatedBy = inspectorLabel;
   db.lastUpdated = nowTimestamp;
   saveDb(db);
+
+  // Sincronização de Setor com Google Sheets via Webhook
+  const webhookUrlSector = (hospital.googleSheetWebhookUrl || (hospital.googleSheetUrl && hospital.googleSheetUrl.includes('script.google.com') ? hospital.googleSheetUrl : '')).trim();
+  if (webhookUrlSector) {
+    const updatedEq = list[idx];
+    sendCheckToGoogleWebhook(webhookUrlSector, {
+      action: 'check',
+      hospitalId: hospital.id,
+      planId: targetPlan ? targetPlan.id : (planId || null),
+      id: updatedEq.id,
+      idec: updatedEq.codigoBarras || updatedEq.tag || updatedEq.id,
+      tag: updatedEq.tag || '',
+      serie: updatedEq.serie || '',
+      codigoBarras: updatedEq.codigoBarras || '',
+      setor: updatedEq.setor || '',
+      setorRetirada: updatedEq.setor_retirada || '',
+      checked: Boolean(updatedEq.checado || updatedEq.check_calibracao),
+      statusText: updatedEq.checado || updatedEq.check_calibracao ? 'CONFERIDO / CALIBRADO' : '',
+      user: inspectorLabel
+    }).catch(err => console.error('[GoogleSheet Update Sector Webhook Error]', err.message));
+  }
 
   res.json({
     success: true,

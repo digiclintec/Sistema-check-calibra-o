@@ -177,6 +177,42 @@ function apiServerPlugin() {
     } catch (e) {}
   }
 
+  async function sendCheckToGoogleWebhook(webhookUrl, payload) {
+    if (!webhookUrl || typeof webhookUrl !== 'string' || !webhookUrl.startsWith('http')) {
+      return { success: false, message: 'URL de webhook inválida' };
+    }
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12000);
+      const res = await fetch(webhookUrl.trim(), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json, text/plain, */*'
+        },
+        body: JSON.stringify(payload),
+        redirect: 'follow',
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+
+      const text = await res.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        data = { rawText: text };
+      }
+
+      if (!res.ok) {
+        return { success: false, status: res.status, data };
+      }
+      return { success: true, status: res.status, data };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }
+
   return {
     name: 'api-server-plugin',
     configureServer(server) {
@@ -802,6 +838,9 @@ function apiServerPlugin() {
               hospitalPlan: hospital.plano || 'pro',
               equipments: hospital.equipments || [],
               activeSheetName: hospital.activeSheetName || '',
+              googleSheetUrl: hospital.googleSheetUrl || '',
+              googleSheetWebhookUrl: hospital.googleSheetWebhookUrl || '',
+              lastGoogleSheetPush: hospital.lastGoogleSheetPush || null,
               lastUpdated: hospital.lastUpdated || db.lastUpdated || Date.now(),
               lastUpdatedBy: hospital.lastUpdatedBy || ''
             }));
@@ -809,7 +848,7 @@ function apiServerPlugin() {
 
           // Save spreadsheet data
           if (req.url === '/api/data' && req.method === 'POST') {
-            const { equipments, activeSheetName, userEmail, userName, hospitalId } = parsedBody;
+            const { equipments, activeSheetName, userEmail, userName, hospitalId, googleSheetUrl, googleSheetWebhookUrl } = parsedBody;
             const db = readDb();
             const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
             const idx = (db.hospitals || []).findIndex(h => h.id === targetId);
@@ -822,6 +861,8 @@ function apiServerPlugin() {
             const label = userName ? `${userName} (${userEmail})` : (userEmail || 'Sistema');
             db.hospitals[idx].equipments = Array.isArray(equipments) ? equipments : [];
             db.hospitals[idx].activeSheetName = activeSheetName || '';
+            if (googleSheetUrl !== undefined) db.hospitals[idx].googleSheetUrl = googleSheetUrl;
+            if (googleSheetWebhookUrl !== undefined) db.hospitals[idx].googleSheetWebhookUrl = googleSheetWebhookUrl;
             db.hospitals[idx].lastUpdated = Date.now();
             db.hospitals[idx].lastUpdatedBy = label;
             db.lastUpdated = Date.now();
@@ -834,13 +875,95 @@ function apiServerPlugin() {
               hospitalName: db.hospitals[idx].name,
               equipments: db.hospitals[idx].equipments,
               activeSheetName: db.hospitals[idx].activeSheetName,
+              googleSheetWebhookUrl: db.hospitals[idx].googleSheetWebhookUrl,
               lastUpdated: db.hospitals[idx].lastUpdated
             }));
           }
 
+          // Save Google Webhook
+          if (req.url === '/api/save-google-webhook' && req.method === 'POST') {
+            const { hospitalId, webhookUrl } = parsedBody;
+            const db = readDb();
+            const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
+            const idx = (db.hospitals || []).findIndex(h => h.id === targetId);
+            if (idx === -1) {
+              res.statusCode = 404;
+              return res.end(JSON.stringify({ success: false, message: 'Hospital não encontrado' }));
+            }
+            db.hospitals[idx].googleSheetWebhookUrl = (webhookUrl || '').trim();
+            db.hospitals[idx].lastUpdated = Date.now();
+            db.lastUpdated = Date.now();
+            saveDb(db);
+            return res.end(JSON.stringify({
+              success: true,
+              message: 'Webhook salvo!',
+              googleSheetWebhookUrl: db.hospitals[idx].googleSheetWebhookUrl
+            }));
+          }
+
+          // Test Google Webhook
+          if (req.url === '/api/test-google-webhook' && req.method === 'POST') {
+            const { webhookUrl } = parsedBody;
+            if (!webhookUrl || !webhookUrl.startsWith('http')) {
+              res.statusCode = 400;
+              return res.end(JSON.stringify({ success: false, message: 'URL de webhook inválida' }));
+            }
+            const testResult = await sendCheckToGoogleWebhook(webhookUrl, { action: 'ping', test: true });
+            if (!testResult.success) {
+              res.statusCode = 400;
+              return res.end(JSON.stringify({ success: false, message: testResult.error || 'Falha ao conectar' }));
+            }
+            return res.end(JSON.stringify({ success: true, message: 'Conexão validada com sucesso!', data: testResult.data }));
+          }
+
+          // Push all equipments to Google Sheets
+          if (req.url === '/api/push-all-to-google-sheet' && req.method === 'POST') {
+            const { hospitalId, webhookUrl } = parsedBody;
+            const db = readDb();
+            const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
+            const hospital = (db.hospitals || []).find(h => h.id === targetId);
+            if (!hospital) {
+              res.statusCode = 404;
+              return res.end(JSON.stringify({ success: false, message: 'Hospital não encontrado' }));
+            }
+            const targetWebhook = (webhookUrl || hospital.googleSheetWebhookUrl || '').trim();
+            if (!targetWebhook) {
+              res.statusCode = 400;
+              return res.end(JSON.stringify({ success: false, message: 'Nenhum Webhook configurado' }));
+            }
+            const list = hospital.equipments || [];
+            const payloadItems = list.map(item => ({
+              id: item.id,
+              idec: item.codigoBarras || item.tag || item.id,
+              tag: item.tag || '',
+              serie: item.serie || '',
+              codigoBarras: item.codigoBarras || '',
+              equipamento: item.equipamento || '',
+              modelo: item.modelo || '',
+              setor: item.setor || '',
+              checked: Boolean(item.checado),
+              statusText: item.checado ? 'CONFERIDO / CALIBRADO' : '',
+              dataCheck: item.dataCheck || '',
+              user: item.conferidoPor || 'Técnico CalibraCheck'
+            }));
+            const pushRes = await sendCheckToGoogleWebhook(targetWebhook, {
+              action: 'push_all',
+              hospitalId: hospital.id,
+              totalCount: payloadItems.length,
+              items: payloadItems
+            });
+            if (!pushRes.success) {
+              res.statusCode = 500;
+              return res.end(JSON.stringify({ success: false, message: pushRes.error || 'Erro ao enviar' }));
+            }
+            hospital.lastGoogleSheetPush = Date.now();
+            saveDb(db);
+            return res.end(JSON.stringify({ success: true, message: `${payloadItems.length} equipamentos gravados no Google Sheets!` }));
+          }
+
           // Toggle check
           if (req.url === '/api/toggle-check' && req.method === 'POST') {
-            const { id, userEmail, userName, hospitalId } = parsedBody;
+            const { id, userEmail, userName, hospitalId, modality = 'calibracao' } = parsedBody;
             const db = readDb();
             const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
             const hospIdx = (db.hospitals || []).findIndex(h => h.id === targetId);
@@ -850,8 +973,9 @@ function apiServerPlugin() {
               return res.end(JSON.stringify({ success: false, message: 'Hospital não encontrado' }));
             }
 
-            const list = db.hospitals[hospIdx].equipments || [];
-            const idx = list.findIndex(e => e.id === id || e.codigoBarras === id);
+            const hospital = db.hospitals[hospIdx];
+            const list = hospital.equipments || [];
+            const idx = list.findIndex(e => e.id === id || e.codigoBarras === id || e.tag === id || e.serie === id);
             if (idx === -1) {
               res.statusCode = 404;
               return res.end(JSON.stringify({ success: false, message: 'Equipamento não encontrado' }));
@@ -859,17 +983,42 @@ function apiServerPlugin() {
             const item = list[idx];
             const nextChecked = !item.checado;
             const label = userName ? `${userName} (${userEmail || ''})` : (userEmail || 'Usuário');
+            const nowIso = new Date().toISOString();
             list[idx] = {
               ...item,
               checado: nextChecked,
-              dataCheck: nextChecked ? new Date().toISOString() : null,
+              check_calibracao: nextChecked,
+              dataCheck: nextChecked ? nowIso : null,
               conferidoPor: nextChecked ? label : null
             };
-            db.hospitals[hospIdx].equipments = list;
-            db.hospitals[hospIdx].lastUpdated = Date.now();
-            db.hospitals[hospIdx].lastUpdatedBy = label;
+            hospital.equipments = list;
+            hospital.lastUpdated = Date.now();
+            hospital.lastUpdatedBy = label;
             db.lastUpdated = Date.now();
             saveDb(db);
+
+            // Webhook write-back
+            const webhookUrl = (hospital.googleSheetWebhookUrl || (hospital.googleSheetUrl && hospital.googleSheetUrl.includes('script.google.com') ? hospital.googleSheetUrl : '')).trim();
+            if (webhookUrl) {
+              const checkedItem = list[idx];
+              sendCheckToGoogleWebhook(webhookUrl, {
+                action: 'check',
+                hospitalId: hospital.id,
+                id: checkedItem.id,
+                idec: checkedItem.codigoBarras || checkedItem.tag || checkedItem.id,
+                tag: checkedItem.tag || '',
+                serie: checkedItem.serie || '',
+                codigoBarras: checkedItem.codigoBarras || '',
+                equipamento: checkedItem.equipamento || '',
+                modelo: checkedItem.modelo || '',
+                setor: checkedItem.setor || '',
+                modality,
+                checked: nextChecked,
+                statusText: nextChecked ? 'CONFERIDO / CALIBRADO' : 'NÃO CONFERIDO',
+                dataCheck: nextChecked ? nowIso : '',
+                user: label
+              }).catch(() => {});
+            }
 
             return res.end(JSON.stringify({
               success: true,
@@ -926,6 +1075,39 @@ function apiServerPlugin() {
             db.hospitals[hospIdx].lastUpdatedBy = label;
             db.lastUpdated = Date.now();
             saveDb(db);
+
+            // Webhook batch write-back
+            const webhookUrl = (db.hospitals[hospIdx].googleSheetWebhookUrl || (db.hospitals[hospIdx].googleSheetUrl && db.hospitals[hospIdx].googleSheetUrl.includes('script.google.com') ? db.hospitals[hospIdx].googleSheetUrl : '')).trim();
+            if (webhookUrl && checkedCount > 0) {
+              const updatedItems = list.filter(it => {
+                const itId = String(it.id || '').toLowerCase();
+                const itBarcode = String(it.codigoBarras || '').toLowerCase();
+                const itTag = String(it.tag || '').toLowerCase();
+                const itSerie = String(it.serie || '').toLowerCase();
+                return idSet.has(itId) || idSet.has(itBarcode) || idSet.has(itTag) || idSet.has(itSerie);
+              }).map(it => ({
+                id: it.id,
+                idec: it.codigoBarras || it.tag || it.id,
+                tag: it.tag || '',
+                serie: it.serie || '',
+                codigoBarras: it.codigoBarras || '',
+                equipamento: it.equipamento || '',
+                modelo: it.modelo || '',
+                setor: it.setor || '',
+                checked: true,
+                statusText: 'CONFERIDO / CALIBRADO',
+                dataCheck: it.dataCheck || nowIso,
+                user: label
+              }));
+
+              sendCheckToGoogleWebhook(webhookUrl, {
+                action: 'batch_check',
+                hospitalId: db.hospitals[hospIdx].id,
+                count: updatedItems.length,
+                items: updatedItems,
+                user: label
+              }).catch(() => {});
+            }
 
             return res.end(JSON.stringify({
               success: true,

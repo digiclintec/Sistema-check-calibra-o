@@ -54,6 +54,7 @@ export default function Navbar({
   onUndo = null,
   onResetData = null,
   googleSheetUrl = '',
+  googleSheetWebhookUrl = '',
   serviceConfig = null,
   onOpenAddEquipment = null
 }) {
@@ -377,8 +378,8 @@ export default function Navbar({
                             }}
                             className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition text-emerald-600 dark:text-emerald-400"
                           >
-                            <Link2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                            <span>{googleSheetUrl ? 'Sincronizar Google Sheets' : 'Vincular Google Sheets'}</span>
+                            <Link2 className={`w-4 h-4 shrink-0 ${googleSheetWebhookUrl ? 'text-emerald-400' : 'text-emerald-500'}`} />
+                            <span>{googleSheetWebhookUrl ? 'Google Sheets (Bidirecional ⚡)' : (googleSheetUrl ? 'Sincronizar Google Sheets' : 'Vincular Google Sheets')}</span>
                           </button>
                         )}
 

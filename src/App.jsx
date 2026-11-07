@@ -238,6 +238,13 @@ export default function App() {
       return '';
     }
   });
+  const [googleSheetWebhookUrl, setGoogleSheetWebhookUrl] = useState(() => {
+    try {
+      return localStorage.getItem(`calibracheck_google_webhook_${activeHospitalId}`) || '';
+    } catch (e) {
+      return '';
+    }
+  });
   const [isSyncingGoogle, setIsSyncingGoogle] = useState(false);
   const [lastGoogleSyncTime, setLastGoogleSyncTime] = useState(null);
 
@@ -245,8 +252,19 @@ export default function App() {
     try {
       const savedUrl = localStorage.getItem(`calibracheck_google_url_${activeHospitalId}`) || '';
       setGoogleSheetUrl(savedUrl);
+      const savedWebhook = localStorage.getItem(`calibracheck_google_webhook_${activeHospitalId}`) || '';
+      setGoogleSheetWebhookUrl(savedWebhook);
     } catch (e) {}
   }, [activeHospitalId]);
+
+  const handleSaveGoogleWebhook = (url) => {
+    setGoogleSheetWebhookUrl(url);
+    if (url) {
+      localStorage.setItem(`calibracheck_google_webhook_${activeHospitalId}`, url);
+    } else {
+      localStorage.removeItem(`calibracheck_google_webhook_${activeHospitalId}`);
+    }
+  };
 
   const handleSaveSectorColors = async (newColors) => {
     setSectorColors(newColors);
@@ -723,6 +741,14 @@ export default function App() {
             localStorage.setItem(`calibracheck_google_url_${activeHospitalId}`, data.googleSheetUrl);
           } else {
             localStorage.removeItem(`calibracheck_google_url_${activeHospitalId}`);
+          }
+        }
+        if (data.googleSheetWebhookUrl !== undefined) {
+          setGoogleSheetWebhookUrl(data.googleSheetWebhookUrl || '');
+          if (data.googleSheetWebhookUrl) {
+            localStorage.setItem(`calibracheck_google_webhook_${activeHospitalId}`, data.googleSheetWebhookUrl);
+          } else {
+            localStorage.removeItem(`calibracheck_google_webhook_${activeHospitalId}`);
           }
         }
         if (data.lastGoogleSheetSync) {
@@ -2010,6 +2036,7 @@ export default function App() {
         onUndo={handleUndoAction}
         onResetData={handleResetData}
         googleSheetUrl={googleSheetUrl}
+        googleSheetWebhookUrl={googleSheetWebhookUrl}
         serviceConfig={serviceConfig}
         onOpenAddEquipment={(targetPlanId, code, mode) => setAddEquipmentModal({ isOpen: true, planId: targetPlanId || activePlanId, initialCode: code || '', initialMode: mode || 'manual' })}
       />
@@ -2217,6 +2244,11 @@ export default function App() {
         onClose={() => setIsGoogleModalOpen(false)}
         onImportData={handleGoogleDataImport}
         currentGoogleSheetUrl={googleSheetUrl}
+        currentGoogleSheetWebhookUrl={googleSheetWebhookUrl}
+        onSaveGoogleWebhook={handleSaveGoogleWebhook}
+        hospitalId={activeHospitalId}
+        planId={activePlanId}
+        equipments={equipments}
       />
 
       {/* Modal de Mesclagem de Calibrações Feitas (XLS, XLSX, CSV ou PDF) */}
