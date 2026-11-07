@@ -37,6 +37,15 @@ export const GOOGLE_APPS_SCRIPT_CODE = `/**
 // Planilha padrão de fallback
 var DEFAULT_SPREADSHEET_ID = "1Wn6I7f3hdxVeVWg7lsmKkbo8BRXrnv-8sJ6-3ydUi6Q";
 
+function getFallbackSpreadsheetId() {
+  try {
+    if (typeof DEFAULT_SPREADSHEET_ID !== 'undefined' && DEFAULT_SPREADSHEET_ID) {
+      return DEFAULT_SPREADSHEET_ID;
+    }
+  } catch (e) {}
+  return "1Wn6I7f3hdxVeVWg7lsmKkbo8BRXrnv-8sJ6-3ydUi6Q";
+}
+
 function extractSpreadsheetId(url) {
   if (!url || typeof url !== 'string') return null;
   var match = url.match(/\\/spreadsheets\\/d\\/([a-zA-Z0-9-_]+)/) ||
@@ -46,7 +55,8 @@ function extractSpreadsheetId(url) {
 }
 
 function getSpreadsheet(payload) {
-  var targetId = (payload && (payload.spreadsheetId || (payload.spreadsheetUrl ? extractSpreadsheetId(payload.spreadsheetUrl) : null))) || DEFAULT_SPREADSHEET_ID;
+  var fallbackId = getFallbackSpreadsheetId();
+  var targetId = (payload && (payload.spreadsheetId || (payload.spreadsheetUrl ? extractSpreadsheetId(payload.spreadsheetUrl) : null))) || fallbackId;
   if (targetId) {
     try {
       return SpreadsheetApp.openById(targetId);
@@ -57,7 +67,7 @@ function getSpreadsheet(payload) {
     if (active) return active;
   } catch (err2) {}
   try {
-    return SpreadsheetApp.openById(DEFAULT_SPREADSHEET_ID);
+    return SpreadsheetApp.openById(fallbackId);
   } catch (err3) {
     return null;
   }
@@ -335,10 +345,26 @@ function doPost(e) {
  * Pode ser executada diretamente pelo Apps Script no menu Executar > padronizarCoresDaPlanilha.
  */
 function padronizarCoresDaPlanilha() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet() || SpreadsheetApp.openById(DEFAULT_SPREADSHEET_ID);
+  var ss = null;
+  try {
+    ss = SpreadsheetApp.getActiveSpreadsheet();
+  } catch (e1) {}
+
+  if (!ss) {
+    try {
+      var id = getFallbackSpreadsheetId();
+      ss = SpreadsheetApp.openById(id);
+    } catch (e2) {}
+  }
+
+  if (!ss) {
+    Logger.log("Erro: Não foi possível abrir a planilha. Verifique se o ID está correto.");
+    return;
+  }
+
   var sheet = ss.getActiveSheet() || ss.getSheets()[0];
   var count = executarPadronizacaoCores(sheet);
-  Logger.log("Padronização concluída: " + count + " linhas ajustadas.");
+  Logger.log("Padronização concluída: " + count + " linhas ajustadas com verde oficial!");
 }
 
 function executarPadronizacaoCores(sheet) {
