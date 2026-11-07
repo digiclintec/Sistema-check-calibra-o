@@ -359,6 +359,17 @@ export default function GoogleSheetsModal({
                 </p>
               </div>
 
+              {/* Esclarecimento sobre Link de Editor Público */}
+              <div className="bg-amber-950/25 border border-amber-500/30 rounded-2xl p-3.5 space-y-1.5 text-xs text-amber-200">
+                <p className="font-bold text-amber-300 flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                  Por que mesmo com o link de "Editor Público" a planilha não altera sozinha?
+                </p>
+                <p className="leading-relaxed text-amber-200/90">
+                  A permissão de "Editor" do Google Drive é exclusiva para <strong>pessoas físicas no navegador</strong>. A infraestrutura do Google <strong>bloqueia qualquer software ou servidor externo</strong> de alterar células diretamente por link sem um canal autorizado. O <strong>Agente do CalibraCheck</strong> resolve isso ativando essa ponte oficial do Google abaixo para gravar tudo em tempo real!
+                </p>
+              </div>
+
               {/* Passo a Passo em 4 Etapas */}
               <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-4 space-y-3">
                 <h5 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
