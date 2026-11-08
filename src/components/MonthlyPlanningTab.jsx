@@ -1142,28 +1142,6 @@ export default function MonthlyPlanningTab({
                 />
               </div>
 
-              {/* Link Opcional da Planilha Google Sheets */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                    Link da Planilha Google Sheets (Opcional)
-                  </label>
-                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
-                    <Sparkles className="w-3 h-3" /> Gravação em tempo real
-                  </span>
-                </div>
-                <input
-                  type="url"
-                  value={newGoogleSheetUrl}
-                  onChange={(e) => setNewGoogleSheetUrl(e.target.value)}
-                  placeholder="https://docs.google.com/spreadsheets/d/.../edit"
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
-                />
-                <p className="text-[10px] text-slate-400 mt-0.5">
-                  Deixe em branco para usar a planilha padrão do hospital ou cole o link específico deste plano.
-                </p>
-              </div>
-
               {/* Se o modo for Excel, exibe o drop zone do arquivo */}
               {createMode === 'excel' && (
                 <div>

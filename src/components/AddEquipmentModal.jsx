@@ -145,7 +145,8 @@ export default function AddEquipmentModal({
   hospitalName = '',
   existingSectors = [],
   initialCode = '',
-  initialMode = 'manual' // 'manual' | 'excel' | 'paste' | 'scanner'
+  initialMode = 'manual', // 'manual' | 'excel' | 'paste' | 'scanner'
+  initialSetor = ''
 }) {
   // Aba ativa: 'manual' (1 por 1), 'excel' (Anexar Arquivo), 'paste' (Colar do Excel), 'scanner' (Bipagem contínua)
   const [activeTab, setActiveTab] = useState(initialMode || 'manual');
@@ -165,7 +166,7 @@ export default function AddEquipmentModal({
   const [codigoBarras, setCodigoBarras] = useState('');
   const [fabricante, setFabricante] = useState('');
   const [modelo, setModelo] = useState('');
-  const [setor, setSetor] = useState('');
+  const [setor, setSetor] = useState(initialSetor || '');
   const [dataCalibracao, setDataCalibracao] = useState(() => new Date().toISOString().split('T')[0]);
   const [periodicidadeMeses, setPeriodicidadeMeses] = useState('12');
   const [validadeCalibracao, setValidadeCalibracao] = useState(() => calculateNextCalibration(new Date().toISOString().split('T')[0], 12));
@@ -223,7 +224,7 @@ export default function AddEquipmentModal({
       setEquipamento('');
       setFabricante('');
       setModelo('');
-      setSetor(existingSectors[0] || 'UTI Geral');
+      setSetor(initialSetor || existingSectors[0] || 'Centro Cirúrgico');
 
       const today = new Date().toISOString().split('T')[0];
       setDataCalibracao(today);
@@ -241,7 +242,7 @@ export default function AddEquipmentModal({
         }
       }, 150);
     }
-  }, [isOpen, activePlanId, plans, initialCode, initialMode]);
+  }, [isOpen, activePlanId, plans, initialCode, initialMode, initialSetor]);
 
   // Recalcula próxima calibração quando data ou periodicidade mudam
   const handleDataCalibracaoChange = (e) => {

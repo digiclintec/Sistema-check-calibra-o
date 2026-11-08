@@ -1104,11 +1104,7 @@ export default function App() {
       else playUncheckSound();
     }
 
-    if (googleSheetWebhookUrl) {
-      showToast('info', `🤖 Agente Google Sheets: Enviando [${target.tag || target.equipamento}] para gravação na planilha...`);
-    } else if (googleSheetUrl) {
-      showToast('info', `Calibração salva no sistema. Para gravar no Google Sheets em tempo real, ative o Agente Webhook!`);
-    }
+    
 
     try {
       fetch('/api/toggle-check', {
@@ -2165,69 +2161,16 @@ export default function App() {
             onOpenGoogleModal={() => setIsGoogleModalOpen(true)}
             onLoadSample={handleLoadSample}
             onDropFile={processFile}
-            onOpenAddEquipment={(targetPlanId, code, mode) => setAddEquipmentModal({ isOpen: true, planId: activePlanId, initialCode: code || '', initialMode: mode || 'manual' })}
+            onOpenAddEquipment={(targetPlanId, code, mode, sector) => setAddEquipmentModal({ isOpen: true, planId: activePlanId, initialCode: code || '', initialMode: mode || 'manual', initialSetor: sector || '' })}
             hospitalName={activeHospital?.name}
+            planTitle={monthlyPlans.find(p => p.id === activePlanId)?.title || activeSheetName || 'Plano Atual'}
+            sectorColors={sectorColors}
           />
         ) : (
           /* Active Spreadsheet View */
           <div className="space-y-4 sm:space-y-6 w-full">
             
 
-
-            {/* Barra do Agente de Sincronização Google Sheets em Tempo Real */}
-            {(googleSheetUrl || googleSheetWebhookUrl) && (
-              <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3 sm:px-4 sm:py-3 shadow-md flex flex-wrap items-center justify-between gap-3 animate-in fade-in duration-200">
-                <div className="flex items-center gap-2.5">
-                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center border ${
-                    googleSheetWebhookUrl 
-                      ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' 
-                      : 'bg-amber-500/20 text-amber-400 border-amber-500/30'
-                  }`}>
-                    <Sparkles className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                        🤖 Agente Google Sheets
-                      </span>
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 ${
-                        googleSheetWebhookUrl 
-                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' 
-                          : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                      }`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${googleSheetWebhookUrl ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
-                        {googleSheetWebhookUrl ? 'Gravação em Tempo Real Ativa' : 'Aguardando Webhook de Gravação'}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      {googleSheetWebhookUrl 
-                        ? 'Cada calibração feita no sistema é enviada e gravada automaticamente na planilha Google.' 
-                        : 'Planilha conectada para leitura. Para que o Agente grave as calibrações em tempo real na planilha, ative a gravação.'}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setIsGoogleModalOpen(true)}
-                    className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition flex items-center gap-1.5"
-                  >
-                    <Zap className="w-3.5 h-3.5 text-yellow-400" />
-                    {googleSheetWebhookUrl ? 'Configurar Agente' : 'Ativar Gravação em Tempo Real'}
-                  </button>
-                  {googleSheetUrl && (
-                    <button
-                      onClick={() => handleSyncGoogleSheet(true)}
-                      disabled={isSyncingGoogle}
-                      className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
-                      title="Sincronizar leitura agora"
-                    >
-                      <RefreshCw className={`w-4 h-4 ${isSyncingGoogle ? 'animate-spin text-emerald-400' : ''}`} />
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
 
             {/* Stats Cards & Progress */}
             <StatsCards
@@ -2449,7 +2392,7 @@ export default function App() {
       {/* Modal de Cadastro de Novo Equipamento no Plano */}
       <AddEquipmentModal
         isOpen={addEquipmentModal.isOpen}
-        onClose={() => setAddEquipmentModal({ isOpen: false, planId: null, initialCode: '', initialMode: 'manual' })}
+        onClose={() => setAddEquipmentModal({ isOpen: false, planId: null, initialCode: '', initialMode: 'manual', initialSetor: '' })}
         onSave={handleSaveNewEquipment}
         onSaveBatch={handleBatchAddEquipments}
         plans={monthlyPlans}
@@ -2458,6 +2401,7 @@ export default function App() {
         existingSectors={Array.from(new Set(equipments.map(e => e.setor).filter(Boolean)))}
         initialCode={addEquipmentModal.initialCode}
         initialMode={addEquipmentModal.initialMode}
+        initialSetor={addEquipmentModal.initialSetor}
       />
 
       {/* Floating Mobile Bottom Action Bar (Thumb-friendly for Android & iOS) */}

@@ -2,188 +2,215 @@ import React, { useState } from 'react';
 import { 
   FileSpreadsheet, 
   UploadCloud, 
-  Sparkles, 
-  Barcode, 
-  CheckCircle2, 
-  ShieldCheck, 
-  Zap,
+  Building2, 
+  Plus, 
   ArrowRight,
-  FileText,
-  Plus
+  Sparkles,
+  ClipboardPaste,
+  CalendarDays,
+  Tag
 } from 'lucide-react';
+import { getSectorColor } from '../utils/sectorColors';
+
+// Setores clínicos padrão de hospitais para acesso rápido
+const DEFAULT_CLINICAL_SECTORS = [
+  'CENTRO CIRÚRGICO',
+  'UTI ADULTO',
+  'UTI NEONATAL / PEDIÁTRICA',
+  'ENFERMARIA / INTERNAÇÃO',
+  'PRONTO SOCORRO / EMERGÊNCIA',
+  'CME (ESTERILIZAÇÃO)',
+  'LABORATÓRIO / DIAGNÓSTICO',
+  'AMBULATÓRIO',
+  'GERAL'
+];
 
 export default function HeroBanner({ 
   onOpenFilePicker, 
   onOpenGoogleModal, 
   onLoadSample,
   onDropFile,
-  onOpenAddEquipment
+  onOpenAddEquipment,
+  hospitalName = '',
+  planTitle = 'Plano Atual',
+  sectorColors = {}
 }) {
   const [isHoveringDrop, setIsHoveringDrop] = useState(false);
 
   return (
-    <div className="bg-gradient-to-b from-blue-50/70 via-white to-white dark:from-slate-900/60 dark:via-slate-900 dark:to-slate-900 border border-blue-100 dark:border-slate-800 rounded-2xl sm:rounded-3xl p-4 sm:p-10 shadow-sm mb-6 w-full max-w-full overflow-hidden">
+    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 sm:p-7 shadow-sm space-y-6 w-full max-w-4xl mx-auto animate-in fade-in duration-200">
       
-      <div className="max-w-3xl mx-auto text-center space-y-4">
-        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-100/80 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 text-xs font-semibold border border-blue-200 dark:border-blue-900/50">
-          <Zap className="w-3.5 h-3.5 fill-current" />
-          Pronto para uso em campo, laboratório ou chão de fábrica
+      {/* Cabeçalho do Plano Ativo */}
+      <div className="border-b border-slate-100 dark:border-slate-800/80 pb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center border border-blue-200 dark:border-blue-900/40 shrink-0">
+            <CalendarDays className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                Plano Ativo
+              </span>
+              <span className="text-xs text-slate-400">•</span>
+              <span className="text-xs text-slate-500 font-medium">
+                {hospitalName || 'Hospital'}
+              </span>
+            </div>
+            <h3 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white">
+              {planTitle || 'Plano de Calibração'}
+            </h3>
+          </div>
         </div>
 
-        <h2 className="text-2xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight leading-tight">
-          Conferência & Check-in de Calibração <br className="hidden sm:inline" />
-          <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-teal-500 bg-clip-text text-transparent">
-            direto da sua planilha crua
-          </span>
-        </h2>
+        <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900/50">
+          0 equipamentos cadastrados
+        </span>
+      </div>
 
-        <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 max-w-2xl mx-auto leading-relaxed">
-          Suba seu arquivo <strong>.xlsx</strong>, <strong>.xls</strong> ou <strong>.csv</strong> bruto.
-          O sistema detecta automaticamente os aparelhos, tags e códigos de barra para você começar a bipar e dar check na hora!
-        </p>
+      {/* Opção Principal: Subir Planilha do Plano (Dropzone Direta) */}
+      <div
+        onClick={onOpenFilePicker}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setIsHoveringDrop(true);
+        }}
+        onDragLeave={() => setIsHoveringDrop(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setIsHoveringDrop(false);
+          const file = e.dataTransfer.files?.[0];
+          if (file && onDropFile) onDropFile(file);
+        }}
+        className={`p-5 sm:p-6 border-2 border-dashed rounded-2xl cursor-pointer transition flex flex-col sm:flex-row items-center justify-between gap-4 ${
+          isHoveringDrop 
+            ? 'border-blue-600 bg-blue-50/70 dark:bg-blue-950/50 ring-4 ring-blue-500/20 scale-[1.01]' 
+            : 'border-blue-300 dark:border-blue-800/80 bg-blue-50/30 dark:bg-blue-950/20 hover:border-blue-500 hover:bg-blue-50/50'
+        }`}
+      >
+        <div className="flex items-center gap-3.5 text-center sm:text-left flex-col sm:flex-row">
+          <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-blue-600/20">
+            <UploadCloud className="w-6 h-6 animate-pulse" />
+          </div>
+          <div>
+            <h4 className="font-bold text-sm sm:text-base text-slate-900 dark:text-white mb-0.5">
+              Subir Planilha (.xlsx, .xls ou .csv)
+            </h4>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Clique para selecionar o arquivo no seu computador ou arraste e solte aqui
+            </p>
+          </div>
+        </div>
 
-        {/* 4 Call to Action Options */}
-        <div className="pt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 text-left">
-          
-          {/* Option 1: File Upload (Drag & Drop Zone) */}
-          <button
-            onClick={onOpenFilePicker}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setIsHoveringDrop(true);
-            }}
-            onDragLeave={() => setIsHoveringDrop(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setIsHoveringDrop(false);
-              const file = e.dataTransfer.files?.[0];
-              if (file && onDropFile) onDropFile(file);
-            }}
-            className={`p-5 rounded-2xl bg-white dark:bg-slate-800/80 border-2 border-dashed transition text-left group flex flex-col justify-between ${
-              isHoveringDrop 
-                ? 'border-blue-600 bg-blue-50/50 dark:bg-blue-950/40 ring-4 ring-blue-500/20 scale-[1.02]' 
-                : 'border-blue-400 dark:border-blue-500/50 hover:border-blue-600 hover:shadow-lg'
-            }`}
-          >
-            <div>
-              <div className="w-11 h-11 rounded-2xl bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                <UploadCloud className="w-6 h-6 animate-pulse" />
-              </div>
-              <div className="flex items-center gap-1.5 mb-1">
-                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-blue-600 text-white">
-                  Recomendado
-                </span>
-              </div>
-              <h4 className="font-bold text-base text-slate-900 dark:text-white mb-1">
-                Subir Planilha Crua
-              </h4>
-              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                Solte aqui seu arquivo <strong>.xlsx</strong>, <strong>.xls</strong> ou <strong>.csv</strong>
-              </p>
-            </div>
-            <div className="mt-4 text-xs font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1">
-              Escolher do Computador <ArrowRight className="w-3.5 h-3.5" />
-            </div>
-          </button>
+        <button
+          type="button"
+          className="w-full sm:w-auto py-2.5 px-5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/20 transition active:scale-95 shrink-0 flex items-center justify-center gap-2"
+        >
+          <FileSpreadsheet className="w-4 h-4" />
+          <span>Escolher Arquivo</span>
+        </button>
+      </div>
 
-          {/* Option 2: Cadastrar Manualmente */}
+      {/* Lista Simples de Setores (Set.) */}
+      <div className="space-y-3 pt-1">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <Building2 className="w-4 h-4 text-slate-500" />
+            <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200">
+              Lista Simples de Setores (Set.)
+            </h4>
+            <span className="text-[11px] text-slate-400 hidden sm:inline">
+              — Adicione equipamentos organizados por setor
+            </span>
+          </div>
+
           {onOpenAddEquipment && (
             <button
-              onClick={() => onOpenAddEquipment()}
-              className="p-5 rounded-2xl bg-gradient-to-br from-emerald-500/10 to-teal-500/5 dark:from-slate-800/90 dark:to-emerald-950/30 border border-emerald-300 dark:border-emerald-800/60 hover:border-emerald-500 hover:shadow-lg transition text-left group flex flex-col justify-between"
+              type="button"
+              onClick={() => onOpenAddEquipment(null, '', 'manual', '')}
+              className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
             >
-              <div>
-                <div className="w-11 h-11 rounded-2xl bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                  <Plus className="w-6 h-6 stroke-[3]" />
-                </div>
-                <div className="flex items-center gap-1.5 mb-1">
-                  <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-600 text-white">
-                    Sem Arquivo
+              <Plus className="w-3.5 h-3.5" />
+              <span>+ Novo Equipamento Geral</span>
+            </button>
+          )}
+        </div>
+
+        {/* Tabela / Lista Simples de Setores */}
+        <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-800/60 bg-slate-50/50 dark:bg-slate-950/30">
+          {DEFAULT_CLINICAL_SECTORS.map((sectorName) => {
+            const colorMeta = getSectorColor(sectorName, sectorColors);
+            return (
+              <div 
+                key={sectorName}
+                style={{ borderLeft: `4px solid ${colorMeta.hex}` }}
+                className="p-3 sm:px-4 sm:py-3 flex items-center justify-between gap-3 hover:bg-white dark:hover:bg-slate-800/40 transition"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span 
+                    style={{ backgroundColor: colorMeta.bg, color: colorMeta.text, borderColor: colorMeta.border }}
+                    className="px-2.5 py-1 rounded-lg text-xs font-bold border truncate"
+                  >
+                    {sectorName}
+                  </span>
+                  <span className="text-[11px] text-slate-400 hidden md:inline">
+                    0 aparelhos
                   </span>
                 </div>
-                <h4 className="font-bold text-base text-slate-900 dark:text-white mb-1">
-                  Cadastrar Manualmente
-                </h4>
-                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                  Adicione aparelhos, datas e previsão de calibração direto na tela
-                </p>
+
+                {onOpenAddEquipment && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenAddEquipment(null, '', 'manual', sectorName)}
+                    className="py-1.5 px-3 rounded-xl bg-slate-200/80 hover:bg-emerald-600 hover:text-white dark:bg-slate-800 dark:hover:bg-emerald-600 text-slate-700 dark:text-slate-300 text-xs font-bold transition flex items-center gap-1.5 shrink-0"
+                    title={`Adicionar equipamento no setor ${sectorName}`}
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Adicionar neste Setor</span>
+                    <span className="sm:hidden">Adicionar</span>
+                  </button>
+                )}
               </div>
-              <div className="mt-4 text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                Novo Equipamento <ArrowRight className="w-3.5 h-3.5" />
-              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Opções Rápidas Adicionais (Discretas no rodapé) */}
+      <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs">
+        <div className="flex items-center gap-2 flex-wrap">
+          {onOpenAddEquipment && (
+            <button
+              type="button"
+              onClick={() => onOpenAddEquipment(null, '', 'manual', '')}
+              className="py-2 px-3.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold transition flex items-center gap-1.5"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Cadastrar Manualmente</span>
             </button>
           )}
 
-          {/* Option 3: Google Sheets / Copiar e Colar */}
-          <button
-            onClick={onOpenGoogleModal}
-            className="p-5 rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 hover:border-emerald-500 hover:shadow-lg transition text-left group flex flex-col justify-between"
-          >
-            <div>
-              <div className="w-11 h-11 rounded-2xl bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                <FileSpreadsheet className="w-6 h-6" />
-              </div>
-              <div className="flex items-center gap-1.5 mb-1">
-                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-300">
-                  Google Drive
-                </span>
-              </div>
-              <h4 className="font-bold text-base text-slate-900 dark:text-white mb-1">
-                Planilha Google
-              </h4>
-              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                Cole dados do Google Sheets ou link compartilhado
-              </p>
-            </div>
-            <div className="mt-4 text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-              Abrir importador <ArrowRight className="w-3.5 h-3.5" />
-            </div>
-          </button>
+          {onOpenGoogleModal && (
+            <button
+              type="button"
+              onClick={onOpenGoogleModal}
+              className="py-2 px-3.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold transition flex items-center gap-1.5"
+            >
+              <ClipboardPaste className="w-3.5 h-3.5" />
+              <span>Colar Linhas de Planilha</span>
+            </button>
+          )}
+        </div>
 
-          {/* Option 4: Test Sample Data */}
+        {onLoadSample && (
           <button
+            type="button"
             onClick={onLoadSample}
-            className="p-5 rounded-2xl bg-gradient-to-br from-indigo-50 to-blue-50/50 dark:from-slate-800/90 dark:to-indigo-950/30 border border-indigo-200 dark:border-indigo-800/50 hover:border-indigo-500 hover:shadow-lg transition text-left group flex flex-col justify-between"
+            className="py-2 px-3 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition font-medium flex items-center gap-1"
           >
-            <div>
-              <div className="w-11 h-11 rounded-2xl bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                <Sparkles className="w-6 h-6" />
-              </div>
-              <div className="flex items-center gap-1.5 mb-1">
-                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300">
-                  1 Clique
-                </span>
-              </div>
-              <h4 className="font-bold text-base text-slate-900 dark:text-white mb-1">
-                Testar com Exemplo
-              </h4>
-              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                Carrega 10 equipamentos com códigos de barra para testar agora
-              </p>
-            </div>
-            <div className="mt-4 text-xs font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
-              Ver demonstração <ArrowRight className="w-3.5 h-3.5" />
-            </div>
+            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+            <span>Testar com Exemplo Demonstrativo</span>
           </button>
-
-        </div>
-
-        {/* Feature Pills */}
-        <div className="pt-3 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-slate-500 dark:text-slate-400">
-          <span className="flex items-center gap-1.5">
-            <CheckCircle2 className="w-4 h-4 text-blue-500" />
-            Leitura pela Câmera (Celular ou Notebook)
-          </span>
-          <span className="flex items-center gap-1.5">
-            <Barcode className="w-4 h-4 text-blue-500" />
-            Pistola de Bipagem USB / Bluetooth
-          </span>
-          <span className="flex items-center gap-1.5">
-            <ShieldCheck className="w-4 h-4 text-blue-500" />
-            Exporta de volta para Excel com os Checks
-          </span>
-        </div>
-
+        )}
       </div>
 
     </div>

@@ -2087,48 +2087,8 @@ app.post('/api/format-google-sheet', async (req, res) => {
   }
 });
 
-// Background Auto-Sync Worker for all hospitals connected to Google Sheets (Executa a cada 25s)
-setInterval(async () => {
-  try {
-    const db = readDb();
-    if (!Array.isArray(db.hospitals)) return;
-
-    let dbModified = false;
-
-    for (const hospital of db.hospitals) {
-      if (hospital.googleSheetUrl && hospital.googleSheetAutoSync !== false) {
-        try {
-          const parsed = await fetchAndParseGoogleSheet(hospital.googleSheetUrl);
-          if (parsed && Array.isArray(parsed.equipments) && parsed.equipments.length > 0) {
-            const currentEquipments = hospital.equipments || [];
-            const { merged, addedCount, updatedCount, totalChanges } = smartMergeGoogleSheet(currentEquipments, parsed.equipments);
-
-            hospital.lastGoogleSheetSync = Date.now();
-            hospital.googleSheetSyncStatus = 'synced';
-
-            if (totalChanges > 0 || currentEquipments.length === 0) {
-              hospital.equipments = merged;
-              hospital.lastUpdated = Date.now();
-              hospital.lastUpdatedBy = `Google Sheets Auto-Sync (+${addedCount} novos, ${updatedCount} atualizados)`;
-              db.lastUpdated = Date.now();
-              dbModified = true;
-              console.log(`[GoogleSheets Auto-Sync] Sincronizado hospital "${hospital.name}": +${addedCount} novos, ${updatedCount} atualizados.`);
-            }
-          }
-        } catch (err) {
-          hospital.googleSheetSyncStatus = 'error';
-          hospital.lastGoogleSheetSyncError = err.message;
-        }
-      }
-    }
-
-    if (dbModified) {
-      saveDb(db);
-    }
-  } catch (globalErr) {
-    // Silent
-  }
-}, 25000);
+// Background Auto-Sync Worker (Pausado - modo arquivo local ativo)
+// Sincronização em tempo real online desativada a pedido do usuário.
 
 // Check or Uncheck an equipment inside active hospital with multi-modality support
 app.post('/api/toggle-check', (req, res) => {
