@@ -1877,24 +1877,64 @@ export default function ScannerModal({
                           {lastScannedFeedback.equipment?.equipamento || 'Bomba de Infusão'}
                         </div>
                         <div className="text-[10px] opacity-90 truncate font-mono">
-                          🏷️ IDEC: <strong>{lastScannedFeedback.equipment?.tag || 'S/N'}</strong> • S/N: {lastScannedFeedback.equipment?.serie || 'N/A'} • {
+                          🏷️ IDEC: <strong>{lastScannedFeedback.equipment?.tag || 'S/N'}</strong> • S/N: {lastScannedFeedback.equipment?.serie || 'N/A'}
+                          {(lastScannedFeedback.equipment?.setor_retirada || lastScannedFeedback.equipment?.setor) && (
+                            <span> • 📍 Setor: <strong>{lastScannedFeedback.equipment.setor_retirada || lastScannedFeedback.equipment.setor}</strong></span>
+                          )}
+                          <span> • {
                             lastScannedFeedback.status === 'in_maintenance'
                               ? (lastScannedFeedback.equipment?.motivo_externa || 'Terceirizada')
-                              : `Por: ${lastScannedFeedback.meta?.user || 'Técnico'}`
-                          }
+                              : `Por: ${lastScannedFeedback.meta?.user || lastScannedFeedback.equipment?.conferidoPor || 'Técnico'}`
+                          }</span>
                         </div>
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setLastScannedFeedback(null)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-black shrink-0 transition shadow-md active:scale-95 ${lastScannedFeedback.status === 'in_maintenance'
-                          ? 'bg-purple-500 hover:bg-purple-400 text-white shadow-purple-500/40'
-                          : 'bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-amber-400/40'
-                        }`}
-                    >
-                      Entendido
-                    </button>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {lastScannedFeedback.status === 'already_checked' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const eq = lastScannedFeedback.equipment;
+                            setStagedItems(prev => [
+                              {
+                                equipment: eq,
+                                match: lastScannedFeedback.match,
+                                scannedCode: lastScannedFeedback.code,
+                                targetModalities: selectedModalities,
+                                setorRetirada: batchSector || eq.setor_retirada || eq.setor || '',
+                                isForced: true,
+                                timestamp: new Date().toLocaleTimeString('pt-BR')
+                              },
+                              ...prev.filter(item => item.equipment.id !== eq.id)
+                            ]);
+                            setLastScannedFeedback({
+                              status: 'staged',
+                              code: lastScannedFeedback.code,
+                              equipment: eq,
+                              message: `✓ Inclusão forçada na lista: ${eq.equipamento} (${eq.tag || eq.serie})`,
+                              timestamp: new Date().toLocaleTimeString('pt-BR')
+                            });
+                          }}
+                          className="px-2.5 py-1.5 rounded-xl bg-amber-600/90 hover:bg-amber-500 text-white font-bold text-[11px] transition shadow-xs active:scale-95 flex items-center gap-1"
+                          title="Recalibrar mesmo já estando concluída"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                          <span className="hidden xs:inline">Recalibrar</span>
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => setLastScannedFeedback(null)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-black shrink-0 transition shadow-md active:scale-95 ${lastScannedFeedback.status === 'in_maintenance'
+                            ? 'bg-purple-500 hover:bg-purple-400 text-white shadow-purple-500/40'
+                            : 'bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-amber-400/40'
+                          }`}
+                      >
+                        Entendido
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1956,340 +1996,67 @@ export default function ScannerModal({
           ============================================================ */}
           <div className="flex-1 flex flex-col bg-slate-950/60 min-h-0 overflow-hidden w-full md:w-7/12 lg:w-7/12 md:h-full">
 
-            {/* Banner do Último Item Bipado ou Card Completo de Já Calibrada / Em Manutenção */}
-            {lastScannedFeedback && (
-              lastScannedFeedback.status === 'in_maintenance' ? (
-                /* CARD COMPLETO E 100% LEGÍVEL PARA EQUIPAMENTO EM MANUTENÇÃO EXTERNA */
-                <div className="p-3 sm:p-3.5 bg-gradient-to-r from-purple-950/95 via-slate-900 to-purple-950/85 border-b border-purple-500/50 text-purple-100 shadow-xl shrink-0 animate-in fade-in duration-200">
-                  <div className="flex items-start justify-between gap-2.5">
-                    <div className="flex items-start gap-2.5 flex-1 min-w-0">
-                      <div className="w-9 h-9 rounded-xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-300 shrink-0 mt-0.5 shadow-inner">
-                        <Package className="w-5 h-5 text-purple-400 animate-pulse" />
+            {/* Banner Slim para Novas Bipagens, Erro ou Itens já na Fila (Avisos de Já Checada/Manutenção ficam exclusivamente no HUD Superior da Câmera) */}
+            {lastScannedFeedback && lastScannedFeedback.status !== 'already_checked' && lastScannedFeedback.status !== 'in_maintenance' && (
+              <div className={`px-3.5 py-2 border-b shrink-0 text-xs transition-all ${lastScannedFeedback.status === 'not_found'
+                  ? 'bg-red-500/15 border-red-500/30 text-red-200'
+                  : lastScannedFeedback.status === 'already_staged'
+                    ? 'bg-amber-500/15 border-amber-500/30 text-amber-200'
+                    : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-200'
+                }`}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 truncate">
+                    {lastScannedFeedback.status === 'not_found' ? (
+                      <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                    ) : (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    )}
+
+                    <div className="truncate">
+                      <div className="flex items-center gap-1.5 font-bold truncate">
+                        <span className="truncate">
+                          {lastScannedFeedback.equipment ? lastScannedFeedback.equipment.equipamento : 'Código Lido'}
+                        </span>
+                        {lastScannedFeedback.match && (
+                          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-semibold shrink-0 ${lastScannedFeedback.match.isExact
+                              ? 'bg-emerald-500/20 text-emerald-300'
+                              : 'bg-blue-500/20 text-blue-300'
+                            }`}>
+                            {lastScannedFeedback.match.confidence}% Similar
+                          </span>
+                        )}
                       </div>
-
-                      <div className="flex-1 min-w-0 space-y-1.5">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-purple-500 text-white uppercase tracking-wide shadow-xs">
-                            📦 BOMBA EM MANUTENÇÃO EXTERNA
-                          </span>
-                          <span className="text-[11px] font-mono text-purple-200/90 font-bold">
-                            Lido: {lastScannedFeedback.code}
-                          </span>
-                          <span className="text-[10px] text-purple-300/70 font-mono ml-auto">
-                            {lastScannedFeedback.timestamp}
-                          </span>
-                        </div>
-
-                        <div>
-                          <h4 className="font-extrabold text-sm sm:text-base text-white leading-tight">
-                            {lastScannedFeedback.equipment?.equipamento || 'Bomba de Infusão'}
-                          </h4>
-                          <p className="text-xs text-slate-400">
-                            {lastScannedFeedback.equipment?.fabricante} {lastScannedFeedback.equipment?.modelo}
-                          </p>
-                        </div>
-
-                        {/* Dados Completos de Identificação: IDEC, Série, Setor */}
-                        <div className="flex items-center gap-1.5 flex-wrap text-xs pt-0.5">
-                          {lastScannedFeedback.equipment?.tag && (
-                            <span className="font-mono font-bold px-2 py-0.5 rounded-lg bg-blue-500/20 text-blue-300 border border-blue-500/40">
-                              🏷️ IDEC: {lastScannedFeedback.equipment.tag}
-                            </span>
-                          )}
-                          {lastScannedFeedback.equipment?.serie && (
-                            <span className="font-mono px-2 py-0.5 rounded-lg bg-slate-800 text-slate-200 border border-slate-700">
-                              🔢 S/N: {lastScannedFeedback.equipment.serie}
-                            </span>
-                          )}
-                          {(lastScannedFeedback.equipment?.setor_retirada || lastScannedFeedback.equipment?.setor) && (
-                            <span className="px-2 py-0.5 rounded-lg bg-teal-950/60 text-teal-300 border border-teal-800/80 flex items-center gap-1">
-                              <MapPin className="w-3 h-3 text-teal-400 shrink-0" />
-                              <span>{lastScannedFeedback.equipment.setor_retirada || lastScannedFeedback.equipment.setor}</span>
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Detalhes de Auditoria da Manutenção */}
-                        <div className="p-2.5 rounded-xl bg-slate-950/80 border border-purple-500/30 text-xs text-purple-100/90 space-y-1 mt-1">
-                          <div className="flex items-center gap-1.5 font-bold text-purple-300">
-                            <Package className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-                            <span>Registro de Saída para Manutenção Terceirizada:</span>
-                          </div>
-                          <div className="text-[11px] leading-relaxed text-slate-200 break-words">
-                            👤 <strong>Responsável:</strong> {
-                              lastScannedFeedback.meta?.user ||
-                              lastScannedFeedback.equipment?.usuario_externa ||
-                              'Equipe Externa'
-                            }
-                          </div>
-                          <div className="text-[11px] leading-relaxed text-slate-300 break-words">
-                            📅 <strong>Data de Envio:</strong> {
-                              (lastScannedFeedback.meta?.date || lastScannedFeedback.equipment?.data_externa)
-                                ? new Date(lastScannedFeedback.meta?.date || lastScannedFeedback.equipment?.data_externa).toLocaleString('pt-BR')
-                                : 'Registrado no plano ativo'
-                            }
-                          </div>
-                          <div className="text-[11px] leading-relaxed text-slate-300 break-words">
-                            📝 <strong>Motivo:</strong> {
-                              lastScannedFeedback.equipment?.motivo_externa || 'Calibração e conserto por equipe externa terceirizada'
-                            }
-                          </div>
-                          <div className="text-[10px] text-amber-300/90 pt-1 font-semibold">
-                            ⚠️ Esta bomba deve ser mantida separada das bombas liberadas para uso hospitalar.
-                          </div>
-                        </div>
-
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col items-end gap-2 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => setLastScannedFeedback(null)}
-                        className="p-1.5 text-purple-300/70 hover:text-white rounded-lg hover:bg-white/10 transition"
-                        title="Fechar aviso"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setLastScannedFeedback(null)}
-                        className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-black text-xs transition shadow-sm active:scale-95 flex items-center gap-1 shrink-0"
-                      >
-                        <Check className="w-3.5 h-3.5 stroke-[3]" />
-                        <span>Entendido</span>
-                      </button>
+                      <p className="text-[11px] opacity-90 truncate">
+                        {lastScannedFeedback.message}
+                      </p>
                     </div>
                   </div>
-                </div>
-              ) : lastScannedFeedback.status === 'already_checked' ? (
-                /* CARD COMPLETO E 100% LEGÍVEL PARA EQUIPAMENTO JÁ CALIBRADO */
-                <div className="p-3 sm:p-3.5 bg-gradient-to-r from-amber-950/95 via-slate-900 to-amber-950/85 border-b border-amber-500/50 text-amber-100 shadow-xl shrink-0 animate-in fade-in duration-200">
-                  <div className="flex items-start justify-between gap-2.5">
-                    <div className="flex items-start gap-2.5 flex-1 min-w-0">
-                      <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300 shrink-0 mt-0.5 shadow-inner">
-                        <AlertTriangle className="w-5 h-5 text-amber-400 animate-pulse" />
-                      </div>
 
-                      <div className="flex-1 min-w-0 space-y-1.5">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-amber-500 text-slate-950 uppercase tracking-wide shadow-xs">
-                            ⚠️ BOMBA JÁ CALIBRADA
-                          </span>
-                          <span className="text-[11px] font-mono text-amber-200/90 font-bold">
-                            Lido: {lastScannedFeedback.code}
-                          </span>
-                          <span className="text-[10px] text-amber-300/70 font-mono ml-auto">
-                            {lastScannedFeedback.timestamp}
-                          </span>
-                        </div>
-
-                        <div>
-                          <h4 className="font-extrabold text-sm sm:text-base text-white leading-tight">
-                            {lastScannedFeedback.equipment?.equipamento || 'Bomba de Infusão'}
-                          </h4>
-                          <p className="text-xs text-slate-400">
-                            {lastScannedFeedback.equipment?.fabricante} {lastScannedFeedback.equipment?.modelo}
-                          </p>
-                        </div>
-
-                        {/* Dados Completos de Identificação: IDEC, Série, Setor */}
-                        <div className="flex items-center gap-1.5 flex-wrap text-xs pt-0.5">
-                          {lastScannedFeedback.equipment?.tag && (
-                            <span className="font-mono font-bold px-2 py-0.5 rounded-lg bg-blue-500/20 text-blue-300 border border-blue-500/40">
-                              🏷️ IDEC: {lastScannedFeedback.equipment.tag}
-                            </span>
-                          )}
-                          {lastScannedFeedback.equipment?.serie && (
-                            <span className="font-mono px-2 py-0.5 rounded-lg bg-slate-800 text-slate-200 border border-slate-700">
-                              🔢 S/N: {lastScannedFeedback.equipment.serie}
-                            </span>
-                          )}
-                          {(lastScannedFeedback.equipment?.setor_retirada || lastScannedFeedback.equipment?.setor) && (
-                            <span className="px-2 py-0.5 rounded-lg bg-teal-950/60 text-teal-300 border border-teal-800/80 flex items-center gap-1">
-                              <MapPin className="w-3 h-3 text-teal-400 shrink-0" />
-                              <span>{lastScannedFeedback.equipment.setor_retirada || lastScannedFeedback.equipment.setor}</span>
-                            </span>
-                          )}
-                        </div>
-
-                        {/* DESTAQUE PRINCIPAL: SETOR DE RETIRADA / DESTINO PARA DEVOLUÇÃO */}
-                        <div className="p-3 rounded-xl bg-gradient-to-r from-emerald-950/80 via-slate-900 to-teal-950/80 border border-emerald-500/50 shadow-md flex items-center justify-between gap-3 mt-1.5">
-                          <div className="min-w-0">
-                            <span className="text-[10px] uppercase font-black text-emerald-400 tracking-wider flex items-center gap-1">
-                              <MapPin className="w-3.5 h-3.5 text-emerald-400 animate-bounce shrink-0" />
-                              <span>{lastScannedFeedback.equipment?.setor_retirada ? 'Retirada no Setor:' : 'Destino de Devolução:'}</span>
-                            </span>
-                            <div className="text-sm font-black text-emerald-200 truncate mt-0.5">
-                              📍 {lastScannedFeedback.equipment?.setor_retirada || lastScannedFeedback.equipment?.setor || 'Setor Geral / Não Informado'}
-                            </div>
-                            {lastScannedFeedback.equipment?.setor_retirada && lastScannedFeedback.equipment?.setor && lastScannedFeedback.equipment.setor_retirada.trim().toLowerCase() !== lastScannedFeedback.equipment.setor.trim().toLowerCase() && (
-                              <span className="text-[10px] text-slate-400 block mt-0.5">
-                                🏢 Cadastro Original: <strong>{lastScannedFeedback.equipment.setor}</strong>
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-right shrink-0">
-                            <span className="text-[10px] font-black px-2.5 py-1.5 rounded-lg bg-emerald-500 text-slate-950 uppercase shadow-sm block">
-                              Devolver Aqui ➔
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Detalhes de Auditoria: Quem calibrou, Quando e Horário (100% legível, sem cortes) */}
-                        <div className="p-2.5 rounded-xl bg-slate-950/80 border border-amber-500/30 text-xs text-amber-100/90 space-y-1 mt-1">
-                          <div className="flex items-center gap-1.5 font-bold text-amber-300">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                            <span>Histórico de Calibração Registrado:</span>
-                          </div>
-                          <div className="text-[11px] leading-relaxed text-slate-200 break-words">
-                            👤 <strong>Responsável:</strong> {
-                              lastScannedFeedback.meta?.user ||
-                              lastScannedFeedback.equipment?.usuario_calibracao ||
-                              lastScannedFeedback.equipment?.usuario_preventiva ||
-                              lastScannedFeedback.equipment?.conferidoPor ||
-                              'Operador Autorizado'
-                            }
-                          </div>
-                          <div className="text-[11px] leading-relaxed text-slate-300 break-words">
-                            📅 <strong>Data / Horário:</strong> {
-                              (lastScannedFeedback.meta?.date || lastScannedFeedback.equipment?.data_calibracao || lastScannedFeedback.equipment?.dataCheck)
-                                ? new Date(lastScannedFeedback.meta?.date || lastScannedFeedback.equipment?.data_calibracao || lastScannedFeedback.equipment?.dataCheck).toLocaleString('pt-BR')
-                                : 'Concluído no plano ativo'
-                            }
-                          </div>
-
-                          {/* Badges de Serviços Concluídos */}
-                          <div className="flex items-center gap-1.5 pt-1 flex-wrap">
-                            {lastScannedFeedback.equipment?.check_calibracao && (
-                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/40">
-                                ✓ Calibração Metrológica
-                              </span>
-                            )}
-                            {lastScannedFeedback.equipment?.check_preventiva && (
-                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                                ✓ Manutenção Preventiva
-                              </span>
-                            )}
-                            {lastScannedFeedback.equipment?.check_seguranca && (
-                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                                ✓ Segurança Elétrica (TSE)
-                              </span>
-                            )}
-                            {lastScannedFeedback.equipment?.check_externa && (
-                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40">
-                                📦 Manutenção Externa
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                      </div>
-                    </div>
-
-                    {/* Ações Rápidas: Fechar ou Forçar Recalibração */}
-                    <div className="flex flex-col items-end gap-2 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => setLastScannedFeedback(null)}
-                        className="p-1.5 text-amber-300/70 hover:text-white rounded-lg hover:bg-white/10 transition"
-                        title="Fechar aviso"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-
+                  <div className="flex items-center gap-2 shrink-0">
+                    {lastScannedFeedback.status === 'not_found' && onOpenAddEquipment && (
                       <button
                         type="button"
                         onClick={() => {
-                          const eq = lastScannedFeedback.equipment;
-                          setStagedItems(prev => [
-                            {
-                              equipment: eq,
-                              match: lastScannedFeedback.match,
-                              scannedCode: lastScannedFeedback.code,
-                              targetModalities: selectedModalities,
-                              setorRetirada: batchSector || eq.setor_retirada || eq.setor || '',
-                              isForced: true,
-                              timestamp: new Date().toLocaleTimeString('pt-BR')
-                            },
-                            ...prev.filter(item => item.equipment.id !== eq.id)
-                          ]);
-                          setLastScannedFeedback({
-                            status: 'staged',
-                            code: lastScannedFeedback.code,
-                            equipment: eq,
-                            message: `✓ Inclusão forçada na lista: ${eq.equipamento} (${eq.tag || eq.serie})`,
-                            timestamp: new Date().toLocaleTimeString('pt-BR')
-                          });
+                          onClose();
+                          onOpenAddEquipment(null, lastScannedFeedback.code);
                         }}
-                        className="px-2.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs transition shadow-sm active:scale-95 flex items-center gap-1 shrink-0"
-                        title="Recalibrar mesmo já estando concluída"
+                        className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-bold shadow-xs flex items-center gap-1 active:scale-95 transition"
+                        title="Cadastrar e adicionar este equipamento ao plano agora"
                       >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                        <span>Recalibrar</span>
+                        <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                        <span>+ Adicionar ao Plano</span>
                       </button>
-                    </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setLastScannedFeedback(null)}
+                      className="p-1 text-slate-400 hover:text-white rounded"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
-              ) : (
-                /* BANNER NORMAL PARA NOVAS BIPAGENS E ALERTA DE NÃO ENCONTRADO */
-                <div className={`px-3.5 py-2 border-b shrink-0 text-xs transition-all ${lastScannedFeedback.status === 'not_found'
-                    ? 'bg-red-500/15 border-red-500/30 text-red-200'
-                    : lastScannedFeedback.status === 'already_staged'
-                      ? 'bg-amber-500/15 border-amber-500/30 text-amber-200'
-                      : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-200'
-                  }`}>
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 truncate">
-                      {lastScannedFeedback.status === 'not_found' ? (
-                        <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
-                      ) : (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      )}
-
-                      <div className="truncate">
-                        <div className="flex items-center gap-1.5 font-bold truncate">
-                          <span className="truncate">
-                            {lastScannedFeedback.equipment ? lastScannedFeedback.equipment.equipamento : 'Código Lido'}
-                          </span>
-                          {lastScannedFeedback.match && (
-                            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-semibold shrink-0 ${lastScannedFeedback.match.isExact
-                                ? 'bg-emerald-500/20 text-emerald-300'
-                                : 'bg-blue-500/20 text-blue-300'
-                              }`}>
-                              {lastScannedFeedback.match.confidence}% Similar
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-[11px] opacity-90 truncate">
-                          {lastScannedFeedback.message}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 shrink-0">
-                      {lastScannedFeedback.status === 'not_found' && onOpenAddEquipment && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onClose();
-                            onOpenAddEquipment(null, lastScannedFeedback.code);
-                          }}
-                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-bold shadow-xs flex items-center gap-1 active:scale-95 transition"
-                          title="Cadastrar e adicionar este equipamento ao plano agora"
-                        >
-                          <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                          <span>+ Adicionar ao Plano</span>
-                        </button>
-                      )}
-                      <span className="text-[10px] font-mono opacity-70">
-                        {lastScannedFeedback.timestamp}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )
+              </div>
             )}
 
             {/* ============================================================
