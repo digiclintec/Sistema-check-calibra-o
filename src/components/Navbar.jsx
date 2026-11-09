@@ -23,7 +23,9 @@ import {
   User,
   Link2,
   Trash2,
-  Truck
+  Truck,
+  FileSpreadsheet,
+  UserPlus
 } from 'lucide-react';
 
 export default function Navbar({ 
@@ -74,7 +76,7 @@ export default function Navbar({
     }
     if (showMoreMenu) {
       document.addEventListener('mousedown', handleClickOutside);
-      document.addEventListener('touchstart', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside, { passive: true });
       return () => {
         document.removeEventListener('mousedown', handleClickOutside);
         document.removeEventListener('touchstart', handleClickOutside);
@@ -313,7 +315,7 @@ export default function Navbar({
               </button>
 
               {showMoreMenu && (
-                <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-800 py-1.5 z-50 text-slate-700 dark:text-slate-200 divide-y divide-slate-100 dark:divide-slate-800/80 animate-in fade-in zoom-in-95 duration-100">
+                <div className="absolute right-0 mt-2 w-60 rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-800 py-1.5 z-50 text-slate-700 dark:text-slate-200 divide-y divide-slate-100 dark:divide-slate-800/80 animate-in fade-in zoom-in-95 duration-100">
                   
                   {/* Cabeçalho do Menu com Usuário */}
                   {currentUser && (
@@ -355,10 +357,22 @@ export default function Navbar({
                       </button>
                     )}
 
+                    {/* Criar Novo Usuário / Login de Acesso */}
                     <button
                       onClick={() => {
                         setShowMoreMenu(false);
-                        if (onOpenTeamModal) onOpenTeamModal();
+                        if (onOpenTeamModal) onOpenTeamModal('create_user');
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition text-emerald-600 dark:text-emerald-400"
+                    >
+                      <UserPlus className="w-4 h-4 text-emerald-500 shrink-0" />
+                      <span>Criar Novo Login / Usuário</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setShowMoreMenu(false);
+                        if (onOpenTeamModal) onOpenTeamModal('users');
                       }}
                       className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition text-slate-700 dark:text-slate-200"
                     >

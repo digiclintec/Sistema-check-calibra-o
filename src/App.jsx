@@ -203,6 +203,7 @@ export default function App() {
   const [hospitalModal, setHospitalModal] = useState({ isOpen: false, initialTab: 'create' });
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
   const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
+  const [teamModalInitialTab, setTeamModalInitialTab] = useState('users');
   const [serviceConfig, setServiceConfig] = useState(() => {
     try {
       const saved = localStorage.getItem(`calibracheck_service_config_${activeHospitalId}`);
@@ -2039,7 +2040,10 @@ export default function App() {
         hospitals={availableHospitals}
         activeHospitalId={activeHospitalId}
         onSwitchHospital={handleSwitchHospital}
-        onOpenTeamModal={() => setIsTeamModalOpen(true)}
+        onOpenTeamModal={(tab = 'users') => {
+          setTeamModalInitialTab(tab);
+          setIsTeamModalOpen(true);
+        }}
         onOpenHospitalModal={(tab) => setHospitalModal({ isOpen: true, initialTab: tab || 'create' })}
         activeMainTab={activeMainTab}
         onChangeMainTab={setActiveMainTab}
@@ -2337,6 +2341,7 @@ export default function App() {
         hospitalName={activeHospital?.name || 'Hospital'}
         activeHospitalId={activeHospitalId}
         hospitals={availableHospitals}
+        initialTab={teamModalInitialTab}
       />
 
       {/* PWA Android / iOS Install Modal */}

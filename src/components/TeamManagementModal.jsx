@@ -38,9 +38,10 @@ export default function TeamManagementModal({
   equipments = [],
   hospitalName = 'Hospital',
   activeHospitalId,
-  hospitals = []
+  hospitals = [],
+  initialTab = 'users'
 }) {
-  const [activeTab, setActiveTab] = useState('audit'); // 'audit' | 'users' | 'create_user'
+  const [activeTab, setActiveTab] = useState(initialTab || 'users');
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
@@ -66,15 +67,18 @@ export default function TeamManagementModal({
   const [editingPermsUserId, setEditingPermsUserId] = useState(null);
   const [editingPermsHospitalIds, setEditingPermsHospitalIds] = useState([]);
 
-  const isMaster = currentUser?.role === 'master';
+  const isMaster = currentUser?.role === 'master' || currentUser?.email?.toLowerCase() === 'digiclintec@gmail.com';
   const isAdmin = currentUser?.role === 'admin' || isMaster;
 
   useEffect(() => {
     if (isOpen) {
+      if (initialTab) {
+        setActiveTab(initialTab);
+      }
       loadUsers();
       setMessage(null);
     }
-  }, [isOpen]);
+  }, [isOpen, initialTab]);
 
   const loadUsers = async () => {
     setLoading(true);
@@ -124,7 +128,8 @@ export default function TeamManagementModal({
     setMessage(null);
 
     // Se não for master, o usuário é vinculado obrigatoriamente e exclusivamente a este hospital
-    const targetHospIds = isMaster ? selectedHospitalIds : [activeHospitalId];
+    const targetHospId = activeHospitalId || currentUser?.hospitalIds?.[0] || currentUser?.hospitalId || 'hosp_central';
+    const targetHospIds = isMaster ? selectedHospitalIds : [targetHospId];
 
     try {
       const res = await fetch('/api/users', {
@@ -134,7 +139,7 @@ export default function TeamManagementModal({
           name: userName.trim(),
           email: userEmail.trim(),
           password: userPassword.trim(),
-          role: userRole,
+          role: isAdmin ? userRole : 'operador',
           hospitalIds: targetHospIds
         })
       });
@@ -444,6 +449,30 @@ export default function TeamManagementModal({
         {/* Navigation Tabs */}
         <div className="flex border-b border-slate-800 bg-slate-950/40 px-4 sm:px-6 shrink-0 gap-2 overflow-x-auto">
           <button
+            onClick={() => setActiveTab('users')}
+            className={`py-3 px-3.5 text-xs font-bold border-b-2 transition flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'users'
+                ? 'border-blue-500 text-blue-400'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Users className="w-4 h-4 text-indigo-400" />
+            <span>Técnicos & Equipe ({visibleUsers.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('create_user')}
+            className={`py-3 px-3.5 text-xs font-bold border-b-2 transition flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'create_user'
+                ? 'border-emerald-500 text-emerald-400'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <UserPlus className="w-4 h-4 text-emerald-400" />
+            <span>+ Criar Novo Login</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('audit')}
             className={`py-3 px-3.5 text-xs font-bold border-b-2 transition flex items-center gap-2 whitespace-nowrap ${
               activeTab === 'audit'
@@ -454,32 +483,6 @@ export default function TeamManagementModal({
             <Activity className="w-4 h-4 text-blue-400" />
             <span>Auditoria & Trabalhos ({auditEntries.length})</span>
           </button>
-
-          <button
-            onClick={() => setActiveTab('users')}
-            className={`py-3 px-3.5 text-xs font-bold border-b-2 transition flex items-center gap-2 whitespace-nowrap ${
-              activeTab === 'users'
-                ? 'border-blue-500 text-blue-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Users className="w-4 h-4 text-indigo-400" />
-            <span>Usuários Cadastrados ({users.length})</span>
-          </button>
-
-          {isAdmin && (
-            <button
-              onClick={() => setActiveTab('create_user')}
-              className={`py-3 px-3.5 text-xs font-bold border-b-2 transition flex items-center gap-2 whitespace-nowrap ${
-                activeTab === 'create_user'
-                  ? 'border-blue-500 text-blue-400'
-                  : 'border-transparent text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <UserPlus className="w-4 h-4 text-emerald-400" />
-              <span>Novo Usuário</span>
-            </button>
-          )}
         </div>
 
         {/* Global Feedback Message */}
@@ -712,15 +715,13 @@ export default function TeamManagementModal({
                     ? `Todos os Usuários do Sistema (${visibleUsers.length})` 
                     : `Técnicos da Equipe - ${hospitalName} (${visibleUsers.length})`}
                 </h4>
-                {isAdmin && (
-                  <button
-                    onClick={() => setActiveTab('create_user')}
-                    className="text-xs text-blue-400 hover:text-blue-300 font-bold flex items-center gap-1"
-                  >
-                    <UserPlus className="w-3.5 h-3.5" />
-                    <span>Adicionar Usuário</span>
-                  </button>
-                )}
+                <button
+                  onClick={() => setActiveTab('create_user')}
+                  className="text-xs text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 transition"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>+ Criar Novo Login</span>
+                </button>
               </div>
 
               {visibleUsers.length === 0 ? (
@@ -929,7 +930,7 @@ export default function TeamManagementModal({
           )}
 
           {/* ================= TAB 3: CRIAR NOVO USUÁRIO ================= */}
-          {activeTab === 'create_user' && isAdmin && (
+          {activeTab === 'create_user' && (
             <form onSubmit={handleCreateUser} className="space-y-4 max-w-lg mx-auto">
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1">Nome Completo:</label>
@@ -978,15 +979,22 @@ export default function TeamManagementModal({
 
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1">Função / Nível de Acesso:</label>
-                <select
-                  value={userRole}
-                  onChange={(e) => setUserRole(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
-                >
-                  <option value="operador">Técnico de Campo (Bipagem, conferência e fotos)</option>
-                  <option value="admin">Administrador (Subir planilhas e gerenciar dados)</option>
-                  {isMaster && <option value="master">Master (Controle total do sistema)</option>}
-                </select>
+                {isAdmin ? (
+                  <select
+                    value={userRole}
+                    onChange={(e) => setUserRole(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="operador">Técnico de Campo (Bipagem, conferência e fotos)</option>
+                    <option value="admin">Administrador (Subir planilhas e gerenciar dados)</option>
+                    {isMaster && <option value="master">Master (Controle total do sistema)</option>}
+                  </select>
+                ) : (
+                  <div className="p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-300 flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>Técnico de Campo (Acesso à bipagem e devolução no hospital ativo)</span>
+                  </div>
+                )}
               </div>
 
               {/* Multi-hospital permissions */}
