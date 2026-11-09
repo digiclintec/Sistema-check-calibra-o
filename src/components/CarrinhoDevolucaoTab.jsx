@@ -1508,21 +1508,25 @@ export default function CarrinhoDevolucaoTab({
       )}
 
       {/* ========================================================================= */}
-      {/* SEÇÃO 1: FILA DE BOMBAS BIPADAS PARA DEVOLUÇÃO EM SÉRIE                   */}
-      {/* (Exatamente "como é feito na calibração", mostrando cada uma na ordem)     */}
+      {/* SEÇÃO 1: FILA DE BOMBAS BIPADAS PARA DEVOLUÇÃO EM SÉRIE (ESTRUTURA DO CARRINHO) */}
       {/* ========================================================================= */}
-      <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 sm:p-5 shadow-sm space-y-3">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center font-black">
-              <ListOrdered className="w-4 h-4" />
+      <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 sm:p-5 shadow-sm space-y-3.5">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 pb-3 border-b border-slate-100 dark:border-slate-800">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center font-black shadow-xs">
+              <Truck className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-sm sm:text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+              <h2 className="text-sm sm:text-base font-black text-slate-900 dark:text-white flex items-center gap-2 flex-wrap">
                 <span>Bombas Bipadas para Devolução (Fila em Série)</span>
                 <span className="px-2 py-0.5 rounded-full text-xs font-black bg-blue-100 text-blue-700 dark:bg-blue-950/80 dark:text-blue-300">
-                  {scannedSeries.length}
+                  {scannedSeries.length} no carrinho
                 </span>
+                {scannedSectorsCount > 0 && (
+                  <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300">
+                    {scannedSectorsCount} {scannedSectorsCount === 1 ? 'setor' : 'setores'} de destino
+                  </span>
+                )}
               </h2>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
                 Aparecem na ordem exata de bipagem para conferência antes de levar ao setor
@@ -1531,11 +1535,21 @@ export default function CarrinhoDevolucaoTab({
           </div>
 
           {scannedSeries.length > 0 && (
-            <div className="flex items-center gap-2 self-end sm:self-center">
+            <div className="flex items-center gap-2 self-end sm:self-center flex-wrap">
+              <button
+                type="button"
+                onClick={handleCopySummary}
+                className="px-3 py-1.5 rounded-xl font-bold text-xs bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition active:scale-95 flex items-center gap-1.5 border border-slate-200 dark:border-slate-700"
+                title="Copiar lista de devolução organizada por setores"
+              >
+                <Copy className="w-3.5 h-3.5 text-emerald-500" />
+                <span>{copySuccess ? 'Copiado! ✓' : 'Copiar Relação'}</span>
+              </button>
+
               <button
                 type="button"
                 onClick={handleReturnAllInSeries}
-                className="px-3 py-1.5 rounded-xl font-black text-xs bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm flex items-center gap-1.5 transition active:scale-95 border border-emerald-500"
+                className="px-3.5 py-1.5 rounded-xl font-black text-xs bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm flex items-center gap-1.5 transition active:scale-95 border border-emerald-500"
                 title="Confirmar devolução de todas as bombas bipadas aos seus respectivos setores e concluir a fila"
               >
                 <Check className="w-3.5 h-3.5 stroke-[3]" />
@@ -1545,8 +1559,8 @@ export default function CarrinhoDevolucaoTab({
               <button
                 type="button"
                 onClick={handleClearSeries}
-                className="text-[11px] font-bold text-slate-400 hover:text-red-500 hover:underline flex items-center gap-1"
-                title="Limpar a fila sem marcar devolução"
+                className="text-[11px] font-bold text-slate-400 hover:text-red-500 hover:underline flex items-center gap-1 px-1.5 py-1"
+                title="Limpar o carrinho sem marcar devolução"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>Limpar Fila</span>
@@ -1554,6 +1568,30 @@ export default function CarrinhoDevolucaoTab({
             </div>
           )}
         </div>
+
+        {/* Resumo visual dos setores carregados no carrinho */}
+        {Object.keys(cartSummaryBySector).length > 0 && (
+          <div className="p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800 flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+            <span className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wide shrink-0 flex items-center gap-1.5">
+              <Truck className="w-3.5 h-3.5 text-blue-500" />
+              <span>Carga no Carrinho:</span>
+            </span>
+            {Object.keys(cartSummaryBySector).map(sec => {
+              const secCol = getSectorColor(sec, sectorColors);
+              return (
+                <span
+                  key={sec}
+                  style={getSectorBadgeStyles(secCol)}
+                  className="px-2.5 py-0.5 rounded-full text-[11px] font-bold border shrink-0 flex items-center gap-1 shadow-xs"
+                >
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: secCol.hex }} />
+                  <span>{sec}</span>
+                  <span className="font-mono ml-0.5 font-black">({cartSummaryBySector[sec]})</span>
+                </span>
+              );
+            })}
+          </div>
+        )}
 
         {/* LISTAGEM EM SÉRIE DAS BOMBAS BIPADAS */}
         {scannedSeries.length === 0 ? (
@@ -1763,18 +1801,6 @@ export default function CarrinhoDevolucaoTab({
               }`}
             >
               Já Devolvidas ({alreadyReturnedEquipments.length})
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setStatusFilter('PACKED')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0 ${
-                statusFilter === 'PACKED'
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-indigo-600'
-              }`}
-            >
-              No Carrinho ({cartPackedIds.size})
             </button>
 
             <button
