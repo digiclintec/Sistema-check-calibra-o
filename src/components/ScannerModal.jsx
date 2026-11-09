@@ -34,7 +34,8 @@ import {
   Lock,
   Package,
   Check,
-  Plus
+  Plus,
+  Pencil
 } from 'lucide-react';
 import {
   playSuccessSound,
@@ -399,6 +400,8 @@ export default function ScannerModal({
 
   // Setor de retirada padrão do lote (Ex: 'UTIN', 'Centro Cirúrgico', etc.)
   const [batchSector, setBatchSector] = useState('');
+  const [editingSectorItemId, setEditingSectorItemId] = useState(null);
+  const [customSectorInput, setCustomSectorInput] = useState('');
 
   // Setores disponíveis sugeridos a partir da planilha
   const availableSectors = useMemo(() => {
@@ -1284,12 +1287,14 @@ export default function ScannerModal({
 
   // Atualizar setor de retirada de uma bomba específica dentro da fila
   const handleUpdateItemSector = (id, newSector) => {
+    const cleanSector = String(newSector || '').trim();
     setStagedItems(prev => prev.map(item => {
       if (item.equipment.id === id) {
-        return { ...item, setorRetirada: newSector };
+        return { ...item, setorRetirada: cleanSector };
       }
       return item;
     }));
+    setEditingSectorItemId(null);
   };
 
   // Aplicar setor de retirada a todas as bombas já bipadas na fila atual
@@ -2120,38 +2125,61 @@ export default function ScannerModal({
               </div>
 
               {/* Barra de Seleção / Alteração do Setor de Retirada do Lote (Compacta) */}
-              <div className="bg-slate-900/90 border border-slate-800 rounded-xl px-2.5 py-1.5 mb-2 flex items-center justify-between gap-2 shrink-0 shadow-xs">
-                <div className="flex items-center gap-1 shrink-0 text-slate-300 font-bold text-[11px]">
-                  <MapPin className="w-3.5 h-3.5 text-teal-400 shrink-0" />
-                  <span>Setor do Lote:</span>
+              <div className="bg-slate-900/90 border border-slate-800 rounded-xl px-2.5 py-1.5 mb-2 space-y-1.5 shrink-0 shadow-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1 shrink-0 text-slate-300 font-bold text-[11px]">
+                    <MapPin className="w-3.5 h-3.5 text-teal-400 shrink-0" />
+                    <span>Setor do Lote:</span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 flex-1 min-w-[140px]">
+                    <input
+                      type="text"
+                      list="scanner-sector-suggestions"
+                      value={batchSector}
+                      onChange={(e) => setBatchSector(e.target.value)}
+                      placeholder="Ex: UTIN, Centro Cirúrgico, UTI..."
+                      className="bg-slate-950 border border-slate-700 focus:border-teal-400 rounded-lg px-2 py-0.5 text-xs text-white placeholder-slate-500 flex-1 focus:outline-none font-medium"
+                    />
+                    <datalist id="scanner-sector-suggestions">
+                      {availableSectors.map(s => (
+                        <option key={s} value={s} />
+                      ))}
+                    </datalist>
+
+                    {stagedItems.length > 0 && batchSector && (
+                      <button
+                        type="button"
+                        onClick={() => handleApplySectorToAllStaged(batchSector)}
+                        className="px-2 py-0.5 bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/40 rounded-lg text-[10px] font-bold shrink-0 transition"
+                        title="Aplicar este setor a todas as bombas da fila"
+                      >
+                        Aplicar a todas
+                      </button>
+                    )}
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-1.5 flex-1 min-w-[140px]">
-                  <input
-                    type="text"
-                    list="scanner-sector-suggestions"
-                    value={batchSector}
-                    onChange={(e) => setBatchSector(e.target.value)}
-                    placeholder="Ex: UTIN, Centro Cirúrgico, UTI..."
-                    className="bg-slate-950 border border-slate-700 focus:border-teal-400 rounded-lg px-2 py-0.5 text-xs text-white placeholder-slate-500 flex-1 focus:outline-none"
-                  />
-                  <datalist id="scanner-sector-suggestions">
+                {/* Atalhos Rápidos de Setores para o Lote */}
+                {availableSectors.length > 0 && (
+                  <div className="flex items-center gap-1 overflow-x-auto pb-0.5 scrollbar-none text-[10px]">
+                    <span className="text-slate-500 font-bold shrink-0">Atalhos:</span>
                     {availableSectors.map(s => (
-                      <option key={s} value={s} />
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setBatchSector(s)}
+                        className={`px-1.5 py-0.2 rounded-md font-bold shrink-0 border transition ${
+                          batchSector === s
+                            ? 'bg-teal-500 text-slate-950 border-teal-400 font-extrabold shadow-xs'
+                            : 'bg-slate-950 text-slate-400 hover:text-white border-slate-800'
+                        }`}
+                      >
+                        {s}
+                      </button>
                     ))}
-                  </datalist>
-
-                  {stagedItems.length > 0 && batchSector && (
-                    <button
-                      type="button"
-                      onClick={() => handleApplySectorToAllStaged(batchSector)}
-                      className="px-2 py-0.5 bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/40 rounded-lg text-[10px] font-bold shrink-0 transition"
-                      title="Aplicar este setor a todas as bombas da fila"
-                    >
-                      Aplicar a todas
-                    </button>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
 
               {/* Lista Vazia ou Cards das Bombas */}
@@ -2225,12 +2253,28 @@ export default function ScannerModal({
                               S/N: {eq.serie}
                             </span>
                           )}
-                          {(item.setorRetirada || eq.setor) && (
-                            <span className="text-[10px] text-teal-300 bg-teal-950/40 px-1.5 py-0.5 rounded border border-teal-800/60 flex items-center gap-1">
-                              <MapPin className="w-2.5 h-2.5 text-teal-400" />
-                              <span>{item.setorRetirada || eq.setor}</span>
-                            </span>
-                          )}
+                          {/* Botão Interativo para Alterar Setor de Recolhimento desta Bomba */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (editingSectorItemId === eq.id) {
+                                setEditingSectorItemId(null);
+                              } else {
+                                setEditingSectorItemId(eq.id);
+                                setCustomSectorInput(item.setorRetirada || eq.setor_retirada || eq.setor || '');
+                              }
+                            }}
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border flex items-center gap-1 transition active:scale-95 shadow-xs ${
+                              editingSectorItemId === eq.id
+                                ? 'bg-teal-500 text-slate-950 border-teal-400 font-extrabold ring-2 ring-teal-400/40'
+                                : 'text-teal-300 bg-teal-950/70 hover:bg-teal-900 border-teal-700/80 hover:border-teal-400'
+                            }`}
+                            title="Toque para alterar o setor de recolhimento desta bomba"
+                          >
+                            <MapPin className="w-2.5 h-2.5 text-teal-400 shrink-0" />
+                            <span>Setor: <strong className="text-white underline decoration-teal-400/60">{item.setorRetirada || eq.setor_retirada || eq.setor || 'Definir'}</strong></span>
+                            <Pencil className="w-2.5 h-2.5 text-teal-300 ml-0.5 opacity-80" />
+                          </button>
 
                           {/* Modalidades que serão aplicadas */}
                           {selectedModalities.map(m => {
@@ -2260,6 +2304,83 @@ export default function ScannerModal({
                             );
                           })}
                         </div>
+
+                        {/* PAINEL DE ALTERAÇÃO RÁPIDA DE SETOR DESTA BOMBA */}
+                        {editingSectorItemId === eq.id && (
+                          <div className="mt-2 p-2.5 rounded-xl bg-slate-950/95 border border-teal-500/50 shadow-xl space-y-2 animate-in zoom-in-95 duration-150">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-[10px] font-black text-teal-300 uppercase tracking-wide flex items-center gap-1">
+                                <MapPin className="w-3 h-3 text-teal-400" />
+                                <span>Alterar Setor de Recolhimento desta bomba:</span>
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setEditingSectorItemId(null)}
+                                className="p-1 text-slate-400 hover:text-white rounded"
+                                title="Fechar"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+
+                            {/* 1-Tap Pills dos Setores Existentes no Hospital */}
+                            {availableSectors.length > 0 && (
+                              <div className="flex items-center gap-1 flex-wrap max-h-24 overflow-y-auto pr-0.5">
+                                {availableSectors.map(sec => {
+                                  const isCurrent = (item.setorRetirada || eq.setor_retirada || eq.setor) === sec;
+                                  return (
+                                    <button
+                                      key={sec}
+                                      type="button"
+                                      onClick={() => handleUpdateItemSector(eq.id, sec)}
+                                      className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border transition active:scale-95 ${
+                                        isCurrent
+                                          ? 'bg-teal-500 text-slate-950 border-teal-400 font-black shadow-xs'
+                                          : 'bg-slate-900 text-teal-200 border-teal-800/80 hover:bg-teal-950 hover:border-teal-400'
+                                      }`}
+                                      title={`Selecionar ${sec}`}
+                                    >
+                                      {sec}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+
+                            {/* Campo Livre para Digitar com Autocomplete */}
+                            <div className="flex items-center gap-1.5 pt-0.5">
+                              <input
+                                type="text"
+                                list="scanner-item-sector-datalist"
+                                value={customSectorInput}
+                                onChange={(e) => setCustomSectorInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleUpdateItemSector(eq.id, customSectorInput);
+                                  }
+                                }}
+                                placeholder="Ou digite o nome do setor..."
+                                className="bg-slate-900 border border-slate-700 focus:border-teal-400 rounded-lg px-2.5 py-1 text-xs text-white placeholder-slate-500 flex-1 focus:outline-none font-medium"
+                                autoFocus
+                              />
+                              <datalist id="scanner-item-sector-datalist">
+                                {availableSectors.map(s => (
+                                  <option key={s} value={s} />
+                                ))}
+                              </datalist>
+
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateItemSector(eq.id, customSectorInput)}
+                                className="px-3 py-1 bg-teal-600 hover:bg-teal-500 active:scale-95 text-white rounded-lg text-xs font-bold transition shrink-0 flex items-center gap-1"
+                              >
+                                <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                <span>Salvar</span>
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
