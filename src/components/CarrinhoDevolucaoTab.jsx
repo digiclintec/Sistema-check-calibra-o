@@ -107,11 +107,13 @@ export default function CarrinhoDevolucaoTab({
   planTitle = '',
   planId = null,
   sectorColors = {},
-  onOpenScanner = null
+  onOpenScanner = null,
+  onReturnEquipment = null,
+  onReturnMultipleEquipments = null
 }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSectorFilter, setSelectedSectorFilter] = useState('ALL');
-  const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'PACKED' | 'UNPACKED'
+  const [statusFilter, setStatusFilter] = useState('PENDING'); // 'PENDING' (Pendentes) | 'RETURNED' (Já Devolvidas) | 'ALL' (Todas) | 'PACKED' (No Carrinho)
   const [viewMode, setViewMode] = useState('compact_list'); // 'compact_list' (Lista Menor em Série) | 'sectors' (Agrupado por Setor)
   const [expandedSectors, setExpandedSectors] = useState({});
   const [flashFeedback, setFlashFeedback] = useState(null);
@@ -145,6 +147,7 @@ export default function CarrinhoDevolucaoTab({
   const planKey = planId || 'default';
   const STORAGE_SERIES_KEY = `calibracheck_cart_series_${planKey}`;
   const STORAGE_PACKED_KEY = `calibracheck_cart_packed_${planKey}`;
+  const STORAGE_RETURNED_KEY = `calibracheck_cart_returned_${planKey}`;
 
   // Fila de Bombas Bipadas para Devolução (Em Série)
   const [scannedSeries, setScannedSeries] = useState(() => {
@@ -164,24 +167,80 @@ export default function CarrinhoDevolucaoTab({
     return new Set();
   });
 
+  // Conjunto de IDs das bombas marcadas como DEVOLVIDAS
+  const [returnedIds, setReturnedIds] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_RETURNED_KEY);
+      if (saved) return new Set(JSON.parse(saved));
+    } catch (e) {}
+    const initialSet = new Set();
+    equipments.forEach(eq => {
+      if (eq.devolvido) initialSet.add(eq.id);
+    });
+    return initialSet;
+  });
+
+  // Refs de estado sincronizado para evitar stale closure no loop da câmera / leitor
+  const scannedSeriesRef = useRef(scannedSeries);
+  const cartPackedIdsRef = useRef(cartPackedIds);
+  const returnedIdsRef = useRef(returnedIds);
+  const equipmentsRef = useRef(equipments);
+  const handleQuickLookupRef = useRef(null);
+
+  useEffect(() => {
+    scannedSeriesRef.current = scannedSeries;
+  }, [scannedSeries]);
+
+  useEffect(() => {
+    cartPackedIdsRef.current = cartPackedIds;
+  }, [cartPackedIds]);
+
+  useEffect(() => {
+    returnedIdsRef.current = returnedIds;
+  }, [returnedIds]);
+
+  useEffect(() => {
+    equipmentsRef.current = equipments;
+  }, [equipments]);
+
   // Sincroniza com localStorage quando planId ou states mudam
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_SERIES_KEY);
-      setScannedSeries(saved ? JSON.parse(saved) : []);
+      const parsedSeries = saved ? JSON.parse(saved) : [];
+      setScannedSeries(parsedSeries);
+      scannedSeriesRef.current = parsedSeries;
     } catch (e) {
       setScannedSeries([]);
+      scannedSeriesRef.current = [];
     }
 
     try {
       const savedPacked = localStorage.getItem(STORAGE_PACKED_KEY);
-      setCartPackedIds(savedPacked ? new Set(JSON.parse(savedPacked)) : new Set());
+      const parsedPacked = savedPacked ? new Set(JSON.parse(savedPacked)) : new Set();
+      setCartPackedIds(parsedPacked);
+      cartPackedIdsRef.current = parsedPacked;
     } catch (e) {
       setCartPackedIds(new Set());
+      cartPackedIdsRef.current = new Set();
     }
-  }, [STORAGE_SERIES_KEY, STORAGE_PACKED_KEY]);
+
+    try {
+      const savedReturned = localStorage.getItem(STORAGE_RETURNED_KEY);
+      const parsedReturned = savedReturned ? new Set(JSON.parse(savedReturned)) : new Set();
+      equipments.forEach(eq => {
+        if (eq.devolvido) parsedReturned.add(eq.id);
+      });
+      setReturnedIds(parsedReturned);
+      returnedIdsRef.current = parsedReturned;
+    } catch (e) {
+      setReturnedIds(new Set());
+      returnedIdsRef.current = new Set();
+    }
+  }, [STORAGE_SERIES_KEY, STORAGE_PACKED_KEY, STORAGE_RETURNED_KEY, equipments]);
 
   const saveSeriesState = (newSeries) => {
+    scannedSeriesRef.current = newSeries;
     setScannedSeries(newSeries);
     try {
       localStorage.setItem(STORAGE_SERIES_KEY, JSON.stringify(newSeries));
@@ -189,9 +248,18 @@ export default function CarrinhoDevolucaoTab({
   };
 
   const savePackedState = (newSet) => {
+    cartPackedIdsRef.current = newSet;
     setCartPackedIds(newSet);
     try {
       localStorage.setItem(STORAGE_PACKED_KEY, JSON.stringify(Array.from(newSet)));
+    } catch (e) {}
+  };
+
+  const saveReturnedState = (newSet) => {
+    returnedIdsRef.current = newSet;
+    setReturnedIds(newSet);
+    try {
+      localStorage.setItem(STORAGE_RETURNED_KEY, JSON.stringify(Array.from(newSet)));
     } catch (e) {}
   };
 
@@ -201,6 +269,15 @@ export default function CarrinhoDevolucaoTab({
       Boolean(e.checado || e.check_calibracao || e.check_preventiva || e.check_seguranca || e.check_externa)
     );
   }, [equipments]);
+
+  // Contagem de pendentes de devolução vs já devolvidos
+  const pendingReturnEquipments = useMemo(() => {
+    return readyEquipments.filter(e => !returnedIds.has(e.id) && !e.devolvido);
+  }, [readyEquipments, returnedIds]);
+
+  const alreadyReturnedEquipments = useMemo(() => {
+    return readyEquipments.filter(e => returnedIds.has(e.id) || Boolean(e.devolvido));
+  }, [readyEquipments, returnedIds]);
 
   // Total de pendentes
   const pendingCount = equipments.length - readyEquipments.length;
@@ -258,7 +335,11 @@ export default function CarrinhoDevolucaoTab({
     const query = searchTerm.toLowerCase().trim();
 
     return readyEquipments.filter(item => {
+      const isReturned = returnedIds.has(item.id) || Boolean(item.devolvido);
       const isPacked = cartPackedIds.has(item.id);
+
+      if (statusFilter === 'PENDING' && isReturned) return false;
+      if (statusFilter === 'RETURNED' && !isReturned) return false;
       if (statusFilter === 'PACKED' && !isPacked) return false;
       if (statusFilter === 'UNPACKED' && isPacked) return false;
 
@@ -347,8 +428,13 @@ export default function CarrinhoDevolucaoTab({
     const val = raw.toLowerCase();
     const cleanSerial = extractCleanSerialNumber(raw).toLowerCase();
 
+    const currentEquips = equipmentsRef.current || equipments;
+    const currentSeries = scannedSeriesRef.current || [];
+    const currentPacked = cartPackedIdsRef.current || new Set();
+    const currentReturned = returnedIdsRef.current || new Set();
+
     // Procura o equipamento no inventário
-    const found = equipments.find(e => {
+    const found = currentEquips.find(e => {
       const idMatch = String(e.id || '').toLowerCase() === val;
       const barMatch = String(e.codigoBarras || '').toLowerCase() === val;
       const tagMatch = String(e.tag || '').toLowerCase() === val;
@@ -359,22 +445,25 @@ export default function CarrinhoDevolucaoTab({
     if (found) {
       const targetSec = (found.setor_retirada || found.setor || 'Setor Não Informado').trim();
       const isReady = Boolean(found.checado || found.check_calibracao || found.check_preventiva || found.check_seguranca || found.check_externa);
-      
+      const isAlreadyReturned = currentReturned.has(found.id) || Boolean(found.devolvido);
+
       const newEntry = {
         equipment: found,
         targetSector: targetSec,
         isReady,
+        isReturned: isAlreadyReturned,
         timestamp: Date.now(),
         scanId: `${found.id}-${Date.now()}`
       };
 
       // Adiciona na fila em série (o mais novo fica no topo)
-      const filteredOld = scannedSeries.filter(s => s.equipment.id !== found.id);
+      // Utiliza a referência síncrona atualizada para evitar reviver bombas antigas
+      const filteredOld = currentSeries.filter(s => s.equipment.id !== found.id);
       const updatedSeries = [newEntry, ...filteredOld];
       saveSeriesState(updatedSeries);
 
       // Marca automaticamente no carrinho
-      const updatedPacked = new Set(cartPackedIds);
+      const updatedPacked = new Set(currentPacked);
       updatedPacked.add(found.id);
       savePackedState(updatedPacked);
 
@@ -384,11 +473,13 @@ export default function CarrinhoDevolucaoTab({
 
       // Feedback visual em tela
       setFlashFeedback({
-        type: 'success',
+        type: isAlreadyReturned ? 'warning' : 'success',
         equipment: found,
         targetSector: targetSec,
         isReady,
-        message: `Bomba bipada! Levar para: ${targetSec}`
+        message: isAlreadyReturned
+          ? `⚠️ Esta bomba já consta como DEVOLVIDA ao setor: ${targetSec}!`
+          : `Bomba bipada! Levar para devolução em: ${targetSec}`
       });
 
       setLastScannedDest({
@@ -410,16 +501,110 @@ export default function CarrinhoDevolucaoTab({
     }
   };
 
+  // Mantém a ref da função sempre apontando para a versão mais recente
+  handleQuickLookupRef.current = handleQuickLookup;
+
+  // Confirma a devolução de uma bomba ao setor (REMOVE DA FILA E MARCA DEVOLVIDA)
+  const handleConfirmReturn = (equipmentId) => {
+    // 1. Marca como devolvida
+    const nextReturned = new Set(returnedIdsRef.current || returnedIds);
+    nextReturned.add(equipmentId);
+    saveReturnedState(nextReturned);
+
+    // 2. Remove da fila de bipadas (sai da lista!)
+    const nextSeries = (scannedSeriesRef.current || scannedSeries).filter(s => s.equipment.id !== equipmentId);
+    saveSeriesState(nextSeries);
+
+    // 3. Remove de cartPackedIds
+    const nextPacked = new Set(cartPackedIdsRef.current || cartPackedIds);
+    nextPacked.delete(equipmentId);
+    savePackedState(nextPacked);
+
+    // 4. Encontra equipamento para dados de feedback
+    const eq = (equipmentsRef.current || equipments).find(e => e.id === equipmentId);
+    const targetSec = eq ? (eq.setor_retirada || eq.setor || 'Setor').trim() : 'Setor';
+
+    // 5. Notifica backend/App se callback fornecido
+    if (onReturnEquipment) {
+      onReturnEquipment(equipmentId, true);
+    }
+
+    // 6. Efeitos sonoros e táteis
+    playSuccessSound();
+    triggerHapticAlert(60);
+
+    // 7. Feedback visual
+    setFlashFeedback({
+      type: 'success',
+      equipment: eq,
+      targetSector: targetSec,
+      isReady: true,
+      message: `✓ Bomba ${eq?.tag || eq?.serie || ''} devolvida com sucesso ao setor: ${targetSec}!`
+    });
+  };
+
+  // Desfazer devolução (caso tenha marcado por engano)
+  const handleUndoReturn = (equipmentId) => {
+    const nextReturned = new Set(returnedIdsRef.current || returnedIds);
+    nextReturned.delete(equipmentId);
+    saveReturnedState(nextReturned);
+
+    if (onReturnEquipment) {
+      onReturnEquipment(equipmentId, false);
+    }
+
+    playSuccessSound();
+    triggerHapticAlert(40);
+  };
+
+  // Devolver todas as bombas atualmente na fila do carrinho
+  const handleReturnAllInSeries = () => {
+    const current = scannedSeriesRef.current || scannedSeries;
+    if (current.length === 0) return;
+
+    if (window.confirm(`Deseja confirmar a devolução de TODAS as ${current.length} bombas aos seus respectivos setores e concluir esta viagem do carrinho?`)) {
+      const ids = current.map(item => item.equipment.id);
+      const nextReturned = new Set(returnedIdsRef.current || returnedIds);
+      ids.forEach(id => nextReturned.add(id));
+      saveReturnedState(nextReturned);
+
+      // Limpa a fila do carrinho
+      saveSeriesState([]);
+
+      // Limpa packed
+      const nextPacked = new Set(cartPackedIdsRef.current || cartPackedIds);
+      ids.forEach(id => nextPacked.delete(id));
+      savePackedState(nextPacked);
+
+      if (onReturnMultipleEquipments) {
+        onReturnMultipleEquipments(ids, true);
+      } else if (onReturnEquipment) {
+        ids.forEach(id => onReturnEquipment(id, true));
+      }
+
+      playSuccessSound();
+      triggerHapticAlert(80);
+
+      setFlashFeedback({
+        type: 'success',
+        message: `✓ ${ids.length} bombas devolvidas aos seus setores com sucesso! Fila do carrinho concluída.`
+      });
+      setLastScannedDest(null);
+    }
+  };
+
   // Remove um item da fila de bipadas
   const handleRemoveFromSeries = (equipmentId) => {
-    const updated = scannedSeries.filter(s => s.equipment.id !== equipmentId);
+    const current = scannedSeriesRef.current || scannedSeries;
+    const updated = current.filter(s => s.equipment.id !== equipmentId);
     saveSeriesState(updated);
   };
 
-  // Limpa toda a fila de bipadas do carrinho
+  // Limpa toda a fila de bipadas do carrinho (limpa de forma síncrona nos refs e no localStorage)
   const handleClearSeries = () => {
-    if (scannedSeries.length === 0) return;
-    if (window.confirm(`Deseja limpar as ${scannedSeries.length} bombas bipadas desta fila de devolução?`)) {
+    const current = scannedSeriesRef.current || scannedSeries;
+    if (current.length === 0) return;
+    if (window.confirm(`Deseja limpar as ${current.length} bombas bipadas desta fila de devolução?`)) {
       saveSeriesState([]);
       setLastScannedDest(null);
     }
@@ -427,13 +612,14 @@ export default function CarrinhoDevolucaoTab({
 
   // Copia a relação de bombas por setor para envio ou relatório
   const handleCopySummary = async () => {
-    if (scannedSeries.length === 0) return;
+    const current = scannedSeriesRef.current || scannedSeries;
+    if (current.length === 0) return;
 
     let text = `📦 RELAÇÃO DE DEVOLUÇÃO - ${hospitalName || 'HOSPITAL'}\n`;
-    text += `Plano: ${planTitle || 'Geral'} | Total no Carrinho: ${scannedSeries.length} bombas\n\n`;
+    text += `Plano: ${planTitle || 'Geral'} | Total no Carrinho: ${current.length} bombas\n\n`;
 
     const bySector = {};
-    scannedSeries.forEach(item => {
+    current.forEach(item => {
       const sec = item.targetSector || 'Setor Não Definido';
       if (!bySector[sec]) bySector[sec] = [];
       bySector[sec].push(item.equipment);
@@ -726,7 +912,11 @@ export default function CarrinhoDevolucaoTab({
           }
           lastScannedValRef.current = decodedText;
           lastScannedTimeRef.current = now;
-          handleQuickLookup(decodedText);
+          if (handleQuickLookupRef.current) {
+            handleQuickLookupRef.current(decodedText);
+          } else {
+            handleQuickLookup(decodedText);
+          }
         },
         () => {}
       );
@@ -771,7 +961,11 @@ export default function CarrinhoDevolucaoTab({
                     if (code !== lastScannedValRef.current || now - lastScannedTimeRef.current >= 1200) {
                       lastScannedValRef.current = code;
                       lastScannedTimeRef.current = now;
-                      handleQuickLookup(code);
+                      if (handleQuickLookupRef.current) {
+                        handleQuickLookupRef.current(code);
+                      } else {
+                        handleQuickLookup(code);
+                      }
                     }
                   }
                 } catch (e) {
@@ -1337,14 +1531,27 @@ export default function CarrinhoDevolucaoTab({
           </div>
 
           {scannedSeries.length > 0 && (
-            <button
-              type="button"
-              onClick={handleClearSeries}
-              className="text-[11px] font-bold text-red-600 dark:text-red-400 hover:underline flex items-center gap-1 self-end sm:self-center"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>Limpar Fila do Carrinho</span>
-            </button>
+            <div className="flex items-center gap-2 self-end sm:self-center">
+              <button
+                type="button"
+                onClick={handleReturnAllInSeries}
+                className="px-3 py-1.5 rounded-xl font-black text-xs bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm flex items-center gap-1.5 transition active:scale-95 border border-emerald-500"
+                title="Confirmar devolução de todas as bombas bipadas aos seus respectivos setores e concluir a fila"
+              >
+                <Check className="w-3.5 h-3.5 stroke-[3]" />
+                <span>Devolver Todas ({scannedSeries.length})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleClearSeries}
+                className="text-[11px] font-bold text-slate-400 hover:text-red-500 hover:underline flex items-center gap-1"
+                title="Limpar a fila sem marcar devolução"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Limpar Fila</span>
+              </button>
+            </div>
           )}
         </div>
 
@@ -1443,27 +1650,23 @@ export default function CarrinhoDevolucaoTab({
                     </div>
                   </div>
 
-                  {/* Ações: Status no Carrinho e Remover */}
-                  <div className="flex items-center gap-1.5 shrink-0">
+                  {/* Ações: Devolver (Verde) e Remover */}
+                  <div className="flex items-center gap-2 shrink-0">
                     <button
                       type="button"
-                      onClick={() => togglePacked(eq.id)}
-                      className={`px-2.5 py-1.5 rounded-xl font-bold text-xs transition flex items-center gap-1.5 ${
-                        isPacked
-                          ? 'bg-emerald-600 text-white shadow-xs'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
-                      }`}
-                      title={isPacked ? 'No carrinho (clique para desmarcar)' : 'Marcar como colocada no carrinho'}
+                      onClick={() => handleConfirmReturn(eq.id)}
+                      className="px-3 py-1.5 rounded-xl font-extrabold text-xs bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow-md shadow-emerald-600/20 transition flex items-center gap-1.5 border border-emerald-500"
+                      title="Confirmar devolução desta bomba ao setor (ela sairá desta lista)"
                     >
-                      <Check className="w-3.5 h-3.5 stroke-[3]" />
-                      <span className="hidden sm:inline">{isPacked ? 'No Carrinho ✓' : 'Marcar'}</span>
+                      <Check className="w-4 h-4 stroke-[3]" />
+                      <span>Devolver</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => handleRemoveFromSeries(eq.id)}
                       className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl transition"
-                      title="Remover desta fila"
+                      title="Remover desta fila sem marcar devolução"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -1536,8 +1739,44 @@ export default function CarrinhoDevolucaoTab({
         {/* Filtros de Setor e Status */}
         <div className="flex items-center justify-between gap-2 flex-wrap pt-2 border-t border-slate-100 dark:border-slate-800">
           
-          {/* Filtros de Status no Carrinho */}
+          {/* Filtros de Status de Devolução */}
           <div className="flex items-center gap-1.5 overflow-x-auto">
+            <button
+              type="button"
+              onClick={() => setStatusFilter('PENDING')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0 ${
+                statusFilter === 'PENDING'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900'
+              }`}
+            >
+              Pendentes ({pendingReturnEquipments.length})
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setStatusFilter('RETURNED')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0 ${
+                statusFilter === 'RETURNED'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-emerald-600'
+              }`}
+            >
+              Já Devolvidas ({alreadyReturnedEquipments.length})
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setStatusFilter('PACKED')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0 ${
+                statusFilter === 'PACKED'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-indigo-600'
+              }`}
+            >
+              No Carrinho ({cartPackedIds.size})
+            </button>
+
             <button
               type="button"
               onClick={() => setStatusFilter('ALL')}
@@ -1548,30 +1787,6 @@ export default function CarrinhoDevolucaoTab({
               }`}
             >
               Todas ({readyEquipments.length})
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setStatusFilter('PACKED')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0 ${
-                statusFilter === 'PACKED'
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-emerald-600'
-              }`}
-            >
-              No Carrinho ({cartPackedIds.size})
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setStatusFilter('UNPACKED')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0 ${
-                statusFilter === 'UNPACKED'
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-indigo-600'
-              }`}
-            >
-              Fora do Carrinho ({Math.max(0, readyEquipments.length - cartPackedIds.size)})
             </button>
           </div>
 
@@ -1622,7 +1837,7 @@ export default function CarrinhoDevolucaoTab({
               <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 font-semibold uppercase tracking-wider select-none">
                 <tr>
                   <th className="py-3 px-3 w-12 text-center">Nº</th>
-                  <th className="py-3 px-3 w-28 text-center">No Carrinho</th>
+                  <th className="py-3 px-3 w-28 text-center">Devolução</th>
                   <th className="py-3 px-3">Tag / Código</th>
                   <th className="py-3 px-3">Nº Série</th>
                   <th className="py-3 px-3">Equipamento / Aparelho</th>
@@ -1633,6 +1848,7 @@ export default function CarrinhoDevolucaoTab({
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
                 {filteredEquipments.map((item, idx) => {
+                  const isReturned = returnedIds.has(item.id) || Boolean(item.devolvido);
                   const isPacked = cartPackedIds.has(item.id);
                   const targetSec = (item.setor_retirada || item.setor || 'Setor Não Definido').trim();
                   const secColor = getSectorColor(targetSec, sectorColors);
@@ -1642,7 +1858,9 @@ export default function CarrinhoDevolucaoTab({
                       key={item.id}
                       style={{ borderLeft: `4px solid ${secColor.hex}` }}
                       className={`transition-colors duration-150 ${
-                        isPacked
+                        isReturned
+                          ? 'bg-slate-50/50 dark:bg-slate-900/30 opacity-75'
+                          : isPacked
                           ? 'bg-emerald-50/40 dark:bg-emerald-950/15'
                           : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
                       }`}
@@ -1652,20 +1870,28 @@ export default function CarrinhoDevolucaoTab({
                         {idx + 1}
                       </td>
 
-                      {/* Checkbox No Carrinho */}
+                      {/* Botão Devolver */}
                       <td className="py-2.5 px-3 text-center">
-                        <button
-                          type="button"
-                          onClick={() => togglePacked(item.id)}
-                          className={`w-6 h-6 mx-auto rounded-lg flex items-center justify-center transition ${
-                            isPacked
-                              ? 'bg-emerald-600 text-white shadow-xs'
-                              : 'border-2 border-slate-300 dark:border-slate-700 text-transparent hover:border-emerald-500'
-                          }`}
-                          title={isPacked ? 'No carrinho (clique para desmarcar)' : 'Marcar no carrinho'}
-                        >
-                          <Check className="w-3.5 h-3.5 stroke-[3]" />
-                        </button>
+                        {isReturned ? (
+                          <button
+                            type="button"
+                            onClick={() => handleUndoReturn(item.id)}
+                            className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 hover:text-amber-500 border border-slate-200 dark:border-slate-700 transition"
+                            title="Bomba já devolvida. Clique para desfazer."
+                          >
+                            ✓ Devolvida
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleConfirmReturn(item.id)}
+                            className="px-2.5 py-1 rounded-xl text-xs font-black bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white transition flex items-center gap-1 mx-auto shadow-xs border border-emerald-500"
+                            title="Confirmar devolução desta bomba ao setor (ela sairá da lista de pendentes)"
+                          >
+                            <Check className="w-3.5 h-3.5 stroke-[3]" />
+                            <span>Devolver</span>
+                          </button>
+                        )}
                       </td>
 
                       {/* Tag / Código */}
@@ -1729,6 +1955,7 @@ export default function CarrinhoDevolucaoTab({
           {/* MOBILE: CARDS COMPACTOS EM LINHA (LISTA MENOR) */}
           <div className="sm:hidden divide-y divide-slate-100 dark:divide-slate-800">
             {filteredEquipments.map((item, idx) => {
+              const isReturned = returnedIds.has(item.id) || Boolean(item.devolvido);
               const isPacked = cartPackedIds.has(item.id);
               const targetSec = (item.setor_retirada || item.setor || 'Setor Não Definido').trim();
               const secColor = getSectorColor(targetSec, sectorColors);
@@ -1738,7 +1965,11 @@ export default function CarrinhoDevolucaoTab({
                   key={item.id}
                   style={{ borderLeft: `4px solid ${secColor.hex}` }}
                   className={`p-3 flex items-center justify-between gap-2.5 transition ${
-                    isPacked ? 'bg-emerald-50/40 dark:bg-emerald-950/15' : ''
+                    isReturned
+                      ? 'bg-slate-50/50 dark:bg-slate-900/30 opacity-75'
+                      : isPacked
+                      ? 'bg-emerald-50/40 dark:bg-emerald-950/15'
+                      : ''
                   }`}
                 >
                   <div className="space-y-1 min-w-0 flex-1">
@@ -1768,19 +1999,27 @@ export default function CarrinhoDevolucaoTab({
                     </div>
                   </div>
 
-                  {/* Botão Checkbox Mobile */}
-                  <button
-                    type="button"
-                    onClick={() => togglePacked(item.id)}
-                    className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 border transition ${
-                      isPacked
-                        ? 'bg-emerald-600 border-emerald-600 text-white shadow-xs'
-                        : 'border-slate-300 dark:border-slate-600 text-slate-400 hover:border-emerald-500'
-                    }`}
-                    title={isPacked ? 'No carrinho' : 'Marcar no carrinho'}
-                  >
-                    <Check className="w-4 h-4 stroke-[3]" />
-                  </button>
+                  {/* Botão Devolver Mobile */}
+                  {isReturned ? (
+                    <button
+                      type="button"
+                      onClick={() => handleUndoReturn(item.id)}
+                      className="px-2.5 py-1 rounded-xl text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 hover:text-amber-500 border border-slate-200 dark:border-slate-700 transition flex items-center gap-1 shrink-0"
+                      title="Bomba já devolvida. Clique para desfazer."
+                    >
+                      <span>✓ Devolvida</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleConfirmReturn(item.id)}
+                      className="px-3 py-1.5 rounded-xl font-black text-xs bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow-xs flex items-center gap-1 shrink-0 border border-emerald-500"
+                      title="Confirmar devolução (sairá da lista)"
+                    >
+                      <Check className="w-3.5 h-3.5 stroke-[3]" />
+                      <span>Devolver</span>
+                    </button>
+                  )}
                 </div>
               );
             })}
@@ -1846,12 +2085,15 @@ export default function CarrinhoDevolucaoTab({
                 {isExpanded && (
                   <div className="p-3 sm:p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 bg-slate-50/50 dark:bg-slate-900/40">
                     {group.items.map(item => {
+                      const isReturned = returnedIds.has(item.id) || Boolean(item.devolvido);
                       const isPacked = cartPackedIds.has(item.id);
                       return (
                         <div
                           key={item.id}
                           className={`p-3 rounded-2xl border transition flex items-center justify-between gap-3 ${
-                            isPacked
+                            isReturned
+                              ? 'bg-slate-50/50 dark:bg-slate-900/30 opacity-75'
+                              : isPacked
                               ? 'bg-emerald-50/70 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800 shadow-xs'
                               : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700/80 hover:border-slate-300'
                           }`}
@@ -1881,18 +2123,26 @@ export default function CarrinhoDevolucaoTab({
                             </div>
                           </div>
 
-                          <button
-                            type="button"
-                            onClick={() => togglePacked(item.id)}
-                            className={`w-7 h-7 rounded-xl flex items-center justify-center border shrink-0 transition ${
-                              isPacked
-                                ? 'bg-emerald-600 border-emerald-600 text-white shadow-xs'
-                                : 'border-slate-300 dark:border-slate-600 text-slate-400 hover:border-blue-500'
-                            }`}
-                            title={isPacked ? 'Separada no carrinho' : 'Marcar como colocada no carrinho'}
-                          >
-                            <Check className="w-4 h-4 stroke-[3]" />
-                          </button>
+                          {isReturned ? (
+                            <button
+                              type="button"
+                              onClick={() => handleUndoReturn(item.id)}
+                              className="px-2.5 py-1 rounded-xl text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 hover:text-amber-500 border border-slate-200 dark:border-slate-700 transition flex items-center gap-1 shrink-0"
+                              title="Bomba já devolvida. Clique para desfazer."
+                            >
+                              <span>✓ Devolvida</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleConfirmReturn(item.id)}
+                              className="px-3 py-1.5 rounded-xl font-black text-xs bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow-xs flex items-center gap-1 shrink-0 border border-emerald-500"
+                              title="Devolver ao setor (sairá da lista)"
+                            >
+                              <Check className="w-3.5 h-3.5 stroke-[3]" />
+                              <span>Devolver</span>
+                            </button>
+                          )}
                         </div>
                       );
                     })}

@@ -1703,6 +1703,45 @@ export default function App() {
     };
   };
 
+  // Confirmação de devolução de bomba ao setor
+  const handleReturnEquipment = async (equipmentId, isReturned = true) => {
+    const now = new Date().toISOString();
+    const user = currentUser?.name || currentUser?.email || 'Técnico';
+    const updated = equipments.map(eq => {
+      if (eq.id === equipmentId) {
+        return {
+          ...eq,
+          devolvido: isReturned,
+          data_devolucao: isReturned ? now : null,
+          usuario_devolucao: isReturned ? user : null
+        };
+      }
+      return eq;
+    });
+    const target = equipments.find(e => e.id === equipmentId);
+    const label = target?.tag || target?.serie || target?.equipamento || '';
+    await pushServerUpdate(updated, activeSheetName, isReturned ? `Devolução de bomba ao setor: ${label}` : `Desfazer devolução: ${label}`);
+  };
+
+  const handleReturnMultipleEquipments = async (equipmentIds = [], isReturned = true) => {
+    if (!equipmentIds || equipmentIds.length === 0) return;
+    const idsSet = new Set(equipmentIds);
+    const now = new Date().toISOString();
+    const user = currentUser?.name || currentUser?.email || 'Técnico';
+    const updated = equipments.map(eq => {
+      if (idsSet.has(eq.id)) {
+        return {
+          ...eq,
+          devolvido: isReturned,
+          data_devolucao: isReturned ? now : null,
+          usuario_devolucao: isReturned ? user : null
+        };
+      }
+      return eq;
+    });
+    await pushServerUpdate(updated, activeSheetName, `Devolução em lote de ${equipmentIds.length} bombas`);
+  };
+
   // Handle file selection (.xlsx, .xls, .csv)
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
@@ -2143,6 +2182,8 @@ export default function App() {
             planId={activePlanId}
             sectorColors={sectorColors}
             onOpenScanner={() => setIsScannerOpen(true)}
+            onReturnEquipment={handleReturnEquipment}
+            onReturnMultipleEquipments={handleReturnMultipleEquipments}
           />
         ) : activeMainTab === 'perfil' ? (
           <TechnicianProfileTab
