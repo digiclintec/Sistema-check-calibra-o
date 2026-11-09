@@ -948,16 +948,8 @@ export default function App() {
     }
   };
 
-  // Polling automático da planilha do Google a cada 25s se houver link ativo
-  useEffect(() => {
-    if (!currentUser || !googleSheetUrl) return;
-    const interval = setInterval(() => {
-      if (!isSyncingGoogle) {
-        handleSyncGoogleSheet(false);
-      }
-    }, 25000);
-    return () => clearInterval(interval);
-  }, [currentUser, googleSheetUrl, isSyncingGoogle]);
+  // Conforme solicitação estrita: Nenhum agente/timer automático roda em background alterando bombas.
+  // A sincronização com Google Sheets é realizada exclusivamente de forma manual pelo técnico quando ele desejar.
 
   // Hardware Barcode Scanner listener (USB/Bluetooth Gun)
   useEffect(() => {
@@ -1031,14 +1023,14 @@ export default function App() {
   }, [stats.checked, stats.total, activeHospital?.name, activeModality]);
 
   // Executa alternância de status de check (interno / autorizado) com suporte ao modo combo
-  const executeToggleCheck = async (id, targetModality = activeModality) => {
+  const executeToggleCheck = async (id, targetModality = activeModality, forceState = null) => {
     const target = equipments.find(e => e.id === id || e.codigoBarras === id);
     if (!target) return;
 
     let targetMods = [];
     if (targetModality === 'externa' || targetModality === 'manutencao_externa') {
       targetMods = ['externa'];
-    } else if (serviceConfig?.executionMode === 'all_at_once') {
+    } else if (serviceConfig?.executionMode === 'all_at_once' || targetModality === 'all' || targetModality === 'todos') {
       // Pacote Completo Fixado: Carimba todas as etapas configuradas juntas (Calibração + Preventiva + Seg. Elétrica)
       if (!serviceConfig || serviceConfig.enableCalibracao !== false) targetMods.push('calibracao');
       if (!serviceConfig || serviceConfig.enablePreventiva !== false) targetMods.push('preventiva');
@@ -1050,7 +1042,7 @@ export default function App() {
     }
 
     const allChecked = targetMods.every(m => isEquipmentChecked(target, m));
-    const nextState = !allChecked;
+    const nextState = forceState !== null ? forceState : !allChecked;
     const inspector = currentUser?.name ? `${currentUser.name} (${currentUser.email})` : (currentUser?.email || 'Operador');
     const nowIso = new Date().toISOString();
 
@@ -1123,9 +1115,6 @@ export default function App() {
       }).then(res => res.json()).then(data => {
         if (data.success && data.lastUpdated) {
           lastUpdatedServerRef.current = data.lastUpdated;
-          if (googleSheetWebhookUrl) {
-            showToast('success', `🤖 Agente: [${target.tag || target.equipamento}] gravado com sucesso na planilha Google!`);
-          }
         }
       }).catch(() => {});
     } catch (e) {}
@@ -1398,9 +1387,6 @@ export default function App() {
       }).then(res => res.json()).then(data => {
         if (data.success && data.lastUpdated) {
           lastUpdatedServerRef.current = data.lastUpdated;
-          if (googleSheetWebhookUrl) {
-            showToast('success', `🤖 Agente: ${checkedCount} equipamentos gravados com sucesso na planilha Google!`);
-          }
         }
       }).catch(() => {});
     } catch (e) {}
@@ -2423,6 +2409,14 @@ export default function App() {
           }
         }}
         onEditEquipment={(eq) => setEditEquipmentModal({ isOpen: true, equipment: eq })}
+        onRecalibrate={async (eq) => {
+          setAlreadyScannedAlert(null);
+          if (eq.check_externa) {
+            await executeToggleCheck(eq.id, 'externa', false);
+          }
+          await executeToggleCheck(eq.id, 'all', true);
+          showToast('success', `🔄 Recalibração registrada: ${eq.equipamento} (${eq.tag || eq.serie})`);
+        }}
       />
 
       {/* Modal de Edição de Identificação do Equipamento (Tag/Série/Código de Barras com Senha) */}

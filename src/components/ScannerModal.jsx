@@ -4,6 +4,7 @@ import {
   X,
   Camera,
   RefreshCw,
+  RotateCcw,
   Zap,
   Volume2,
   VolumeX,
@@ -1844,11 +1845,11 @@ export default function ScannerModal({
               {/* HUD FLOATING ALERT BANNER DIRETO SOBRE A CÂMERA (IMPOSSÍVEL DE NÃO VER PELO OPERADOR) */}
               {lastScannedFeedback && (lastScannedFeedback.status === 'already_checked' || lastScannedFeedback.status === 'in_maintenance') && (
                 <div className="absolute top-14 left-2.5 right-2.5 z-30 animate-in zoom-in-95 duration-200">
-                  <div className={`p-3 rounded-2xl border-2 shadow-2xl backdrop-blur-md flex items-center justify-between gap-2.5 ${lastScannedFeedback.status === 'in_maintenance'
+                  <div className={`p-3 rounded-2xl border-2 shadow-2xl backdrop-blur-md flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 ${lastScannedFeedback.status === 'in_maintenance'
                       ? 'bg-purple-950/95 border-purple-400 text-purple-100 shadow-purple-950/70'
                       : 'bg-amber-950/95 border-amber-400 text-amber-100 shadow-amber-950/70'
                     }`}>
-                    <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
                       <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-inner ${lastScannedFeedback.status === 'in_maintenance'
                           ? 'bg-purple-500/20 text-purple-300 border border-purple-400/50'
                           : 'bg-amber-500/20 text-amber-300 border border-amber-400/50'
@@ -1859,7 +1860,7 @@ export default function ScannerModal({
                           <AlertTriangle className="w-5 h-5 text-amber-300 animate-pulse" />
                         )}
                       </div>
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${lastScannedFeedback.status === 'in_maintenance'
                               ? 'bg-purple-500 text-white'
@@ -1890,18 +1891,47 @@ export default function ScannerModal({
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      {lastScannedFeedback.status === 'already_checked' && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const eq = lastScannedFeedback.equipment;
+                    {/* Botões de Ação: Botão Redondo Recalibrar (Pill Laranja Destaque) + Entendido */}
+                    <div className="flex items-center justify-end gap-2 shrink-0 pt-1 sm:pt-0 border-t sm:border-t-0 border-white/10">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const eq = lastScannedFeedback.equipment;
+                          const updatedEq = {
+                            ...eq,
+                            check_externa: false,
+                            data_externa: null,
+                            usuario_externa: null,
+                            motivo_externa: null
+                          };
+
+                          const targetMods = selectedModalities.length > 0 ? selectedModalities : configuredStandardModalities;
+
+                          if (mode === 'instant') {
+                            if (onBatchCheck) {
+                              onBatchCheck([{
+                                id: eq.id,
+                                equipment: updatedEq,
+                                setorRetirada: batchSector || eq.setor_retirada || eq.setor || '',
+                                isForced: true
+                              }], targetMods);
+                            } else if (onScan) {
+                              onScan(eq.id || lastScannedFeedback.code, targetMods);
+                            }
+                            setLastScannedFeedback({
+                              status: 'found',
+                              code: lastScannedFeedback.code,
+                              equipment: updatedEq,
+                              message: `✓ Recalibração registrada: ${eq.equipamento} (${eq.tag || eq.serie})`,
+                              timestamp: new Date().toLocaleTimeString('pt-BR')
+                            });
+                          } else {
                             setStagedItems(prev => [
                               {
-                                equipment: eq,
+                                equipment: updatedEq,
                                 match: lastScannedFeedback.match,
                                 scannedCode: lastScannedFeedback.code,
-                                targetModalities: selectedModalities,
+                                targetModalities: targetMods,
                                 setorRetirada: batchSector || eq.setor_retirada || eq.setor || '',
                                 isForced: true,
                                 timestamp: new Date().toLocaleTimeString('pt-BR')
@@ -1911,23 +1941,24 @@ export default function ScannerModal({
                             setLastScannedFeedback({
                               status: 'staged',
                               code: lastScannedFeedback.code,
-                              equipment: eq,
-                              message: `✓ Inclusão forçada na lista: ${eq.equipamento} (${eq.tag || eq.serie})`,
+                              equipment: updatedEq,
+                              message: `✓ Inclusão na fila para recalibrar: ${eq.equipamento} (${eq.tag || eq.serie})`,
                               timestamp: new Date().toLocaleTimeString('pt-BR')
                             });
-                          }}
-                          className="px-2.5 py-1.5 rounded-xl bg-amber-600/90 hover:bg-amber-500 text-white font-bold text-[11px] transition shadow-xs active:scale-95 flex items-center gap-1"
-                          title="Recalibrar mesmo já estando concluída"
-                        >
-                          <RefreshCw className="w-3 h-3" />
-                          <span className="hidden xs:inline">Recalibrar</span>
-                        </button>
-                      )}
+                          }
+                          if (soundEnabled) playSuccessSound();
+                        }}
+                        className="px-3.5 py-1.5 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white font-black text-xs transition shadow-lg shadow-orange-500/40 border border-amber-300/40 active:scale-95 flex items-center gap-1.5"
+                        title="Recalibrar mesmo já estando concluída ou em manutenção"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5 stroke-[2.5]" />
+                        <span>Recalibrar</span>
+                      </button>
 
                       <button
                         type="button"
                         onClick={() => setLastScannedFeedback(null)}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-black shrink-0 transition shadow-md active:scale-95 ${lastScannedFeedback.status === 'in_maintenance'
+                        className={`px-3 py-1.5 rounded-full text-xs font-black shrink-0 transition shadow-md active:scale-95 ${lastScannedFeedback.status === 'in_maintenance'
                             ? 'bg-purple-500 hover:bg-purple-400 text-white shadow-purple-500/40'
                             : 'bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-amber-400/40'
                           }`}
