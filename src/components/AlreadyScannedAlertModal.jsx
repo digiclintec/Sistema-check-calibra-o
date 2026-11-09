@@ -1,12 +1,13 @@
 import React, { useEffect } from 'react';
-import { AlertTriangle, Package, CheckCircle2, X, MapPin, Tag, Hash, User, Calendar, FileText, Check, Pencil, ArrowRight } from 'lucide-react';
+import { AlertTriangle, Package, CheckCircle2, X, MapPin, Tag, Hash, User, Calendar, FileText, Check, Pencil, ArrowRight, RotateCcw } from 'lucide-react';
 
 export default function AlreadyScannedAlertModal({
   isOpen,
   onClose,
   alertData, // { type: 'already_checked' | 'maintenance', equipment, meta, message, timestamp }
   onLocateInTable,
-  onEditEquipment = null
+  onEditEquipment = null,
+  onRecalibrate = null
 }) {
   useEffect(() => {
     if (!isOpen) return;
@@ -59,14 +60,31 @@ export default function AlreadyScannedAlertModal({
               : 'bg-gradient-to-r from-amber-950 via-slate-900 to-amber-900/60 border-amber-500/40 text-amber-100'
           }`}
         >
-          <button
-            type="button"
-            onClick={onClose}
-            className="absolute top-4 right-4 p-1.5 rounded-full text-slate-400 hover:text-white hover:bg-white/10 transition active:scale-90"
-            title="Fechar (Esc)"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="absolute top-3.5 right-4 flex items-center gap-2">
+            {onRecalibrate && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onRecalibrate(eq);
+                }}
+                className="px-3 py-1.5 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white font-black text-xs transition shadow-lg shadow-orange-500/40 border border-amber-300/40 active:scale-95 flex items-center gap-1.5"
+                title="Recalibrar este equipamento agora"
+              >
+                <RotateCcw className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span>Recalibrar</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 rounded-full text-slate-400 hover:text-white hover:bg-white/10 transition active:scale-90"
+              title="Fechar (Esc)"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
 
           <div className="flex items-start gap-3.5 pr-8">
             <div 
@@ -299,18 +317,35 @@ export default function AlreadyScannedAlertModal({
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className={`px-5 py-2.5 rounded-xl text-xs font-black transition shadow-lg flex items-center gap-1.5 active:scale-95 ${
-              isMaintenance
-                ? 'bg-purple-600 hover:bg-purple-500 text-white shadow-purple-600/30'
-                : 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/30'
-            }`}
-          >
-            <Check className="w-4 h-4 stroke-[3]" />
-            <span>✓ Entendido (Manter como já checada)</span>
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            {onRecalibrate && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onRecalibrate(eq);
+                }}
+                className="px-4 py-2.5 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white font-extrabold text-xs transition shadow-lg shadow-orange-500/30 flex items-center gap-1.5 active:scale-95 border border-amber-300/40"
+                title="Recalibrar este equipamento agora"
+              >
+                <RotateCcw className="w-4 h-4 stroke-[2.5]" />
+                <span>Recalibrar</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={onClose}
+              className={`px-5 py-2.5 rounded-full text-xs font-black transition shadow-lg flex items-center gap-1.5 active:scale-95 ${
+                isMaintenance
+                  ? 'bg-purple-600 hover:bg-purple-500 text-white shadow-purple-600/30'
+                  : 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/30'
+              }`}
+            >
+              <Check className="w-4 h-4 stroke-[3]" />
+              <span>✓ Entendido (Manter como já checada)</span>
+            </button>
+          </div>
         </div>
 
       </div>

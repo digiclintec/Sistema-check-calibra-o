@@ -1652,24 +1652,26 @@ function smartMergeGoogleSheet(currentEquipments = [], incomingEquipments = []) 
     if (match) {
       processedCurrentIds.add(match.id);
 
-      // Manutenção Externa (preserva se o técnico marcou no sistema ou se veio da planilha)
+      // Manutenção Externa e Calibrações: Prioridade total e soberana para as decisões locais dos técnicos no CalibraCheck.
+      // Nenhum processo ou planilha sobrescreve quando o técnico retira de manutenção ou altera o status!
       const localExt = Boolean(match.check_externa);
       const sheetExt = Boolean(incoming.check_externa);
-      const finalExt = localExt || sheetExt;
+      const finalExt = match.check_externa !== undefined ? localExt : sheetExt;
 
       // Se estiver em manutenção externa, NÃO deve constar como calibração interna
       const localCal = finalExt ? false : (match.check_calibracao !== undefined ? Boolean(match.check_calibracao) : (!localExt && Boolean(match.checado)));
       const sheetCal = finalExt ? false : (incoming.check_calibracao !== undefined ? Boolean(incoming.check_calibracao) : (!sheetExt && Boolean(incoming.checado)));
       
-      const localPrev = finalExt ? false : !!match.check_preventiva;
-      const sheetPrev = finalExt ? false : !!incoming.check_preventiva;
+      const localPrev = finalExt ? false : Boolean(match.check_preventiva);
+      const sheetPrev = finalExt ? false : Boolean(incoming.check_preventiva);
 
-      const localSeg = finalExt ? false : !!match.check_seguranca;
-      const sheetSeg = finalExt ? false : !!incoming.check_seguranca;
+      const localSeg = finalExt ? false : Boolean(match.check_seguranca);
+      const sheetSeg = finalExt ? false : Boolean(incoming.check_seguranca);
 
-      const finalCal = finalExt ? false : (localCal || sheetCal);
-      const finalPrev = finalExt ? false : (localPrev || sheetPrev);
-      const finalSeg = finalExt ? false : (localSeg || sheetSeg);
+      // Mantém prioritariamente a marcação local do técnico
+      const finalCal = finalExt ? false : (match.check_calibracao !== undefined ? localCal : sheetCal);
+      const finalPrev = finalExt ? false : (match.check_preventiva !== undefined ? localPrev : sheetPrev);
+      const finalSeg = finalExt ? false : (match.check_seguranca !== undefined ? localSeg : sheetSeg);
 
       let itemChanged = false;
       if (finalCal !== localCal || finalPrev !== localPrev || finalSeg !== localSeg || finalExt !== localExt) itemChanged = true;
