@@ -35,7 +35,8 @@ import {
   Package,
   Check,
   Plus,
-  Pencil
+  Pencil,
+  Save
 } from 'lucide-react';
 import {
   playSuccessSound,
@@ -77,7 +78,9 @@ export default function ScannerModal({
   activeModality = 'calibracao',
   onChangeModality,
   serviceConfig = null,
-  onOpenAddEquipment = null
+  onOpenAddEquipment = null,
+  activeHospitalId = '',
+  activePlanId = ''
 }) {
   const [cameras, setCameras] = useState([]);
   const [selectedCamera, setSelectedCamera] = useState('');
@@ -392,16 +395,86 @@ export default function ScannerModal({
   // Alvo de busca no código de barras: 'all' (automático) | 'idec' (somente IDEC / Tag) | 'serie' (somente Série)
   const [searchTarget, setSearchTarget] = useState('all');
 
-  // Fila de equipamentos bipados aguardando confirmação
-  const [stagedItems, setStagedItems] = useState([]);
+  // Chaves de persistência no cache (localStorage) isoladas por hospital e plano
+  const planKey = `${activeHospitalId || 'default'}_${activePlanId || 'default'}`;
+  const STORAGE_STAGED_KEY = `calibracheck_staged_scanner_${planKey}`;
+  const STORAGE_BATCH_SECTOR_KEY = `calibracheck_batch_sector_${planKey}`;
+
+  // Fila de equipamentos bipados aguardando confirmação (Carrega do cache automaticamente)
+  const [stagedItems, setStagedItems] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_STAGED_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
+    return [];
+  });
 
   // Feedback do último item bipado
   const [lastScannedFeedback, setLastScannedFeedback] = useState(null);
 
-  // Setor de retirada padrão do lote (Ex: 'UTIN', 'Centro Cirúrgico', etc.)
-  const [batchSector, setBatchSector] = useState('');
+  // Setor de retirada padrão do lote (Carrega do cache automaticamente)
+  const [batchSector, setBatchSector] = useState(() => {
+    try {
+      return localStorage.getItem(STORAGE_BATCH_SECTOR_KEY) || '';
+    } catch (e) {
+      return '';
+    }
+  });
   const [editingSectorItemId, setEditingSectorItemId] = useState(null);
   const [customSectorInput, setCustomSectorInput] = useState('');
+
+  // Sincroniza fila com localStorage a cada bipagem ou alteração
+  useEffect(() => {
+    try {
+      if (stagedItems.length > 0) {
+        localStorage.setItem(STORAGE_STAGED_KEY, JSON.stringify(stagedItems));
+      } else {
+        localStorage.removeItem(STORAGE_STAGED_KEY);
+      }
+    } catch (e) {}
+  }, [stagedItems, STORAGE_STAGED_KEY]);
+
+  // Sincroniza setor do lote com localStorage
+  useEffect(() => {
+    try {
+      if (batchSector) {
+        localStorage.setItem(STORAGE_BATCH_SECTOR_KEY, batchSector);
+      } else {
+        localStorage.removeItem(STORAGE_BATCH_SECTOR_KEY);
+      }
+    } catch (e) {}
+  }, [batchSector, STORAGE_BATCH_SECTOR_KEY]);
+
+  // Recarrega fila caso mude de plano ou hospital
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_STAGED_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) setStagedItems(parsed);
+      } else {
+        setStagedItems([]);
+      }
+      const savedSector = localStorage.getItem(STORAGE_BATCH_SECTOR_KEY);
+      setBatchSector(savedSector || '');
+    } catch (e) {}
+  }, [STORAGE_STAGED_KEY, STORAGE_BATCH_SECTOR_KEY]);
+
+  // Blindagem contra recarregamento acidental (pull-to-refresh ou F5) com itens na fila
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (stagedItems.length > 0) {
+        e.preventDefault();
+        e.returnValue = 'Existem bombas bipadas na fila do scanner ainda não confirmadas. Deseja realmente sair?';
+        return e.returnValue;
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [stagedItems.length]);
 
   // Setores disponíveis sugeridos a partir da planilha
   const availableSectors = useMemo(() => {
@@ -1312,6 +1385,9 @@ export default function ScannerModal({
   const handleClearStaged = () => {
     setStagedItems([]);
     setLastScannedFeedback(null);
+    try {
+      localStorage.removeItem(STORAGE_STAGED_KEY);
+    } catch (e) {}
   };
 
   // Confirmar check em todos os itens da fila com seus setores de retirada
@@ -1337,6 +1413,10 @@ export default function ScannerModal({
 
     setStagedItems([]);
     setLastScannedFeedback(null);
+    try {
+      localStorage.removeItem(STORAGE_STAGED_KEY);
+      localStorage.removeItem(STORAGE_BATCH_SECTOR_KEY);
+    } catch (e) {}
   };
 
   // Dispara o Scanner Nativo do Android (Google Code Scanner no APK ou Câmera Oficial no Browser)
@@ -1542,7 +1622,7 @@ export default function ScannerModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 backdrop-blur-md animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 backdrop-blur-md animate-in fade-in duration-150 overscroll-contain">
 
       {/* Input oculto para envio de foto */}
       <input
@@ -1556,7 +1636,7 @@ export default function ScannerModal({
 
       <div
         ref={containerRef}
-        className="bg-slate-900 border border-slate-800 w-full h-full sm:h-[94vh] sm:max-w-3xl md:max-w-5xl lg:max-w-6xl md:h-[92vh] sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col select-none"
+        className="bg-slate-900 border border-slate-800 w-full h-full sm:h-[94vh] sm:max-w-3xl md:max-w-5xl lg:max-w-6xl md:h-[92vh] sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col select-none overscroll-contain"
       >
 
         {/* Top Header Compacto */}
@@ -2099,10 +2179,10 @@ export default function ScannerModal({
             SEÇÃO DA FILA DE EQUIPAMENTOS BIPADOS (STAGED LIST)
             Altura flexível e garantida com scroll suave
         ============================================================ */}
-            <div className="flex-1 overflow-y-auto bg-slate-950/50 p-2.5 sm:p-3 min-h-0 flex flex-col">
+            <div className="flex-1 overflow-y-auto bg-slate-950/50 p-2.5 sm:p-3 min-h-0 flex flex-col overscroll-y-contain">
 
               <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-800/80 shrink-0">
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
                   <ListChecks className="w-4 h-4 text-blue-400" />
                   <h4 className="text-xs font-bold text-white uppercase tracking-wider">
                     Fila Bipada ({stagedItems.length} {stagedItems.length === 1 ? 'bomba' : 'bombas'})
@@ -2110,6 +2190,11 @@ export default function ScannerModal({
                   <span className="text-[10px] font-bold text-blue-300 bg-blue-900/50 border border-blue-700/60 px-2 py-0.5 rounded-full">
                     {selectedModalities.map(m => MODALITIES[m]?.shortName || m).join(' + ')}
                   </span>
+                  {stagedItems.length > 0 && (
+                    <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-400 bg-emerald-950/70 border border-emerald-700/50 px-2 py-0.5 rounded-full" title="Fila salva automaticamente no cache">
+                      <Save className="w-2.5 h-2.5" /> Salvo em Cache
+                    </span>
+                  )}
                 </div>
 
                 {stagedItems.length > 0 && (

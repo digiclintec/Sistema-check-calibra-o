@@ -182,10 +182,42 @@ export default function App() {
   });
 
   // UI state
-  const [activeMainTab, setActiveMainTab] = useState('conferencia'); // 'conferencia' | 'planejamento'
+  const [activeMainTab, setActiveMainTab] = useState(() => {
+    try {
+      const saved = localStorage.getItem('calibracheck_active_tab');
+      if (saved && ['conferencia', 'planejamento', 'devolucao', 'perfil', 'auditoria'].includes(saved)) {
+        return saved;
+      }
+    } catch (e) {}
+    return 'conferencia';
+  }); // 'conferencia' | 'planejamento' | 'devolucao' | 'perfil' | 'auditoria'
   const [monthlyPlans, setMonthlyPlans] = useState([]);
   const [activeFilter, setActiveFilter] = useState('todos');
-  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [isScannerOpen, setIsScannerOpen] = useState(() => {
+    try {
+      return localStorage.getItem('calibracheck_scanner_open') === 'true';
+    } catch (e) {
+      return false;
+    }
+  });
+
+  // Persiste a aba principal atual para não perder contexto ao recarregar a tela
+  useEffect(() => {
+    try {
+      localStorage.setItem('calibracheck_active_tab', activeMainTab);
+    } catch (e) {}
+  }, [activeMainTab]);
+
+  // Persiste se o modal do scanner estava aberto para reabrir caso ocorra reload acidental
+  useEffect(() => {
+    try {
+      if (isScannerOpen) {
+        localStorage.setItem('calibracheck_scanner_open', 'true');
+      } else {
+        localStorage.removeItem('calibracheck_scanner_open');
+      }
+    } catch (e) {}
+  }, [isScannerOpen]);
   const [isSerialScanOpen, setIsSerialScanOpen] = useState(false);
   const [massActionModal, setMassActionModal] = useState({ isOpen: false, action: 'check_all' });
   const [manualCheckModal, setManualCheckModal] = useState({ isOpen: false, equipment: null, modality: 'calibracao', nextState: true });
@@ -1006,6 +1038,19 @@ export default function App() {
     const percent = total > 0 ? Math.round((checked / total) * 100) : 0;
     return { total, checked, pending, expired, expiringSoon, percent, externa };
   }, [equipments, activeModality, serviceConfig]);
+
+  // Quantidade de bombas bipadas salvas no cache da fila do scanner (para exibição de badge)
+  const scannerStagedCount = useMemo(() => {
+    try {
+      const planKey = `${activeHospitalId || 'default'}_${activePlanId || 'default'}`;
+      const saved = localStorage.getItem(`calibracheck_staged_scanner_${planKey}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed.length;
+      }
+    } catch (e) {}
+    return 0;
+  }, [activeHospitalId, activePlanId, isScannerOpen]);
 
   // Confetti when 100% checked
   const prevCheckedRef = useRef(stats.checked);
@@ -2085,6 +2130,7 @@ export default function App() {
         googleSheetWebhookUrl={googleSheetWebhookUrl}
         serviceConfig={serviceConfig}
         onOpenAddEquipment={(targetPlanId, code, mode) => setAddEquipmentModal({ isOpen: true, planId: targetPlanId || activePlanId, initialCode: code || '', initialMode: mode || 'manual' })}
+        stagedBadgeCount={scannerStagedCount}
       />
 
       {/* Main Content Area */}
@@ -2248,6 +2294,8 @@ export default function App() {
         onChangeModality={setActiveModality}
         serviceConfig={serviceConfig}
         onOpenAddEquipment={(targetPlanId, code, mode) => setAddEquipmentModal({ isOpen: true, planId: targetPlanId || activePlanId, initialCode: code || '', initialMode: mode || 'manual' })}
+        activeHospitalId={activeHospitalId}
+        activePlanId={activePlanId}
       />
 
       {/* Agente Digitalizador de Número de Série por Foto / OCR */}
@@ -2454,6 +2502,7 @@ export default function App() {
         onCycleFilter={handleCycleFilter}
         checkedCount={stats.checked}
         totalCount={stats.total}
+        stagedBadgeCount={scannerStagedCount}
       />
 
       {/* Footer */}

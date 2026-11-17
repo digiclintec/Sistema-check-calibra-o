@@ -208,6 +208,19 @@ export default function CarrinhoDevolucaoTab({
     equipmentsRef.current = equipments;
   }, [equipments]);
 
+  // Blindagem contra recarregamento acidental (pull-to-refresh) se houver bombas na fila em série
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (scannedSeries.length > 0) {
+        e.preventDefault();
+        e.returnValue = 'Você possui bombas na fila do carrinho de devolução. Deseja realmente sair?';
+        return e.returnValue;
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [scannedSeries.length]);
+
   // Sincroniza com localStorage quando planId ou states mudam
   useEffect(() => {
     try {
@@ -1551,6 +1564,11 @@ export default function CarrinhoDevolucaoTab({
                 {scannedSectorsCount > 0 && (
                   <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300">
                     {scannedSectorsCount} {scannedSectorsCount === 1 ? 'setor' : 'setores'} de destino
+                  </span>
+                )}
+                {scannedSeries.length > 0 && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100/90 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300/40 dark:border-emerald-700/40">
+                    💾 Fila salva em cache
                   </span>
                 )}
               </h2>

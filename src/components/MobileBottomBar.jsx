@@ -9,7 +9,8 @@ export default function MobileBottomBar({
   activeFilter,
   onCycleFilter,
   checkedCount,
-  totalCount
+  totalCount,
+  stagedBadgeCount = 0
 }) {
   return (
     <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 w-full max-w-full bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 px-3 py-2 flex items-center justify-around shadow-2xl safe-area-bottom">
@@ -51,9 +52,14 @@ export default function MobileBottomBar({
       <button
         type="button"
         onClick={onOpenScanner}
-        className="flex flex-col items-center justify-center px-4 py-1.5 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-blue-500 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg shadow-blue-500/30 border border-blue-400/30 active:scale-95 transition-all"
+        className="relative flex flex-col items-center justify-center px-4 py-1.5 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-blue-500 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg shadow-blue-500/30 border border-blue-400/30 active:scale-95 transition-all"
         title="Abrir Câmera para Bipar"
       >
+        {stagedBadgeCount > 0 && (
+          <span className="absolute -top-1.5 -right-1 bg-amber-400 text-slate-950 text-[10px] font-black rounded-full min-w-5 h-5 px-1 flex items-center justify-center shadow-lg border border-slate-900 animate-pulse">
+            {stagedBadgeCount}
+          </span>
+        )}
         <Camera className="w-5 h-5 stroke-[2.5]" />
         <span className="text-[9px] font-black uppercase tracking-wider mt-0.5">
           BIPAR

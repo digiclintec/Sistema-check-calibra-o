@@ -59,7 +59,8 @@ export default function Navbar({
   googleSheetUrl = '',
   googleSheetWebhookUrl = '',
   serviceConfig = null,
-  onOpenAddEquipment = null
+  onOpenAddEquipment = null,
+  stagedBadgeCount = 0
 }) {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const moreMenuRef = useRef(null);
@@ -270,12 +271,17 @@ export default function Navbar({
             {/* Botão Primário: Bipar na Câmera (Sempre visível em todos os tamanhos!) */}
             <button
               onClick={onOpenScanner}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-md shadow-blue-500/25 transition active:scale-95 shrink-0"
+              className="relative flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-md shadow-blue-500/25 transition active:scale-95 shrink-0"
               title="Abrir câmera para ler código de barras"
             >
               <Camera className="w-3.5 h-3.5 shrink-0" />
               <span className="hidden sm:inline">Ler Código</span>
               <span className="sm:hidden">Bipar</span>
+              {stagedBadgeCount > 0 && (
+                <span className="ml-1 px-1.5 py-0.2 bg-amber-400 text-slate-950 font-black text-[10px] rounded-full animate-pulse shadow-xs">
+                  {stagedBadgeCount}
+                </span>
+              )}
             </button>
 
             {/* Alternador de Sons Hospitalares */}
