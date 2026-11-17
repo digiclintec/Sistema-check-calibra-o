@@ -1650,7 +1650,7 @@ export default function CarrinhoDevolucaoTab({
             </p>
           </div>
         ) : (
-          <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
+          <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1 touch-pan-y" style={{ WebkitOverflowScrolling: 'touch' }}>
             {scannedSeries.map((item, idx) => {
               const eq = item.equipment;
               const isTopNewest = idx === 0;

@@ -1622,7 +1622,7 @@ export default function ScannerModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 backdrop-blur-md animate-in fade-in duration-150 overscroll-contain">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 backdrop-blur-md animate-in fade-in duration-150">
 
       {/* Input oculto para envio de foto */}
       <input
@@ -1636,7 +1636,7 @@ export default function ScannerModal({
 
       <div
         ref={containerRef}
-        className="bg-slate-900 border border-slate-800 w-full h-full sm:h-[94vh] sm:max-w-3xl md:max-w-5xl lg:max-w-6xl md:h-[92vh] sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col select-none overscroll-contain"
+        className="bg-slate-900 border border-slate-800 w-full h-full sm:h-[94vh] sm:max-w-3xl md:max-w-5xl lg:max-w-6xl md:h-[92vh] sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col"
       >
 
         {/* Top Header Compacto */}
@@ -2179,7 +2179,7 @@ export default function ScannerModal({
             SEÇÃO DA FILA DE EQUIPAMENTOS BIPADOS (STAGED LIST)
             Altura flexível e garantida com scroll suave
         ============================================================ */}
-            <div className="flex-1 overflow-y-auto bg-slate-950/50 p-2.5 sm:p-3 min-h-0 flex flex-col overscroll-y-contain">
+            <div className="flex-1 overflow-y-auto bg-slate-950/50 p-2.5 sm:p-3 min-h-0 flex flex-col touch-pan-y" style={{ WebkitOverflowScrolling: 'touch' }}>
 
               <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-800/80 shrink-0">
                 <div className="flex items-center gap-1.5 flex-wrap">
