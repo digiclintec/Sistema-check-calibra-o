@@ -1,4 +1,5 @@
 import { parseCompositeBarcode } from './gs1Parser.js';
+import { normalizeIdec } from './idecParser.js';
 
 /**
  * Utilitário Avançado de Busca Inteligente e Decomposição de Códigos de Barras Hospitalares
@@ -154,6 +155,19 @@ function evaluateFieldMatch(scannedRaw, fieldRaw, tokens = []) {
       matchingDigits: scannedDigits.length,
       matchedSnippet: fieldStr,
       reason: 'Correspondência 100% Exata'
+    };
+  }
+
+  // 1b. Coincidência Canônica de IDEC Hospitalar (ex: "SVPHL-0010" === "SVPHL0010")
+  const normScannedIdec = normalizeIdec(scannedStr);
+  const normFieldIdec = normalizeIdec(fieldStr);
+  if (normScannedIdec && normFieldIdec && normScannedIdec === normFieldIdec && normScannedIdec.length >= 4) {
+    return {
+      score: 1350,
+      confidence: 100,
+      matchingDigits: scannedDigits.length,
+      matchedSnippet: fieldStr,
+      reason: `IDEC do setor identificado: "${fieldStr}"`
     };
   }
 

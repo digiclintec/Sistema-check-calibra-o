@@ -57,6 +57,7 @@ import EditEquipmentModal from './components/EditEquipmentModal';
 import AddEquipmentModal from './components/AddEquipmentModal';
 import ArkmedsSyncModal from './components/ArkmedsSyncModal';
 import ConsultaAparelhoTab from './components/ConsultaAparelhoTab';
+import { standardizeBarcodeReading } from './utils/idecParser.js';
 import { addEquipmentToCart, addMultipleEquipmentsToCart, getCartSeries } from './utils/cartStorage';
 
 import { parseSpreadsheetFile, exportToExcel } from './utils/sheetParser';
@@ -1600,16 +1601,25 @@ export default function App() {
 
     const appliedLabels = targetMods.map(m => MODALITIES[m]?.shortName || m).join(' + ');
 
-    // Busca inteligente com algoritmo de similaridade de dígitos e caracteres
-    let matches = findBestEquipmentMatches(code, equipments);
+    // Padroniza a leitura (ex: bombas de infusão com série + modelo, prefixos SN:, GS1, etc.)
+    const cleanStandardCode = standardizeBarcodeReading(code, equipments);
 
-    // Se não encontrou de imediato e o código lido for um QR Code da Arkmeds, resolve no servidor (SOMENTE LEITURA)
-    if ((!matches || matches.length === 0) && (String(code).includes('arkmeds.com') || String(code).includes('/qr_code/'))) {
+    // Busca inteligente com algoritmo de similaridade de dígitos e caracteres
+    let matches = findBestEquipmentMatches(cleanStandardCode, equipments);
+
+    // Se não encontrou pelo código padronizado, tenta com o código bruto
+    if ((!matches || matches.length === 0) && cleanStandardCode !== code) {
+      matches = findBestEquipmentMatches(code, equipments);
+    }
+
+    // Se ainda não encontrou, realiza consulta universal nos servidores do Arkmeds (SOMENTE LEITURA)
+    if (!matches || matches.length === 0) {
       try {
-        const res = await fetch('/api/arkmeds/resolve-qr', {
+        const queryToUse = cleanStandardCode || code;
+        const res = await fetch('/api/arkmeds/search-complete', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code })
+          body: JSON.stringify({ query: queryToUse })
         });
         const arkData = await res.json();
         if (arkData.success) {
@@ -1627,7 +1637,20 @@ export default function App() {
             if (soundEnabled) playWarningSound();
             setArkmedsAutoPrompt({
               isOpen: true,
-              equipment: arkData.calibraCheckPayload,
+              equipment: arkData.calibraCheckPayload || {
+                id: `ARK-${arkData.arkmedsId}`,
+                arkmedsId: arkData.arkmedsId,
+                codigoBarras: arkData.serie || arkData.tag || arkData.arkmedsId,
+                tag: arkData.tag || `TAG-${arkData.arkmedsId}`,
+                equipamento: arkData.equipamento,
+                fabricante: arkData.fabricante,
+                modelo: arkData.modelo,
+                serie: arkData.serie,
+                setor: arkData.setor || 'Geral',
+                validadeCalibracao: 'N/A',
+                statusCalibracao: 'Válido',
+                checado: false
+              },
               details: arkData
             });
             showToast('info', `🔍 Identificado no Arkmeds: ${arkData.equipamento} (${arkData.tag || arkData.serie || arkData.arkmedsId})`);
@@ -1639,7 +1662,7 @@ export default function App() {
           }
         }
       } catch (err) {
-        console.warn('[Arkmeds QR Resolve] Falha na requisição:', err);
+        console.warn('[Arkmeds Universal Search] Falha na requisição:', err);
       }
     }
 

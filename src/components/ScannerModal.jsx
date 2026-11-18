@@ -50,6 +50,12 @@ import { findBestEquipmentMatches } from '../utils/fuzzyMatch';
 import { parseCompositeBarcode } from '../utils/gs1Parser';
 import { MODALITIES, isEquipmentChecked, getCheckMeta } from '../utils/modalities';
 import { isNativeAndroidApp, scanWithNativeGoogleScanner } from '../utils/nativeBarcodeScanner';
+import { 
+  standardizeBarcodeReading, 
+  scanIdecFromVideo, 
+  extractIdecCandidates, 
+  normalizeIdec 
+} from '../utils/idecParser';
 
 // Suporte a todos os formatos padrão industriais e hospitalares
 const SUPPORTED_FORMATS = [
@@ -94,6 +100,8 @@ export default function ScannerModal({
   const [activeLensLabel, setActiveLensLabel] = useState('🎯 50MP Principal');
   const [viewMode, setViewMode] = useState('split'); // 'split' | 'full_camera'
   const [reticleType, setReticleType] = useState('1d'); // '1d' (Linha Laser) | '2d' (Caixa QR)
+  const [isReadingIdec, setIsReadingIdec] = useState(false);
+  const [idecReadStatus, setIdecReadStatus] = useState('');
 
   // Helper para identificar lente ultra-wide (0.5x / grande angular afastada)
   const isUltraWideLens = (label) => {
@@ -1180,10 +1188,74 @@ export default function ScannerModal({
     }
   };
 
+  // Leitura inteligente de IDEC da etiqueta física via câmera + OCR especializado hospitalar
+  const handleScanIdecFromCamera = async () => {
+    if (isReadingIdec) return;
+    try {
+      const videoEl = document.querySelector('#barcode-reader-box video');
+      if (!videoEl || !videoEl.videoWidth || !videoEl.videoHeight) {
+        setFocusFeedbackText('⚠️ Câmera inicializando...');
+        setTimeout(() => setFocusFeedbackText(''), 2000);
+        return;
+      }
+
+      setIsReadingIdec(true);
+      setIdecReadStatus('Focando etiqueta e lendo IDEC...');
+      setFocusFeedbackText('⚡ Lendo IDEC da etiqueta...');
+
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate(30);
+      }
+
+      const res = await scanIdecFromVideo(videoEl, (msg) => {
+        setIdecReadStatus(msg);
+      });
+
+      if (res && res.success && res.candidates.length > 0) {
+        // Encontra o melhor candidato que coincida com a lista de equipamentos
+        let matchedCandidate = null;
+        for (const cand of res.candidates) {
+          const m = findBestEquipmentMatches(cand, equipments);
+          if (m && m.length > 0) {
+            matchedCandidate = cand;
+            break;
+          }
+        }
+
+        const candidateToUse = matchedCandidate || res.bestCandidate;
+        setFocusFeedbackText(`🎯 IDEC: ${candidateToUse}`);
+        setTimeout(() => setFocusFeedbackText(''), 3000);
+
+        await handleDecoded(candidateToUse);
+      } else {
+        if (soundEnabled) playWarningSound();
+        setFocusFeedbackText('⚠️ Nenhum IDEC legível');
+        setLastScannedFeedback({
+          status: 'not_found',
+          code: 'IDEC',
+          message: 'Nenhum código IDEC ou número de série legível detectado. Aproxime a câmera da etiqueta (ex: SVPHL-0010 ou UTIAHL-0119) e tente novamente.',
+          timestamp: new Date().toLocaleTimeString('pt-BR')
+        });
+        setTimeout(() => setFocusFeedbackText(''), 3500);
+      }
+    } catch (err) {
+      console.error('Erro na leitura de IDEC:', err);
+      if (soundEnabled) playErrorSound();
+      setFocusFeedbackText('❌ Erro no OCR');
+      setTimeout(() => setFocusFeedbackText(''), 3000);
+    } finally {
+      setIsReadingIdec(false);
+      setIdecReadStatus('');
+    }
+  };
+
   // Processamento inteligente do código lido
-  const handleDecoded = (decodedText) => {
-    const cleanCode = String(decodedText || '').trim();
-    if (!cleanCode) return;
+  const handleDecoded = async (decodedText) => {
+    const rawCode = String(decodedText || '').trim();
+    if (!rawCode) return;
+
+    // Padroniza a leitura (ex: bombas de infusão ST550T2-..., prefixos SN:, GS1, tags)
+    const cleanCode = standardizeBarcodeReading(rawCode, equipments);
 
     const now = Date.now();
     // Cooldown inteligente de 1.2s apenas para o MESMO código repetido
@@ -1200,7 +1272,66 @@ export default function ScannerModal({
     }
 
     // Busca inteligente com decomposição de código composto (procura IDEC ou Série)
-    const matches = findBestEquipmentMatches(cleanCode, equipments, searchTarget);
+    let matches = findBestEquipmentMatches(cleanCode, equipments, searchTarget);
+
+    // Se não encontrou pelo código padronizado e o código bruto era diferente, tenta o código bruto
+    if ((!matches || matches.length === 0) && cleanCode !== rawCode) {
+      matches = findBestEquipmentMatches(rawCode, equipments, searchTarget);
+    }
+
+    // Se ainda não encontrou na planilha local, consulta o Arkmeds (SOMENTE LEITURA)
+    if (!matches || matches.length === 0) {
+      try {
+        const queryToSearch = cleanCode || rawCode;
+        const res = await fetch('/api/arkmeds/search-complete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: queryToSearch })
+        });
+        const arkData = await res.json();
+        if (arkData && arkData.success) {
+          // Verifica se algum identificador retornado pelo Arkmeds bate com um aparelho já carregado
+          const arkKeys = [arkData.tag, arkData.serie, arkData.arkmedsId, arkData.qrCodeToken].filter(Boolean);
+          for (const k of arkKeys) {
+            const m = findBestEquipmentMatches(k, equipments, searchTarget);
+            if (m && m.length > 0) {
+              matches = m;
+              break;
+            }
+          }
+
+          // Se existe no Arkmeds mas ainda não está neste plano, sugere adicionar e checar
+          if (!matches || matches.length === 0) {
+            if (soundEnabled) playWarningSound();
+            const payload = arkData.calibraCheckPayload || {
+              id: `ARK-${arkData.arkmedsId}`,
+              arkmedsId: arkData.arkmedsId,
+              codigoBarras: arkData.serie || arkData.tag || arkData.arkmedsId,
+              tag: arkData.tag || `TAG-${arkData.arkmedsId}`,
+              equipamento: arkData.equipamento,
+              fabricante: arkData.fabricante,
+              modelo: arkData.modelo,
+              serie: arkData.serie,
+              setor: arkData.setor || 'Geral',
+              validadeCalibracao: 'N/A',
+              statusCalibracao: 'Válido',
+              checado: false
+            };
+            setLastScannedFeedback({
+              status: 'found_in_arkmeds',
+              code: cleanCode,
+              arkmedsData: arkData,
+              equipment: payload,
+              message: `Identificado no Arkmeds: ${arkData.equipamento} (IDEC: ${arkData.tag || 'N/A'} | Série: ${arkData.serie || 'N/A'})`,
+              timestamp: new Date().toLocaleTimeString('pt-BR')
+            });
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('[Scanner Arkmeds Lookup] Falha:', err);
+      }
+    }
 
     if (!matches || matches.length === 0) {
       // Nenhum candidato encontrado
@@ -1609,39 +1740,53 @@ export default function ScannerModal({
                 </div>
               )}
 
-              {/* Barra Superior Discreta: Apenas Lanterna e Troca de Lente se houver múltiplas */}
-              {(rearCamerasList.length > 1 || hasTorch) && (
-                <div className="absolute top-2.5 left-2.5 right-2.5 z-20 flex items-center justify-between gap-1.5 pointer-events-auto" onClick={e => e.stopPropagation()}>
-                  <div>
-                    {rearCamerasList.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={handleToggleRearCamera}
-                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-bold bg-slate-900/90 hover:bg-slate-800 text-blue-300 border border-blue-500/50 shadow-md backdrop-blur-xs transition active:scale-95 shrink-0"
-                        title="Toque para alternar entre as lentes traseiras do celular"
-                      >
-                        <SwitchCamera className="w-3.5 h-3.5 text-blue-400" />
-                        <span>{currentLensDisplay}</span>
-                      </button>
-                    )}
-                  </div>
+              {/* Barra Superior Discreta: Lentes, Leitura de IDEC e Lanterna */}
+              <div className="absolute top-2.5 left-2.5 right-2.5 z-20 flex items-center justify-between gap-1.5 pointer-events-auto" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {rearCamerasList.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={handleToggleRearCamera}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-bold bg-slate-900/90 hover:bg-slate-800 text-blue-300 border border-blue-500/50 shadow-md backdrop-blur-xs transition active:scale-95 shrink-0"
+                      title="Toque para alternar entre as lentes traseiras do celular"
+                    >
+                      <SwitchCamera className="w-3.5 h-3.5 text-blue-400" />
+                      <span>{currentLensDisplay}</span>
+                    </button>
+                  )}
 
-                  <div>
-                    {hasTorch && (
-                      <button
-                        onClick={toggleTorch}
-                        className={`p-1.5 rounded-full flex items-center justify-center shadow-lg transition border ${torchOn
-                            ? 'bg-amber-400 text-slate-950 font-bold border-amber-300 ring-2 ring-amber-400/50 shadow-amber-400/30'
-                            : 'bg-slate-900/90 text-white hover:bg-slate-800 border-slate-700/80'
-                          }`}
-                        title={torchOn ? "Desligar lanterna" : "Ligar lanterna"}
-                      >
-                        <Zap className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
+                  {/* Botão de Leitura de IDEC da Etiqueta */}
+                  <button
+                    type="button"
+                    onClick={handleScanIdecFromCamera}
+                    disabled={isReadingIdec}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-bold shadow-md backdrop-blur-xs transition active:scale-95 shrink-0 ${
+                      isReadingIdec
+                        ? 'bg-amber-500 text-slate-950 animate-pulse border border-amber-300'
+                        : 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white border border-amber-400/50 shadow-orange-500/30'
+                    }`}
+                    title="Lê o IDEC / Tag gravado na etiqueta física da bomba/aparelho"
+                  >
+                    <Zap className={`w-3.5 h-3.5 ${isReadingIdec ? 'animate-spin' : ''}`} />
+                    <span>{isReadingIdec ? (idecReadStatus || 'Lendo IDEC...') : '⚡ Ler IDEC'}</span>
+                  </button>
                 </div>
-              )}
+
+                <div>
+                  {hasTorch && (
+                    <button
+                      onClick={toggleTorch}
+                      className={`p-1.5 rounded-full flex items-center justify-center shadow-lg transition border ${torchOn
+                          ? 'bg-amber-400 text-slate-950 font-bold border-amber-300 ring-2 ring-amber-400/50 shadow-amber-400/30'
+                          : 'bg-slate-900/90 text-white hover:bg-slate-800 border-slate-700/80'
+                        }`}
+                      title={torchOn ? "Desligar lanterna" : "Ligar lanterna"}
+                    >
+                      <Zap className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
 
               {/* HUD FLOATING ALERT BANNER DIRETO SOBRE A CÂMERA (IMPOSSÍVEL DE NÃO VER PELO OPERADOR) */}
               {lastScannedFeedback && (lastScannedFeedback.status === 'already_checked' || lastScannedFeedback.status === 'in_maintenance') && (
@@ -1797,6 +1942,24 @@ export default function ScannerModal({
                   </div>
                 </div>
               )}
+
+              {/* Botão Flutuante de Ação Rápida: Ler IDEC da Etiqueta (Ergonomia Mobile) */}
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-25 pointer-events-auto">
+                <button
+                  type="button"
+                  onClick={handleScanIdecFromCamera}
+                  disabled={isReadingIdec}
+                  className={`px-4 py-2 rounded-full font-black text-xs flex items-center gap-2 shadow-2xl backdrop-blur-md transition active:scale-95 ${
+                    isReadingIdec
+                      ? 'bg-amber-500 text-slate-950 border-2 border-amber-300 ring-4 ring-amber-400/30 animate-pulse'
+                      : 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-400 hover:to-orange-400 text-white border-2 border-amber-300/80 shadow-orange-500/50 ring-2 ring-white/20'
+                  }`}
+                  title="Captura a imagem e faz OCR do IDEC (ex: SVPHL-0010, UTIAHL-0119) impresso na etiqueta"
+                >
+                  <Zap className={`w-4 h-4 ${isReadingIdec ? 'animate-spin' : 'stroke-[3]'}`} />
+                  <span>{isReadingIdec ? (idecReadStatus || 'Digitalizando IDEC...') : '⚡ Ler IDEC da Etiqueta'}</span>
+                </button>
+              </div>
             </div>
 
           </div> {/* Fim do PAINEL DA ESQUERDA (CÂMERA) */}
@@ -1812,12 +1975,16 @@ export default function ScannerModal({
                   ? 'bg-red-500/15 border-red-500/30 text-red-200'
                   : lastScannedFeedback.status === 'already_staged'
                     ? 'bg-amber-500/15 border-amber-500/30 text-amber-200'
-                    : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-200'
+                    : lastScannedFeedback.status === 'found_in_arkmeds'
+                      ? 'bg-teal-500/20 border-teal-500/40 text-teal-200'
+                      : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-200'
                 }`}>
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 truncate">
                     {lastScannedFeedback.status === 'not_found' ? (
                       <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                    ) : lastScannedFeedback.status === 'found_in_arkmeds' ? (
+                      <Sparkles className="w-4 h-4 text-teal-400 shrink-0 animate-bounce" />
                     ) : (
                       <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                     )}
@@ -1827,6 +1994,11 @@ export default function ScannerModal({
                         <span className="truncate">
                           {lastScannedFeedback.equipment ? lastScannedFeedback.equipment.equipamento : 'Código Lido'}
                         </span>
+                        {lastScannedFeedback.status === 'found_in_arkmeds' && (
+                          <span className="text-[10px] px-1.5 py-0.2 rounded-full font-black bg-teal-500/30 text-teal-300 border border-teal-400/40 shrink-0">
+                            Arkmeds Sincronizado
+                          </span>
+                        )}
                         {lastScannedFeedback.match && (
                           <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-semibold shrink-0 ${lastScannedFeedback.match.isExact
                               ? 'bg-emerald-500/20 text-emerald-300'
@@ -1843,6 +2015,42 @@ export default function ScannerModal({
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
+                    {lastScannedFeedback.status === 'found_in_arkmeds' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const targetEq = lastScannedFeedback.equipment;
+                          const effectiveMods = selectedModalities.length > 0 ? selectedModalities : configuredStandardModalities;
+                          
+                          setStagedItems(prev => [
+                            {
+                              equipment: targetEq,
+                              match: { isExact: true, confidence: 100, reason: 'Importado Arkmeds' },
+                              scannedCode: lastScannedFeedback.code,
+                              targetModalities: effectiveMods,
+                              setorRetirada: batchSector || targetEq.setor_retirada || targetEq.setor || '',
+                              timestamp: new Date().toLocaleTimeString('pt-BR')
+                            },
+                            ...prev.filter(item => item.equipment.id !== targetEq.id)
+                          ]);
+                          
+                          if (soundEnabled) playSuccessSound();
+                          setLastScannedFeedback({
+                            status: 'staged',
+                            code: lastScannedFeedback.code,
+                            equipment: targetEq,
+                            message: `✓ Inserido na fila: ${targetEq.equipamento} (${targetEq.tag || targetEq.serie})`,
+                            timestamp: new Date().toLocaleTimeString('pt-BR')
+                          });
+                        }}
+                        className="px-2.5 py-1 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white rounded-lg text-[11px] font-bold shadow-xs flex items-center gap-1 active:scale-95 transition"
+                        title="Inclui este aparelho do Arkmeds na fila para devolução/checagem"
+                      >
+                        <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                        <span>+ Bipar Aparelho</span>
+                      </button>
+                    )}
+
                     {lastScannedFeedback.status === 'not_found' && onOpenAddEquipment && (
                       <button
                         type="button"
