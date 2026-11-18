@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   Search, 
   QrCode, 
@@ -27,6 +27,7 @@ import {
   FileDown,
   History,
   Eye,
+  RotateCcw,
   AlertCircle
 } from 'lucide-react';
 
@@ -38,9 +39,11 @@ export default function ConsultaAparelhoTab({
   onOpenScanner,
   onAddEquipmentToActivePlan,
   onCheckEquipment,
+  onToggleCheck = null,
   onNavigateToConferencia,
   sectorColors = {}
 }) {
+  const searchInputRef = useRef(null);
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm || '');
   const [selectedEquipment, setSelectedEquipment] = useState(null);
   const [isSearchingArkmeds, setIsSearchingArkmeds] = useState(false);
@@ -176,24 +179,41 @@ export default function ConsultaAparelhoTab({
     }
   };
 
-  // Verifica se o aparelho atualmente aberto está checado no plano local
-  const isSelectedCheckedInLocalPlan = useMemo(() => {
-    if (!selectedEquipment) return false;
-    return equipments.some(e => 
-      ((e.tag && e.tag.toLowerCase() === selectedEquipment.tag?.toLowerCase()) ||
-       (e.serie && e.serie.toLowerCase() === selectedEquipment.serie?.toLowerCase()) ||
-       (e.id === selectedEquipment.id)) && e.checado
+  // Localiza o aparelho correspondente na planilha do hospital ativo (se já constar)
+  const matchingLocalEquipment = useMemo(() => {
+    if (!selectedEquipment) return null;
+    return equipments.find(e => 
+      e.id === selectedEquipment.id ||
+      (e.tag && selectedEquipment.tag && e.tag.toLowerCase().trim() === selectedEquipment.tag.toLowerCase().trim()) ||
+      (e.serie && selectedEquipment.serie && e.serie.toLowerCase().trim() === selectedEquipment.serie.toLowerCase().trim()) ||
+      (e.patrimonio && selectedEquipment.patrimonio && String(e.patrimonio).trim() === String(selectedEquipment.patrimonio).trim()) ||
+      (e.arkmedsId && selectedEquipment.arkmedsId && String(e.arkmedsId) === String(selectedEquipment.arkmedsId))
     );
   }, [selectedEquipment, equipments]);
+
+  // Verifica se o aparelho atualmente aberto está checado no plano local
+  const isSelectedCheckedInLocalPlan = Boolean(matchingLocalEquipment && matchingLocalEquipment.checado);
 
   // Checa ou adiciona o aparelho ao plano ativo
   const handleActionCheckOrAdd = () => {
     if (!selectedEquipment) return;
 
-    if (onAddEquipmentToActivePlan) {
+    if (matchingLocalEquipment) {
+      if (onCheckEquipment) {
+        onCheckEquipment(matchingLocalEquipment.id);
+      } else if (onToggleCheck) {
+        onToggleCheck(matchingLocalEquipment.id);
+      }
+    } else if (onAddEquipmentToActivePlan) {
       onAddEquipmentToActivePlan(selectedEquipment);
-    } else if (onCheckEquipment) {
-      onCheckEquipment(selectedEquipment.id);
+    }
+  };
+
+  // Reverte / desmarca a checagem se já conferido
+  const handleActionToggleUndo = () => {
+    if (!matchingLocalEquipment) return;
+    if (onToggleCheck) {
+      onToggleCheck(matchingLocalEquipment.id);
     }
   };
 
@@ -272,6 +292,7 @@ export default function ConsultaAparelhoTab({
             <div className="relative flex-1">
               <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
+                ref={searchInputRef}
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -426,19 +447,48 @@ export default function ConsultaAparelhoTab({
               </div>
             </div>
 
-            {/* BOTÕES DE AÇÃO RÁPIDA */}
+            {/* BOTÕES DE AÇÃO RÁPIDA DE CHECAGEM */}
             <div className="flex items-center gap-2 flex-wrap">
-              <button
-                onClick={handleActionCheckOrAdd}
-                className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition flex items-center gap-2 shadow-sm ${
-                  isSelectedCheckedInLocalPlan
-                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400' 
-                    : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-500/20 active:scale-95'
-                }`}
-              >
-                <Check className="w-4 h-4" />
-                <span>{isSelectedCheckedInLocalPlan ? 'Já Conferido no Plano' : '⚡ Conferir no Plano Ativo'}</span>
-              </button>
+              {matchingLocalEquipment ? (
+                isSelectedCheckedInLocalPlan ? (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="px-3.5 py-2 rounded-xl bg-emerald-100 dark:bg-emerald-950/70 border border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 font-bold text-xs flex items-center gap-1.5 shadow-xs">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                      <span>✓ Aparelho Já Conferido</span>
+                    </div>
+
+                    {onToggleCheck && (
+                      <button
+                        type="button"
+                        onClick={handleActionToggleUndo}
+                        className="px-3 py-2 rounded-xl text-xs font-bold bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800 transition flex items-center gap-1.5 active:scale-95 shadow-xs"
+                        title="Desmarcar / reverter checagem deste aparelho no plano"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>Desmarcar Checagem</span>
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleActionCheckOrAdd}
+                    className="px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-md shadow-emerald-500/25 active:scale-95 transition flex items-center gap-2"
+                    title="Realizar checagem imediata deste aparelho no plano ativo"
+                  >
+                    <Check className="w-4 h-4 stroke-[2.5]" />
+                    <span>⚡ Realizar Checagem do Aparelho</span>
+                  </button>
+                )
+              ) : (
+                <button
+                  onClick={handleActionCheckOrAdd}
+                  className="px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-md shadow-blue-500/25 active:scale-95 transition flex items-center gap-2"
+                  title="Adicionar aparelho ao plano ativo deste hospital e realizar a checagem"
+                >
+                  <Plus className="w-4 h-4 stroke-[2.5]" />
+                  <span>➕ Adicionar ao Plano & Checar</span>
+                </button>
+              )}
 
               {selectedEquipment.arkmedsId && (
                 <a

@@ -10,6 +10,7 @@ import {
   Smartphone,
   Building2,
   Sparkles,
+  Folder,
   Calendar,
   CalendarDays,
   FileCheck,
@@ -66,6 +67,7 @@ export default function Navbar({
   onOpenArkmedsSync = null
 }) {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [openMenuFolder, setOpenMenuFolder] = useState('gerenciamento');
   const moreMenuRef = useRef(null);
   const mobileNavRef = useRef(null);
 
@@ -165,10 +167,10 @@ export default function Navbar({
               </select>
             </div>
 
-            {/* Seletor Rápido de Plano de Calibração Ativo */}
-            {Array.isArray(monthlyPlans) && monthlyPlans.length > 0 && (
+            {/* Seletor Rápido de Plano de Calibração Ativo (Frontal em Todos os Tamanhos) */}
+            {Array.isArray(monthlyPlans) && monthlyPlans.length > 0 ? (
               <div 
-                className="hidden lg:flex items-center gap-1.5 bg-blue-50/90 dark:bg-blue-950/40 hover:bg-blue-100/70 dark:hover:bg-blue-900/40 px-2 sm:px-2.5 py-1.5 rounded-xl border border-blue-200/80 dark:border-blue-800/80 transition shadow-xs w-36 sm:w-44 max-w-[200px] shrink min-w-0"
+                className="flex items-center gap-1.5 bg-blue-50/90 dark:bg-blue-950/40 hover:bg-blue-100/70 dark:hover:bg-blue-900/40 px-2 sm:px-2.5 py-1.5 rounded-xl border border-blue-200/80 dark:border-blue-800/80 transition shadow-xs w-28 xs:w-36 sm:w-44 max-w-[190px] shrink min-w-0"
                 title={`Plano de Calibração Ativo: ${monthlyPlans.find(p => p.id === activePlanId)?.title || 'Selecione'}`}
               >
                 <CalendarDays className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
@@ -195,6 +197,16 @@ export default function Navbar({
                   </option>
                 </select>
               </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onChangeMainTab && onChangeMainTab('planejamento')}
+                className="flex items-center gap-1.5 bg-blue-50/90 dark:bg-blue-950/40 hover:bg-blue-100/70 dark:hover:bg-blue-900/40 px-2 sm:px-2.5 py-1.5 rounded-xl border border-blue-200/80 dark:border-blue-800/80 text-blue-700 dark:text-blue-300 text-xs font-bold transition shrink-0"
+                title="Acessar Área de Planos de Calibração"
+              >
+                <CalendarDays className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                <span className="hidden xs:inline">Planos</span>
+              </button>
             )}
           </div>
 
@@ -315,6 +327,22 @@ export default function Navbar({
           {/* LADO DIREITO: Ações Rápidas, Menu e Perfil */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 ml-auto">
             
+            {/* Botão Frontal: Buscar Aparelho */}
+            <button
+              type="button"
+              onClick={() => onChangeMainTab && onChangeMainTab('consulta')}
+              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition active:scale-95 shrink-0 ${
+                activeMainTab === 'consulta'
+                  ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/30 ring-1 ring-cyan-400'
+                  : 'bg-cyan-50 dark:bg-cyan-950/50 hover:bg-cyan-100 dark:hover:bg-cyan-900/40 text-cyan-700 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800/80'
+              }`}
+              title="Buscar e Consultar Aparelho por IDEC, Tag, Série ou Patrimônio"
+            >
+              <Search className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400 shrink-0" />
+              <span className="hidden sm:inline">Buscar Aparelho</span>
+              <span className="sm:hidden">Buscar</span>
+            </button>
+
             {/* Botão Primário: Bipar na Câmera (Sempre visível em todos os tamanhos!) */}
             <button
               onClick={onOpenScanner}
@@ -368,7 +396,7 @@ export default function Navbar({
               </button>
 
               {showMoreMenu && (
-                <div className="absolute right-0 mt-2 w-60 rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-800 py-1.5 z-50 text-slate-700 dark:text-slate-200 divide-y divide-slate-100 dark:divide-slate-800/80 animate-in fade-in zoom-in-95 duration-100">
+                <div className="absolute right-0 mt-2 w-72 rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-800 py-1.5 z-50 text-slate-700 dark:text-slate-200 divide-y divide-slate-100 dark:divide-slate-800/80 animate-in fade-in zoom-in-95 duration-100 max-h-[85vh] overflow-y-auto">
                   
                   {/* Cabeçalho do Menu com Usuário */}
                   {currentUser && (
@@ -378,11 +406,11 @@ export default function Navbar({
                         setShowMoreMenu(false);
                         if (onChangeMainTab) onChangeMainTab('perfil');
                       }}
-                      className="w-full text-left px-3 py-2 text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition block"
+                      className="w-full text-left px-3.5 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition block border-b border-slate-100 dark:border-slate-800"
                       title="Abrir Perfil do Técnico"
                     >
                       <div className="flex items-center justify-between gap-1.5">
-                        <span className="font-bold text-slate-900 dark:text-white truncate">
+                        <span className="font-bold text-slate-900 dark:text-white truncate text-xs">
                           {currentUser.name || 'Operador'}
                         </span>
                         <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400">
@@ -395,158 +423,231 @@ export default function Navbar({
                     </button>
                   )}
 
-                  {/* Ações e Ferramentas */}
-                  <div className="py-1">
-                    {onOpenAddEquipment && (
+                  {/* PASTAS CATEGORIZADAS DE FERRAMENTAS */}
+                  <div className="p-1.5 space-y-1.5">
+                    
+                    {/* PASTA 1: GERENCIAMENTO */}
+                    <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden bg-slate-50/60 dark:bg-slate-850/60">
                       <button
-                        onClick={() => {
-                          setShowMoreMenu(false);
-                          onOpenAddEquipment();
-                        }}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold hover:bg-blue-50 dark:hover:bg-blue-900/30 transition text-blue-600 dark:text-blue-400"
+                        type="button"
+                        onClick={() => setOpenMenuFolder(openMenuFolder === 'gerenciamento' ? null : 'gerenciamento')}
+                        className="w-full flex items-center justify-between px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-800 transition"
                       >
-                        <PlusCircle className="w-4 h-4 text-blue-500 shrink-0" />
-                        <span>+ Adicionar ao Plano</span>
-                      </button>
-                    )}
-
-                    {onOpenArkmedsSync && (
-                      <button
-                        onClick={() => {
-                          setShowMoreMenu(false);
-                          onOpenArkmedsSync();
-                        }}
-                        className="w-full flex items-center justify-between px-3 py-2 text-xs font-bold hover:bg-teal-50 dark:hover:bg-teal-950/40 transition text-teal-600 dark:text-teal-400"
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <Database className="w-4 h-4 text-teal-500 shrink-0" />
-                          <span>Sincronizar Arkmeds</span>
+                        <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                          <Folder className="w-4 h-4 fill-blue-500/20 text-blue-500 shrink-0" />
+                          <span>Gerenciamento</span>
                         </div>
-                        <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-teal-500/20 text-teal-400 border border-teal-500/30">
-                          Leitura
-                        </span>
+                        <div className="flex items-center gap-1.5 text-slate-400">
+                          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                            {isMaster ? '5' : '4'}
+                          </span>
+                          <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${openMenuFolder === 'gerenciamento' ? 'rotate-180' : ''}`} />
+                        </div>
                       </button>
-                    )}
 
-                    {/* Criar Novo Usuário / Login de Acesso */}
-                    <button
-                      onClick={() => {
-                        setShowMoreMenu(false);
-                        if (onOpenTeamModal) onOpenTeamModal('create_user');
-                      }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition text-emerald-600 dark:text-emerald-400"
-                    >
-                      <UserPlus className="w-4 h-4 text-emerald-500 shrink-0" />
-                      <span>Criar Novo Login / Usuário</span>
-                    </button>
+                      {openMenuFolder === 'gerenciamento' && (
+                        <div className="p-1 space-y-0.5 border-t border-slate-200/60 dark:border-slate-800 bg-white dark:bg-slate-900">
+                          {onOpenAddEquipment && (
+                            <button
+                              onClick={() => {
+                                setShowMoreMenu(false);
+                                onOpenAddEquipment();
+                              }}
+                              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-xs font-bold hover:bg-blue-50 dark:hover:bg-blue-900/30 transition text-blue-600 dark:text-blue-400 rounded-lg text-left"
+                            >
+                              <PlusCircle className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                              <span>+ Adicionar ao Plano</span>
+                            </button>
+                          )}
 
-                    <button
-                      onClick={() => {
-                        setShowMoreMenu(false);
-                        if (onOpenTeamModal) onOpenTeamModal('users');
-                      }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition text-slate-700 dark:text-slate-200"
-                    >
-                      <Users className="w-4 h-4 text-blue-500 shrink-0" />
-                      <span>Gerenciar Equipe</span>
-                    </button>
+                          <button
+                            onClick={() => {
+                              setShowMoreMenu(false);
+                              if (onOpenTeamModal) onOpenTeamModal('create_user');
+                            }}
+                            className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-xs font-bold hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition text-emerald-600 dark:text-emerald-400 rounded-lg text-left"
+                          >
+                            <UserPlus className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                            <span>Criar Novo Login / Usuário</span>
+                          </button>
 
-                    <button
-                      onClick={() => {
-                        setShowMoreMenu(false);
-                        if (onOpenHospitalModal) onOpenHospitalModal('list');
-                      }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition text-slate-700 dark:text-slate-200"
-                    >
-                      <Building2 className="w-4 h-4 text-indigo-500 shrink-0" />
-                      <span>Gerenciar Hospitais</span>
-                    </button>
+                          <button
+                            onClick={() => {
+                              setShowMoreMenu(false);
+                              if (onOpenTeamModal) onOpenTeamModal('users');
+                            }}
+                            className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition text-slate-700 dark:text-slate-200 rounded-lg text-left"
+                          >
+                            <Users className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                            <span>Gerenciar Equipe</span>
+                          </button>
 
-                    {isMaster && (
+                          <button
+                            onClick={() => {
+                              setShowMoreMenu(false);
+                              if (onOpenHospitalModal) onOpenHospitalModal('list');
+                            }}
+                            className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition text-slate-700 dark:text-slate-200 rounded-lg text-left"
+                          >
+                            <Building2 className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                            <span>Gerenciar Hospitais</span>
+                          </button>
+
+                          {isMaster && (
+                            <button
+                              onClick={() => {
+                                setShowMoreMenu(false);
+                                if (onOpenMasterPanel) onOpenMasterPanel();
+                              }}
+                              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition text-amber-600 dark:text-amber-400 rounded-lg text-left"
+                            >
+                              <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                              <span>Painel Master</span>
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* PASTA 2: ANÁLISES & PLANILHAS */}
+                    <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden bg-slate-50/60 dark:bg-slate-850/60">
                       <button
-                        onClick={() => {
-                          setShowMoreMenu(false);
-                          if (onOpenMasterPanel) onOpenMasterPanel();
-                        }}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition text-amber-600 dark:text-amber-400"
+                        type="button"
+                        onClick={() => setOpenMenuFolder(openMenuFolder === 'analises' ? null : 'analises')}
+                        className="w-full flex items-center justify-between px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-800 transition"
                       >
-                        <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
-                        <span>Painel Master</span>
+                        <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+                          <Folder className="w-4 h-4 fill-emerald-500/20 text-emerald-500 shrink-0" />
+                          <span>Análises & Planilhas</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-slate-400">
+                          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                            {hasData ? '4' : '1'}
+                          </span>
+                          <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${openMenuFolder === 'analises' ? 'rotate-180' : ''}`} />
+                        </div>
                       </button>
-                    )}
 
-                    <button
-                      onClick={() => {
-                        setShowMoreMenu(false);
-                        if (onOpenInstall) onOpenInstall();
-                      }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition text-emerald-600 dark:text-emerald-400"
-                    >
-                      <Smartphone className="w-4 h-4 text-emerald-500 shrink-0" />
-                      <span>Baixar APK Android</span>
-                    </button>
+                      {openMenuFolder === 'analises' && (
+                        <div className="p-1 space-y-0.5 border-t border-slate-200/60 dark:border-slate-800 bg-white dark:bg-slate-900">
+                          {onOpenGoogleModal && (
+                            <button
+                              onClick={() => {
+                                setShowMoreMenu(false);
+                                onOpenGoogleModal();
+                              }}
+                              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition text-emerald-600 dark:text-emerald-400 rounded-lg text-left"
+                            >
+                              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                              <span>Importar Planilha (Arquivo / Colar)</span>
+                            </button>
+                          )}
 
-                    {hasData && (
-                      <>
-                        {onOpenGoogleModal && (
+                          {hasData && (
+                            <>
+                              <button
+                                onClick={() => {
+                                  setShowMoreMenu(false);
+                                  if (onOpenMergeModal) onOpenMergeModal();
+                                }}
+                                className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition text-indigo-600 dark:text-indigo-400 rounded-lg text-left"
+                              >
+                                <GitMerge className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                                <span>Mesclar Calibrações (XLS/PDF)</span>
+                              </button>
+
+                              <button
+                                onClick={() => {
+                                  setShowMoreMenu(false);
+                                  if (onExportExcel) onExportExcel();
+                                }}
+                                className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition text-slate-700 dark:text-slate-200 rounded-lg text-left"
+                              >
+                                <Download className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                                <span>Exportar Planilha Excel</span>
+                              </button>
+
+                              {onResetData && (
+                                <button
+                                  onClick={() => {
+                                    setShowMoreMenu(false);
+                                    onResetData();
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition rounded-lg text-left"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                                  <span>Limpar / Trocar Planilha</span>
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* PASTA 3: CONFIGURAÇÕES & SISTEMA */}
+                    <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden bg-slate-50/60 dark:bg-slate-850/60">
+                      <button
+                        type="button"
+                        onClick={() => setOpenMenuFolder(openMenuFolder === 'configuracoes' ? null : 'configuracoes')}
+                        className="w-full flex items-center justify-between px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-800 transition"
+                      >
+                        <div className="flex items-center gap-2 text-purple-600 dark:text-purple-400">
+                          <Folder className="w-4 h-4 fill-purple-500/20 text-purple-500 shrink-0" />
+                          <span>Configurações & Sistema</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-slate-400">
+                          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                            2
+                          </span>
+                          <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${openMenuFolder === 'configuracoes' ? 'rotate-180' : ''}`} />
+                        </div>
+                      </button>
+
+                      {openMenuFolder === 'configuracoes' && (
+                        <div className="p-1 space-y-0.5 border-t border-slate-200/60 dark:border-slate-800 bg-white dark:bg-slate-900">
+                          {onOpenArkmedsSync && (
+                            <button
+                              onClick={() => {
+                                setShowMoreMenu(false);
+                                onOpenArkmedsSync();
+                              }}
+                              className="w-full flex items-center justify-between px-2.5 py-1.5 text-xs font-bold hover:bg-teal-50 dark:hover:bg-teal-950/40 transition text-teal-600 dark:text-teal-400 rounded-lg text-left"
+                            >
+                              <div className="flex items-center gap-2">
+                                <Database className="w-3.5 h-3.5 text-teal-500 shrink-0" />
+                                <span>Sincronizar Arkmeds</span>
+                              </div>
+                              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-teal-500/20 text-teal-400 border border-teal-500/30">
+                                Leitura
+                              </span>
+                            </button>
+                          )}
+
                           <button
                             onClick={() => {
                               setShowMoreMenu(false);
-                              onOpenGoogleModal();
+                              if (onOpenInstall) onOpenInstall();
                             }}
-                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition text-emerald-600 dark:text-emerald-400"
+                            className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition text-emerald-600 dark:text-emerald-400 rounded-lg text-left"
                           >
-                            <FileSpreadsheet className="w-4 h-4 text-emerald-500 shrink-0" />
-                            <span>Importar Planilha (Arquivo / Colar)</span>
+                            <Smartphone className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                            <span>Baixar APK Android</span>
                           </button>
-                        )}
+                        </div>
+                      )}
+                    </div>
 
-                        <button
-                          onClick={() => {
-                            setShowMoreMenu(false);
-                            if (onOpenMergeModal) onOpenMergeModal();
-                          }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition text-indigo-600 dark:text-indigo-400"
-                        >
-                          <GitMerge className="w-4 h-4 text-indigo-500 shrink-0" />
-                          <span>Mesclar Calibrações (XLS/PDF)</span>
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            setShowMoreMenu(false);
-                            if (onExportExcel) onExportExcel();
-                          }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition text-slate-700 dark:text-slate-200"
-                        >
-                          <Download className="w-4 h-4 text-slate-500 shrink-0" />
-                          <span>Exportar Planilha Excel</span>
-                        </button>
-
-                        {onResetData && (
-                          <button
-                            onClick={() => {
-                              setShowMoreMenu(false);
-                              onResetData();
-                            }}
-                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
-                          >
-                            <Trash2 className="w-4 h-4 text-rose-500 shrink-0" />
-                            <span>Limpar / Trocar Planilha</span>
-                          </button>
-                        )}
-                      </>
-                    )}
                   </div>
 
                   {/* Sair da Conta */}
-                  <div className="py-1">
+                  <div className="p-1.5">
                     <button
                       onClick={() => {
                         setShowMoreMenu(false);
                         if (onLogout) onLogout();
                       }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition"
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl transition text-left"
                     >
                       <LogOut className="w-4 h-4 text-red-500 shrink-0" />
                       <span>Sair da Conta</span>

@@ -2301,6 +2301,7 @@ export default function App() {
               }
             }}
             onNavigateToConferencia={() => setActiveMainTab('conferencia')}
+            onToggleCheck={handleToggleCheck}
             sectorColors={sectorColors}
           />
         ) : activeMainTab === 'auditoria' ? (
