@@ -33,7 +33,9 @@ import {
   Zap,
   Crosshair,
   ZoomIn,
-  Pencil
+  Pencil,
+  ArrowLeft,
+  ArrowRight
 } from 'lucide-react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { playSuccessSound, playBatchConfirmSound, triggerHapticAlert } from '../utils/audio';
@@ -121,7 +123,7 @@ export default function CarrinhoDevolucaoTab({
   const [copySuccess, setCopySuccess] = useState(false);
   
   // Camera scanner de devolução (Regra idêntica à de entrada com foco de perto)
-  const [isCameraActive, setIsCameraActive] = useState(false);
+  const [isCameraActive, setIsCameraActive] = useState(true);
   const [isCameraStarting, setIsCameraStarting] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [cameraError, setCameraError] = useState('');
@@ -632,6 +634,60 @@ export default function CarrinhoDevolucaoTab({
     }
   };
 
+  // Devolver todas as bombas de um setor específico (usado na visualização agrupada por setor)
+  const handleReturnAllInSector = (sectorName) => {
+    const current = scannedSeriesRef.current || scannedSeries;
+    // Identifica bombas deste setor presentes no carrinho
+    const inSeriesFromSector = current.filter(item => (item.targetSector || item.equipment?.setor_retirada || item.equipment?.setor || 'Geral').trim() === sectorName.trim());
+    
+    // Se houver no carrinho, devolve as do carrinho; senão, pega todas as pendentes deste setor
+    let targetEquipments = [];
+    if (inSeriesFromSector.length > 0) {
+      targetEquipments = inSeriesFromSector.map(s => s.equipment);
+    } else {
+      targetEquipments = readyEquipments.filter(e => {
+        const sec = (e.setor_retirada || e.setor || 'Geral').trim();
+        const isRet = (returnedIdsRef.current || returnedIds).has(e.id) || Boolean(e.devolvido);
+        return sec === sectorName.trim() && !isRet;
+      });
+    }
+
+    if (targetEquipments.length === 0) return;
+
+    if (window.confirm(`Deseja confirmar a devolução de TODAS as ${targetEquipments.length} bombas para o setor "${sectorName}"?`)) {
+      const ids = targetEquipments.map(e => e.id);
+      
+      // 1. Marca como devolvidas
+      const nextReturned = new Set(returnedIdsRef.current || returnedIds);
+      ids.forEach(id => nextReturned.add(id));
+      saveReturnedState(nextReturned);
+
+      // 2. Remove da fila do carrinho apenas as deste setor
+      const nextSeries = current.filter(item => !ids.includes(item.equipment.id));
+      saveSeriesState(nextSeries);
+
+      // 3. Remove de cartPackedIds
+      const nextPacked = new Set(cartPackedIdsRef.current || cartPackedIds);
+      ids.forEach(id => nextPacked.delete(id));
+      savePackedState(nextPacked);
+
+      // 4. Callback
+      if (onReturnMultipleEquipments) {
+        onReturnMultipleEquipments(ids, true);
+      } else if (onReturnEquipment) {
+        ids.forEach(id => onReturnEquipment(id, true));
+      }
+
+      playSuccessSound();
+      triggerHapticAlert(80);
+
+      setFlashFeedback({
+        type: 'success',
+        message: `✓ ${ids.length} bombas devolvidas com sucesso no setor: ${sectorName}!`
+      });
+    }
+  };
+
   // Remove um item da fila de bipadas
   const handleRemoveFromSeries = (equipmentId) => {
     const current = scannedSeriesRef.current || scannedSeries;
@@ -1037,7 +1093,7 @@ export default function CarrinhoDevolucaoTab({
 
   // Efeito de inicialização da câmera com a MESMA regra de entrada (calibracheck_preferred_camera_v2)
   useEffect(() => {
-    if (!isCameraActive) {
+    if (!isCameraActive || viewMode !== 'compact_list') {
       stopScanner();
       return;
     }
@@ -1099,437 +1155,166 @@ export default function CarrinhoDevolucaoTab({
       isMounted = false;
       stopScanner();
     };
-  }, [isCameraActive]);
+  }, [isCameraActive, viewMode]);
 
   return (
-    <div className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-5 animate-in fade-in duration-200">
+    <div className="max-w-7xl mx-auto px-3 sm:px-4 py-3 sm:py-5 space-y-4 animate-in fade-in duration-200">
       
-      {/* BANNER PRINCIPAL: Logística de Carrinho e Devolução */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-950 border border-slate-800 p-5 sm:p-6 text-white shadow-xl">
+      {/* ========================================================================= */}
+      {/* TOPO: CABEÇALHO COMPACTO + NAVEGAÇÃO DE MODOS + RESUMO                    */}
+      {/* ========================================================================= */}
+      <div className="rounded-2xl sm:rounded-3xl bg-slate-900 border border-slate-800 p-3.5 sm:p-5 text-white shadow-xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
-        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div className="space-y-1.5">
-            <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold">
-              <Truck className="w-3.5 h-3.5" />
-              <span>Logística Hospitalar • Relação de Retorno</span>
+        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-blue-600/20 text-blue-400 flex items-center justify-center border border-blue-500/30 shrink-0 shadow-inner">
+              <Truck className="w-5 h-5 text-blue-400" />
             </div>
-            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white flex items-center gap-2">
-              <span>Carrinho & Devolução aos Setores</span>
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-300 max-w-2xl">
-              Bipe as bombas em série antes de colocar no carrinho para identificar com precisão o setor de destino onde cada uma deve ser entregue.
-              {hospitalName ? ` • ${hospitalName}` : ''} {planTitle ? `(${planTitle})` : ''}
-            </p>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-base sm:text-lg font-black tracking-tight text-white">
+                  Carrinho & Devolução aos Setores
+                </h1>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hidden xs:inline">
+                  Logística
+                </span>
+              </div>
+              <p className="text-[11px] sm:text-xs text-slate-400">
+                {hospitalName ? `${hospitalName} • ` : ''}Bipe em série para conferir o setor de destino antes da entrega
+              </p>
+            </div>
           </div>
 
-          {/* Botões de Ação do Topo */}
-          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+          {/* Botões de Alternância de Modo & Ações Rápidas */}
+          <div className="flex items-center gap-1.5 flex-wrap w-full md:w-auto">
+            {/* Modo 1: Bipagem & Fila em Série */}
             <button
               type="button"
-              onClick={() => setIsCameraActive(true)}
-              className="flex-1 md:flex-initial px-4 py-2.5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-blue-500/25 transition active:scale-95 flex items-center justify-center gap-2"
-              title="Abrir câmera Full HD com foco de perto para bipar para devolução"
+              onClick={() => setViewMode('compact_list')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 active:scale-95 ${
+                viewMode === 'compact_list'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 border border-blue-500'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700/80'
+              }`}
             >
-              <Camera className="w-4 h-4" />
-              <span>Bipar na Câmera (Foco de Perto)</span>
+              <Zap className="w-3.5 h-3.5 text-amber-300" />
+              <span>⚡ Bipagem & Fila em Série</span>
+              {scannedSeries.length > 0 && (
+                <span className="px-1.5 py-0.2 rounded-md bg-white/20 text-[10px] font-black">
+                  {scannedSeries.length}
+                </span>
+              )}
             </button>
 
+            {/* Modo 2: Relação por Setores */}
+            <button
+              type="button"
+              onClick={() => setViewMode('sectors')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 active:scale-95 ${
+                viewMode === 'sectors'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 border border-blue-500'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700/80'
+              }`}
+            >
+              <Grid className="w-3.5 h-3.5 text-blue-400" />
+              <span>📂 Ver Relação por Setores</span>
+              {scannedSectorsCount > 0 && (
+                <span className="px-1.5 py-0.2 rounded-md bg-emerald-500/30 text-emerald-300 text-[10px] font-black border border-emerald-500/30">
+                  {scannedSectorsCount} {scannedSectorsCount === 1 ? 'setor' : 'setores'}
+                </span>
+              )}
+            </button>
+
+            {/* Alternador de Câmera */}
+            {viewMode === 'compact_list' && (
+              <button
+                type="button"
+                onClick={() => setIsCameraActive(!isCameraActive)}
+                className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border active:scale-95 ${
+                  isCameraActive
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-xs'
+                    : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
+                }`}
+                title={isCameraActive ? 'Pausar câmera' : 'Ativar câmera'}
+              >
+                <Camera className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{isCameraActive ? 'Câmera Ativa' : 'Abrir Câmera'}</span>
+              </button>
+            )}
+
+            {/* Ações Rápidas (Copiar / Limpar) */}
             {scannedSeries.length > 0 && (
               <>
                 <button
                   type="button"
                   onClick={handleCopySummary}
-                  className="px-3.5 py-2.5 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition active:scale-95 flex items-center gap-1.5 border border-white/10"
-                  title="Copiar lista de devolução organizada por setores"
+                  className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition border border-slate-700 flex items-center gap-1.5 active:scale-95"
+                  title="Copiar relação de devolução por setores"
                 >
-                  <Copy className="w-4 h-4 text-emerald-400" />
-                  <span>{copySuccess ? 'Copiado! ✓' : 'Copiar Relação'}</span>
+                  <Copy className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="hidden sm:inline">{copySuccess ? 'Copiado! ✓' : 'Copiar'}</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={handleClearSeries}
-                  className="px-3 py-2.5 rounded-2xl bg-red-500/20 hover:bg-red-500/30 text-red-300 font-bold text-xs transition active:scale-95 flex items-center gap-1.5 border border-red-500/30"
+                  className="px-2.5 py-1.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 text-red-300 text-xs font-bold transition border border-red-500/30 flex items-center gap-1 active:scale-95"
                   title="Limpar a lista de bombas bipadas neste carrinho"
                 >
-                  <Trash2 className="w-4 h-4" />
-                  <span>Limpar Fila</span>
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Limpar</span>
                 </button>
               </>
             )}
           </div>
         </div>
 
-        {/* Métricas e Estatísticas Rápidas */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 mt-5 pt-4 border-t border-white/10">
-          <div className="p-3 rounded-2xl bg-white/5 backdrop-blur-xs border border-white/10">
-            <div className="text-[11px] text-slate-400 font-medium">Bipadas na Fila (Série)</div>
-            <div className="text-xl sm:text-2xl font-black text-blue-400 flex items-center gap-1.5 mt-0.5">
-              <span>{scannedSeries.length}</span>
-              <span className="text-xs font-semibold text-slate-400">no carrinho</span>
-            </div>
-          </div>
-
-          <div className="p-3 rounded-2xl bg-white/5 backdrop-blur-xs border border-white/10">
-            <div className="text-[11px] text-slate-400 font-medium">Setores Atendidos</div>
-            <div className="text-xl sm:text-2xl font-black text-emerald-400 flex items-center gap-1.5 mt-0.5">
-              <span>{scannedSectorsCount}</span>
-              <span className="text-xs font-semibold text-slate-400">setores</span>
-            </div>
-          </div>
-
-          <div className="p-3 rounded-2xl bg-white/5 backdrop-blur-xs border border-white/10">
-            <div className="text-[11px] text-slate-400 font-medium">Total Prontas no Plano</div>
-            <div className="text-xl sm:text-2xl font-black text-indigo-400 flex items-center gap-1.5 mt-0.5">
-              <span>{readyEquipments.length}</span>
-              <span className="text-xs font-semibold text-slate-400">calibradas</span>
-            </div>
-          </div>
-
-          <div className="p-3 rounded-2xl bg-white/5 backdrop-blur-xs border border-white/10">
-            <div className="text-[11px] text-slate-400 font-medium">Ainda na Bancada</div>
-            <div className="text-xl sm:text-2xl font-black text-amber-400 flex items-center gap-1.5 mt-0.5">
-              <span>{pendingCount}</span>
-              <span className="text-xs font-semibold text-slate-400">pendentes</span>
-            </div>
-          </div>
+        {/* Linha de Métricas Rápidas & Setores */}
+        <div className="flex items-center gap-2 flex-wrap pt-3 mt-3 border-t border-slate-800 text-[11px]">
+          <span className="text-slate-400 font-bold shrink-0">Resumo:</span>
+          <span className="px-2.5 py-0.5 rounded-lg bg-blue-500/15 text-blue-300 border border-blue-500/30 font-bold flex items-center gap-1 shadow-xs">
+            <Truck className="w-3 h-3 text-blue-400" />
+            <span>{scannedSeries.length} no carrinho</span>
+          </span>
+          <span className="px-2.5 py-0.5 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold flex items-center gap-1 shadow-xs">
+            <Building2 className="w-3 h-3 text-emerald-400" />
+            <span>{scannedSectorsCount} setores na carga</span>
+          </span>
+          <span className="px-2.5 py-0.5 rounded-lg bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 font-bold flex items-center gap-1 shadow-xs">
+            <CheckCircle2 className="w-3 h-3 text-indigo-400" />
+            <span>{readyEquipments.length} calibradas</span>
+          </span>
+          {pendingCount > 0 && (
+            <span className="px-2.5 py-0.5 rounded-lg bg-amber-500/15 text-amber-300 border border-amber-500/30 font-bold flex items-center gap-1 shadow-xs">
+              <AlertCircle className="w-3 h-3 text-amber-400" />
+              <span>{pendingCount} na bancada</span>
+            </span>
+          )}
+          {scannedSeries.length > 0 && (
+            <span className="ml-auto text-[10px] text-emerald-400/90 font-medium hidden sm:inline-flex items-center gap-1">
+              💾 Fila salva automaticamente em cache
+            </span>
+          )}
         </div>
-
-        {/* Resumo Rápido dos Setores com Bombas no Carrinho */}
-        {Object.keys(cartSummaryBySector).length > 0 && (
-          <div className="mt-4 pt-3 border-t border-white/10 flex items-center gap-2 overflow-x-auto pb-1 text-xs">
-            <span className="text-slate-400 font-bold shrink-0">Setores na carga:</span>
-            {Object.keys(cartSummaryBySector).map(sec => {
-              const secCol = getSectorColor(sec, sectorColors);
-              return (
-                <span
-                  key={sec}
-                  style={getSectorBadgeStyles(secCol)}
-                  className="px-2.5 py-0.5 rounded-full text-[11px] font-bold border shrink-0 flex items-center gap-1 shadow-xs"
-                >
-                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: secCol.hex }} />
-                  <span>{sec}</span>
-                  <span className="font-mono ml-0.5 font-black">({cartSummaryBySector[sec]})</span>
-                </span>
-              );
-            })}
-          </div>
-        )}
       </div>
-
-      {/* ========================================================================= */}
-      {/* SCANNER DE CÂMERA PROFISSIONAL COM MESMA REGRA DA ENTRADA E FOCO DE PERTO */}
-      {/* ========================================================================= */}
-      {isCameraActive && (
-        <div className="rounded-3xl bg-slate-950 border-2 border-blue-500 p-4 sm:p-5 text-white shadow-2xl relative animate-in zoom-in-95 duration-200">
-          
-          {/* Header do Scanner */}
-          <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-800">
-            <div className="flex items-center gap-2 flex-wrap">
-              <Camera className="w-5 h-5 text-blue-400" />
-              <h3 className="font-extrabold text-sm sm:text-base">Scanner de Devolução Contínua</h3>
-              <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                🎯 Câmera Principal (Foco de Perto)
-              </span>
-            </div>
-
-            <button
-              onClick={() => setIsCameraActive(false)}
-              className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition"
-              title="Fechar câmera"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-            
-            {/* Viewfinder da Câmera (Col 7 no Desktop) */}
-            <div className="lg:col-span-7 flex flex-col space-y-2">
-              <div className="relative rounded-2xl overflow-hidden bg-black border border-slate-800 h-[280px] sm:h-[340px] flex items-center justify-center shadow-inner">
-                
-                {/* Elemento de Vídeo com Enquadramento Total */}
-                <div 
-                  id="carrinho-barcode-reader" 
-                  className="w-full h-full flex items-center justify-center [&_video]:w-full [&_video]:h-full [&_video]:object-cover"
-                ></div>
-
-                {/* Linha Laser Vermelha (1D) ou Mira QR (2D) */}
-                {scanning && !cameraError && (
-                  <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-3">
-                    {reticleType === '1d' ? (
-                      <div className="relative w-[96%] max-w-[480px] h-[100px] sm:h-[120px] border-2 border-dashed border-red-500/80 rounded-2xl shadow-[0_0_25px_rgba(239,68,68,0.35)] flex items-center justify-center">
-                        <div className="absolute left-0 right-0 h-1 bg-gradient-to-r from-red-600 via-rose-300 to-red-600 shadow-[0_0_14px_#ef4444] animate-pulse"></div>
-                        <div className="absolute -top-1 -left-1 w-5 h-5 border-t-4 border-l-4 border-red-500 rounded-tl-lg"></div>
-                        <div className="absolute -top-1 -right-1 w-5 h-5 border-t-4 border-r-4 border-red-500 rounded-tr-lg"></div>
-                        <div className="absolute -bottom-1 -left-1 w-5 h-5 border-b-4 border-l-4 border-red-500 rounded-bl-lg"></div>
-                        <div className="absolute -bottom-1 -right-1 w-5 h-5 border-b-4 border-r-4 border-red-500 rounded-br-lg"></div>
-                      </div>
-                    ) : (
-                      <div className="relative w-[200px] h-[200px] border-2 border-dashed border-blue-500/80 rounded-2xl shadow-[0_0_25px_rgba(59,130,246,0.35)] flex items-center justify-center">
-                        <div className="absolute -top-1 -left-1 w-5 h-5 border-t-4 border-l-4 border-blue-500 rounded-tl-lg"></div>
-                        <div className="absolute -top-1 -right-1 w-5 h-5 border-t-4 border-r-4 border-blue-500 rounded-tr-lg"></div>
-                        <div className="absolute -bottom-1 -left-1 w-5 h-5 border-b-4 border-l-4 border-blue-500 rounded-bl-lg"></div>
-                        <div className="absolute -bottom-1 -right-1 w-5 h-5 border-b-4 border-r-4 border-blue-500 rounded-br-lg"></div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* BARRA SUPERIOR SOBRE O VÍDEO: LENTE + MIRA + LANTERNA */}
-                <div className="absolute top-2.5 left-2.5 right-2.5 z-20 flex items-center justify-between gap-1.5 pointer-events-auto">
-                  
-                  {/* Alternador 1D/2D */}
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setReticleType(r => r === '1d' ? '2d' : '1d')}
-                      className={`px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 border shadow-lg transition active:scale-95 ${
-                        reticleType === '1d'
-                          ? 'bg-red-500/25 text-red-200 border-red-500/50 shadow-red-500/20'
-                          : 'bg-blue-500/25 text-blue-200 border-blue-500/50 shadow-blue-500/20'
-                      }`}
-                    >
-                      <ScanLine className="w-3 h-3" />
-                      <span>{reticleType === '1d' ? '1D Laser' : '2D QR'}</span>
-                    </button>
-
-                    {/* Alternador de Lente Traseira Física */}
-                    {rearCamerasList.length > 1 ? (
-                      <button
-                        type="button"
-                        onClick={handleToggleRearCamera}
-                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-900/90 hover:bg-slate-800 text-blue-300 border border-blue-500/50 shadow-md backdrop-blur-xs transition active:scale-95"
-                        title="Alternar lentes traseiras do aparelho"
-                      >
-                        <SwitchCamera className="w-3 h-3 text-blue-400" />
-                        <span>{currentLensDisplay}</span>
-                      </button>
-                    ) : (
-                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-950/85 text-blue-300 border border-blue-500/40 shadow-md">
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
-                        <span>🎯 50MP Principal</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Controles da Direita: Foco e Lanterna */}
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={handleTriggerCenterFocus}
-                      className="px-2.5 py-1 rounded-full bg-slate-900/90 hover:bg-slate-800 text-amber-300 font-bold text-[10px] flex items-center gap-1 border border-amber-500/40 shadow-lg transition active:scale-95"
-                      title="Refocar de perto agora (5-15cm)"
-                    >
-                      <Crosshair className="w-3 h-3 text-amber-400" />
-                      <span className="hidden xs:inline">Focar Perto</span>
-                    </button>
-
-                    {hasTorch && (
-                      <button
-                        type="button"
-                        onClick={toggleTorch}
-                        className={`p-1.5 rounded-full flex items-center justify-center shadow-lg transition border ${
-                          torchOn
-                            ? 'bg-amber-400 text-slate-950 border-amber-300 ring-2 ring-amber-400/50'
-                            : 'bg-slate-900/90 text-white hover:bg-slate-800 border-slate-700/80'
-                        }`}
-                        title={torchOn ? "Desligar lanterna" : "Ligar lanterna"}
-                      >
-                        <Zap className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Feedback de foco flutuante */}
-                {focusFeedbackText && (
-                  <div className="absolute top-12 left-1/2 -translate-x-1/2 z-20 px-3 py-1 bg-slate-900/95 text-emerald-400 text-[10px] font-bold rounded-full border border-emerald-500/50 shadow-lg">
-                    {focusFeedbackText}
-                  </div>
-                )}
-
-                {/* BARRA INFERIOR SOBRE O VÍDEO: PRESETS DE ZOOM DE PERTO */}
-                <div className="absolute bottom-2.5 left-2.5 right-2.5 z-20 flex items-center justify-between pointer-events-auto gap-2">
-                  <div className="flex items-center gap-1 bg-slate-950/90 backdrop-blur-md p-0.5 rounded-full border border-slate-700/80 shadow-lg">
-                    {opticalPresets.map(p => (
-                      <button
-                        key={p.label}
-                        type="button"
-                        onClick={() => applyOpticalLensZoom(p.value, p.fullName)}
-                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold transition active:scale-95 ${
-                          Math.abs(zoomLevel - p.value) < 0.15
-                            ? 'bg-blue-600 text-white shadow-xs'
-                            : 'text-slate-300 hover:text-white'
-                        }`}
-                      >
-                        {p.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="bg-slate-950/90 backdrop-blur-md text-emerald-300 border border-emerald-500/40 px-2.5 py-0.5 rounded-full text-[9px] font-bold shadow-lg flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
-                    <span>Macro 5-15cm Ativo</span>
-                  </div>
-                </div>
-
-                {/* Loading da Câmera */}
-                {isCameraStarting && !scanning && !cameraError && (
-                  <div className="absolute inset-0 z-15 flex flex-col items-center justify-center p-6 text-center bg-slate-950/90 space-y-2 animate-in fade-in">
-                    <div className="w-8 h-8 border-3 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
-                    <p className="text-white font-bold text-xs">Iniciando câmera Full HD com foco de perto...</p>
-                    <p className="text-slate-400 text-[10px]">Sensor principal 50MP ativado</p>
-                  </div>
-                )}
-
-                {/* Erro de Câmera */}
-                {cameraError && (
-                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-4 text-center bg-slate-900/95 space-y-2">
-                    <AlertCircle className="w-8 h-8 text-amber-500" />
-                    <p className="text-white font-semibold text-xs">Câmera não iniciada</p>
-                    <p className="text-slate-400 text-[11px] max-w-sm">{cameraError}</p>
-                    <button
-                      onClick={() => startScanner(selectedCamera)}
-                      className="py-2 px-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" /> Tentar Novamente
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* PAINEL LATERAL: ÚLTIMO SETOR BIPADO E FILA DE RETORNO (Col 5 no Desktop) */}
-            <div className="lg:col-span-5 flex flex-col justify-between space-y-3">
-              
-              {/* Card Destaque: Setor de Destino da Última Bomba Bipada */}
-              {lastScannedDest ? (
-                <div className="p-4 rounded-2xl bg-slate-900/95 border-2 border-emerald-500/80 shadow-lg animate-in fade-in duration-150 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded-md">
-                      ✓ Bomba Bipada com Sucesso
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-mono">
-                      #{scannedSeries.length} na fila
-                    </span>
-                  </div>
-
-                  <div>
-                    <h4 className="text-base font-extrabold text-white">
-                      {lastScannedDest.equipment.equipamento}
-                    </h4>
-                    <div className="flex items-center gap-2 mt-1 text-xs text-slate-300">
-                      <span className="font-mono bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded font-bold">
-                        Tag: {lastScannedDest.equipment.tag || lastScannedDest.equipment.codigoBarras}
-                      </span>
-                      {lastScannedDest.equipment.serie && (
-                        <span className="font-mono text-slate-400">
-                          S/N: {lastScannedDest.equipment.serie}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Banner Gigante do Setor de Destino */}
-                  <div className="pt-2 border-t border-slate-800">
-                    <div className="text-[11px] text-slate-400 font-bold mb-1 flex items-center gap-1">
-                      <MapPin className="w-3.5 h-3.5 text-blue-400" />
-                      <span>LEVAR E DEVOLVER PARA O SETOR:</span>
-                    </div>
-                    {(() => {
-                      const color = getSectorColor(lastScannedDest.targetSector, sectorColors);
-                      return (
-                        <div
-                          style={getSectorBadgeStyles(color)}
-                          className="px-4 py-2.5 rounded-2xl text-base font-black border flex items-center justify-between gap-2 shadow-md"
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: color.hex }} />
-                            <span>{lastScannedDest.targetSector}</span>
-                          </div>
-                          <span className="text-xs font-bold opacity-80">Devolução</span>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                </div>
-              ) : (
-                <div className="p-6 text-center text-slate-400 border border-dashed border-slate-800 rounded-2xl bg-slate-900/40 space-y-2">
-                  <ScanLine className="w-8 h-8 mx-auto text-blue-400 opacity-60 animate-pulse" />
-                  <p className="text-xs font-bold text-slate-200">Aponte a mira para o código da bomba</p>
-                  <p className="text-[11px] text-slate-500">
-                    A câmera usa a Lente Principal com autofoco e aproximação macro de 5 a 15cm para leitura instantânea de barras e etiquetas.
-                  </p>
-                </div>
-              )}
-
-              {/* Mini Prévia da Fila no Carrinho */}
-              <div className="p-3 rounded-2xl bg-slate-900/60 border border-slate-800 text-xs">
-                <div className="flex items-center justify-between text-slate-400 mb-2">
-                  <span className="font-bold flex items-center gap-1.5 text-white">
-                    <ListOrdered className="w-3.5 h-3.5 text-blue-400" />
-                    <span>Carga no Carrinho ({scannedSeries.length} bombas)</span>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setIsCameraActive(false)}
-                    className="text-blue-400 hover:underline font-bold text-[11px]"
-                  >
-                    Ver Lista Completa
-                  </button>
-                </div>
-
-                {scannedSeries.length === 0 ? (
-                  <p className="text-[11px] text-slate-500 italic">
-                    Nenhuma bomba bipada ainda. Bipando uma a uma, elas aparecerão listadas aqui em série.
-                  </p>
-                ) : (
-                  <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
-                    {scannedSeries.slice(0, 4).map((item, idx) => (
-                      <div 
-                        key={item.scanId || idx}
-                        className="px-2.5 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700/60 flex items-center justify-between gap-2 text-[11px]"
-                      >
-                        <div className="truncate font-semibold text-slate-200">
-                          <span className="font-mono text-blue-400 font-bold mr-1.5">
-                            #{scannedSeries.length - idx}
-                          </span>
-                          {item.equipment.equipamento} ({item.equipment.tag || item.equipment.serie})
-                        </div>
-                        <span className="text-[10px] font-bold text-emerald-400 shrink-0">
-                          {item.targetSector}
-                        </span>
-                      </div>
-                    ))}
-                    {scannedSeries.length > 4 && (
-                      <div className="text-center text-[10px] text-slate-400 pt-1">
-                        + {scannedSeries.length - 4} outras bombas na fila do carrinho
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* FLASH FEEDBACK DE BIPAGEM */}
       {flashFeedback && (
         <div 
-          className={`p-3.5 rounded-2xl border transition animate-in zoom-in-95 duration-150 flex items-center justify-between gap-3 ${
+          className={`p-3 rounded-2xl border transition animate-in zoom-in-95 duration-150 flex items-center justify-between gap-3 shadow-md ${
             flashFeedback.type === 'success'
-              ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
-              : 'bg-red-50 dark:bg-red-950/40 border-red-300 dark:border-red-800 text-red-900 dark:text-red-200'
+              ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
+              : flashFeedback.type === 'warning'
+              ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200'
+              : 'bg-red-50 dark:bg-red-950/60 border-red-300 dark:border-red-800 text-red-900 dark:text-red-200'
           }`}
         >
           <div className="flex items-center gap-2.5 min-w-0">
             {flashFeedback.type === 'success' ? (
               <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            ) : flashFeedback.type === 'warning' ? (
+              <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
             ) : (
               <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0" />
             )}
@@ -1547,773 +1332,823 @@ export default function CarrinhoDevolucaoTab({
       )}
 
       {/* ========================================================================= */}
-      {/* SEÇÃO 1: FILA DE BOMBAS BIPADAS PARA DEVOLUÇÃO EM SÉRIE (ESTRUTURA DO CARRINHO) */}
+      {/* RENDERIZAÇÃO CONFORME O MODO: BIPAGEM EM SÉRIE vs RELAÇÃO POR SETORES     */}
       {/* ========================================================================= */}
-      <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 sm:p-5 shadow-sm space-y-3.5">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 pb-3 border-b border-slate-100 dark:border-slate-800">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center font-black shadow-xs">
-              <Truck className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-sm sm:text-base font-black text-slate-900 dark:text-white flex items-center gap-2 flex-wrap">
-                <span>Bombas Bipadas para Devolução (Fila em Série)</span>
-                <span className="px-2 py-0.5 rounded-full text-xs font-black bg-blue-100 text-blue-700 dark:bg-blue-950/80 dark:text-blue-300">
-                  {scannedSeries.length} no carrinho
-                </span>
-                {scannedSectorsCount > 0 && (
-                  <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300">
-                    {scannedSectorsCount} {scannedSectorsCount === 1 ? 'setor' : 'setores'} de destino
-                  </span>
-                )}
-                {scannedSeries.length > 0 && (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100/90 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300/40 dark:border-emerald-700/40">
-                    💾 Fila salva em cache
-                  </span>
-                )}
-              </h2>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Aparecem na ordem exata de bipagem para conferência antes de levar ao setor
-              </p>
-            </div>
-          </div>
-
-          {scannedSeries.length > 0 && (
-            <div className="flex items-center gap-2 self-end sm:self-center flex-wrap">
-              <button
-                type="button"
-                onClick={handleCopySummary}
-                className="px-3 py-1.5 rounded-xl font-bold text-xs bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition active:scale-95 flex items-center gap-1.5 border border-slate-200 dark:border-slate-700"
-                title="Copiar lista de devolução organizada por setores"
-              >
-                <Copy className="w-3.5 h-3.5 text-emerald-500" />
-                <span>{copySuccess ? 'Copiado! ✓' : 'Copiar Relação'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleReturnAllInSeries}
-                className="px-3.5 py-1.5 rounded-xl font-black text-xs bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm flex items-center gap-1.5 transition active:scale-95 border border-emerald-500"
-                title="Confirmar devolução de todas as bombas bipadas aos seus respectivos setores e concluir a fila"
-              >
-                <Check className="w-3.5 h-3.5 stroke-[3]" />
-                <span>Devolver Todas ({scannedSeries.length})</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleClearSeries}
-                className="text-[11px] font-bold text-slate-400 hover:text-red-500 hover:underline flex items-center gap-1 px-1.5 py-1"
-                title="Limpar o carrinho sem marcar devolução"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Limpar Fila</span>
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Resumo visual dos setores carregados no carrinho */}
-        {Object.keys(cartSummaryBySector).length > 0 && (
-          <div className="p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800 flex items-center gap-2 overflow-x-auto pb-1 text-xs">
-            <span className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wide shrink-0 flex items-center gap-1.5">
-              <Truck className="w-3.5 h-3.5 text-blue-500" />
-              <span>Carga no Carrinho:</span>
-            </span>
-            {Object.keys(cartSummaryBySector).map(sec => {
-              const secCol = getSectorColor(sec, sectorColors);
-              return (
-                <span
-                  key={sec}
-                  style={getSectorBadgeStyles(secCol)}
-                  className="px-2.5 py-0.5 rounded-full text-[11px] font-bold border shrink-0 flex items-center gap-1 shadow-xs"
-                >
-                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: secCol.hex }} />
-                  <span>{sec}</span>
-                  <span className="font-mono ml-0.5 font-black">({cartSummaryBySector[sec]})</span>
-                </span>
-              );
-            })}
-          </div>
-        )}
-
-        {/* LISTAGEM EM SÉRIE DAS BOMBAS BIPADAS */}
-        {scannedSeries.length === 0 ? (
-          <div className="py-8 text-center text-slate-400 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl bg-slate-50/50 dark:bg-slate-950/40">
-            <Layers className="w-8 h-8 mx-auto mb-2 opacity-40 text-blue-500" />
-            <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
-              Nenhuma bomba bipada para o carrinho ainda
-            </p>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-md mx-auto mt-0.5">
-              Digite a Tag/Série no campo abaixo ou use a câmera/leitor USB para bipar em série.
-              Cada bomba aparecerá aqui na ordem com o setor de destino em destaque!
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1 touch-pan-y" style={{ WebkitOverflowScrolling: 'touch' }}>
-            {scannedSeries.map((item, idx) => {
-              const eq = item.equipment;
-              const isTopNewest = idx === 0;
-              const secColor = getSectorColor(item.targetSector, sectorColors);
-              const isPacked = cartPackedIds.has(eq.id);
-
-              return (
-                <div
-                  key={item.scanId || `${eq.id}-${idx}`}
-                  className={`p-2.5 sm:p-3 rounded-2xl transition flex flex-col gap-2 border ${
-                    isTopNewest
-                      ? 'bg-blue-50/70 dark:bg-blue-950/30 border-blue-400 dark:border-blue-600 ring-2 ring-blue-500/20 shadow-sm'
-                      : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700/80 hover:border-slate-300'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-3 w-full">
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      {/* Número na Série (#1, #2, #3...) */}
-                      <div 
-                        className={`w-7 h-7 rounded-xl flex items-center justify-center font-black text-xs shrink-0 border ${
-                          isTopNewest
-                            ? 'bg-blue-600 text-white border-blue-500 shadow-xs'
-                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                        }`}
-                      >
-                        {scannedSeries.length - idx}
-                      </div>
-
-                      <div className="min-w-0 flex-1 space-y-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-white truncate">
-                            {eq.equipamento}
-                          </span>
-                          {eq.modelo && (
-                            <span className="text-[11px] text-slate-400 truncate hidden sm:inline">
-                              ({eq.modelo})
-                            </span>
-                          )}
-                          {isTopNewest && (
-                            <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded-md bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 border border-emerald-500/40 animate-pulse">
-                              ⚡ Recém Bipada
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-2 flex-wrap text-[11px]">
-                          <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30 text-[10px] flex items-center gap-1">
-                            <Tag className="w-2.5 h-2.5" />
-                            {eq.tag || eq.codigoBarras || 'S/Tag'}
-                          </span>
-
-                          {eq.serie && (
-                            <span className="font-mono text-slate-600 dark:text-slate-300 text-[10px] bg-slate-100 dark:bg-slate-700/60 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600/60">
-                              S/N: {eq.serie}
-                            </span>
-                          )}
-
-                          {/* Setor de Destino em Destaque (Interativo / Editável) */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (editingSectorId === eq.id) {
-                                setEditingSectorId(null);
-                              } else {
-                                setEditingSectorId(eq.id);
-                                setCustomSeriesSectorInput(item.targetSector || '');
-                              }
-                            }}
-                            style={getSectorBadgeStyles(secColor)}
-                            className="px-2 py-0.5 rounded-md text-[11px] font-bold border flex items-center gap-1 shadow-xs transition active:scale-95 hover:brightness-110"
-                            title="Clique para alterar o setor de destino desta bomba antes de devolver"
-                          >
-                            <MapPin className="w-3 h-3 shrink-0" style={{ color: secColor.hex }} />
-                            <span>{item.targetSector}</span>
-                            <Pencil className="w-2.5 h-2.5 opacity-70 ml-0.5" />
-                          </button>
-
-                          {item.isReady ? (
-                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
-                              <CheckCircle2 className="w-3 h-3" />
-                              <span>Calibrada</span>
-                            </span>
-                          ) : (
-                            <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold flex items-center gap-1">
-                              <AlertCircle className="w-3 h-3" />
-                              <span>Pendente</span>
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Ações: Devolver (Verde) e Remover */}
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => handleConfirmReturn(eq.id)}
-                        className="px-3 py-1.5 rounded-xl font-extrabold text-xs bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow-md shadow-emerald-600/20 transition flex items-center gap-1.5 border border-emerald-500"
-                        title="Confirmar devolução desta bomba ao setor (ela sairá desta lista)"
-                      >
-                        <Check className="w-4 h-4 stroke-[3]" />
-                        <span>Devolver</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveFromSeries(eq.id)}
-                        className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl transition"
-                        title="Remover desta fila sem marcar devolução"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Painel Rápido de Alteração do Setor de Destino */}
-                  {editingSectorId === eq.id && (
-                    <div className="p-2.5 rounded-xl bg-slate-950/95 border border-blue-500/50 shadow-xl space-y-2 animate-in zoom-in-95 duration-150">
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="text-[10px] font-black text-blue-300 uppercase tracking-wide flex items-center gap-1">
-                          <MapPin className="w-3 h-3 text-blue-400" />
-                          <span>Alterar Setor de Devolução desta bomba:</span>
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setEditingSectorId(null)}
-                          className="p-1 text-slate-400 hover:text-white rounded"
-                          title="Fechar"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-
-                      {/* 1-Tap Pills dos Setores */}
-                      {availableSectors.length > 0 && (
-                        <div className="flex items-center gap-1 flex-wrap max-h-24 overflow-y-auto pr-0.5">
-                          {availableSectors.map(sec => {
-                            const isCurrent = item.targetSector === sec;
-                            return (
-                              <button
-                                key={sec}
-                                type="button"
-                                onClick={() => handleUpdateSeriesSector(eq.id, sec)}
-                                className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border transition active:scale-95 ${
-                                  isCurrent
-                                    ? 'bg-blue-600 text-white border-blue-500 font-black shadow-xs'
-                                    : 'bg-slate-900 text-blue-200 border-blue-800/80 hover:bg-blue-950 hover:border-blue-400'
-                                }`}
-                              >
-                                {sec}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {/* Campo para Digitar ou Customizar */}
-                      <div className="flex items-center gap-1.5 pt-0.5">
-                        <input
-                          type="text"
-                          list="carrinho-item-sector-datalist"
-                          value={customSeriesSectorInput}
-                          onChange={(e) => setCustomSeriesSectorInput(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              handleUpdateSeriesSector(eq.id, customSeriesSectorInput);
-                            }
-                          }}
-                          placeholder="Ou digite o setor..."
-                          className="bg-slate-900 border border-slate-700 focus:border-blue-400 rounded-lg px-2.5 py-1 text-xs text-white placeholder-slate-500 flex-1 focus:outline-none"
-                          autoFocus
-                        />
-                        <datalist id="carrinho-item-sector-datalist">
-                          {availableSectors.map(s => (
-                            <option key={s} value={s} />
-                          ))}
-                        </datalist>
-
-                        <button
-                          type="button"
-                          onClick={() => handleUpdateSeriesSector(eq.id, customSeriesSectorInput)}
-                          className="px-3 py-1 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-lg text-xs font-bold transition shrink-0 flex items-center gap-1"
-                        >
-                          <Check className="w-3.5 h-3.5 stroke-[3]" />
-                          <span>Salvar</span>
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* ========================================================================= */}
-      {/* SEÇÃO 2: BARRA DE FERRAMENTAS E ALTERNÂNCIA DE MODO DE VISUALIZAÇÃO      */}
-      {/* Permite alternar entre "Lista Menor em Série" e "Agrupado por Setor"     */}
-      {/* ========================================================================= */}
-      <div className="p-3 sm:p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+      {viewMode === 'compact_list' ? (
+        /* MODO 1: BIPAGEM & FILA EM SÉRIE (LADO A LADO COMO NA TELA PRINCIPAL) */
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
           
-          {/* Campo de Bipagem Rápida USB / Busca */}
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              ref={quickSearchInputRef}
-              type="text"
-              placeholder="Bipar leitor USB ou buscar Tag, Série, Equipamento..."
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  handleQuickLookup(searchTerm);
-                }
-              }}
-              className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition font-medium"
-            />
-          </div>
-
-          {/* Toggle de Modo de Visualização: Lista Menor em Série vs Agrupado */}
-          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl self-start sm:self-auto shrink-0 border border-slate-200/60 dark:border-slate-700/60">
-            <button
-              type="button"
-              onClick={() => setViewMode('compact_list')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
-                viewMode === 'compact_list'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-              title="Exibir em lista menor compacta em série (como na calibração)"
-            >
-              <LayoutList className="w-3.5 h-3.5" />
-              <span>Lista Menor em Série</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setViewMode('sectors')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
-                viewMode === 'sectors'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-              title="Exibir agrupado por pastas de setores"
-            >
-              <Grid className="w-3.5 h-3.5" />
-              <span>Agrupado por Setor</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Filtros de Setor e Status */}
-        <div className="flex items-center justify-between gap-2 flex-wrap pt-2 border-t border-slate-100 dark:border-slate-800">
-          
-          {/* Filtros de Status de Devolução */}
-          <div className="flex items-center gap-1.5 overflow-x-auto">
-            <button
-              type="button"
-              onClick={() => setStatusFilter('PENDING')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0 ${
-                statusFilter === 'PENDING'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900'
-              }`}
-            >
-              Pendentes ({pendingReturnEquipments.length})
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setStatusFilter('RETURNED')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0 ${
-                statusFilter === 'RETURNED'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-emerald-600'
-              }`}
-            >
-              Já Devolvidas ({alreadyReturnedEquipments.length})
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setStatusFilter('ALL')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0 ${
-                statusFilter === 'ALL'
-                  ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900'
-              }`}
-            >
-              Todas ({readyEquipments.length})
-            </button>
-          </div>
-
-          {/* Filtro Dropdown por Setor */}
-          <div className="flex items-center gap-1.5">
-            <Filter className="w-3.5 h-3.5 text-slate-400" />
-            <select
-              value={selectedSectorFilter}
-              onChange={e => setSelectedSectorFilter(e.target.value)}
-              className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              <option value="ALL">Todos os Setores ({availableSectors.length})</option>
-              {availableSectors.map(s => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* ========================================================================= */}
-      {/* SEÇÃO 3: RENDERIZAÇÃO CONFORME O MODO ESCOLHIDO                           */}
-      {/* ========================================================================= */}
-
-      {filteredEquipments.length === 0 ? (
-        <div className="p-8 sm:p-12 text-center rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
-          <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto text-slate-400">
-            <Truck className="w-7 h-7" />
-          </div>
-          <h3 className="text-base sm:text-lg font-bold text-slate-800 dark:text-slate-200">
-            Nenhuma bomba pronta para devolução atende aos filtros atuais
-          </h3>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-            {searchTerm 
-              ? `Nenhum resultado para a busca "${searchTerm}".` 
-              : 'Verifique se há bombas calibradas na aba de Conferência ou ajuste os filtros acima.'}
-          </p>
-        </div>
-      ) : viewMode === 'compact_list' ? (
-        /* ======================================================================= */
-        /* MODO 1: LISTA MENOR EM SÉRIE (ALTA DENSIDADE / ESTILO CALIBRAÇÃO)       */
-        /* ======================================================================= */
-        <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-          
-          {/* DESKTOP / TABLET: TABELA DE ALTA DENSIDADE */}
-          <div className="hidden sm:block overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 font-semibold uppercase tracking-wider select-none">
-                <tr>
-                  <th className="py-3 px-3 w-12 text-center">Nº</th>
-                  <th className="py-3 px-3 w-28 text-center">Devolução</th>
-                  <th className="py-3 px-3">Tag / Código</th>
-                  <th className="py-3 px-3">Nº Série</th>
-                  <th className="py-3 px-3">Equipamento / Aparelho</th>
-                  <th className="py-3 px-3">📍 Setor de Destino</th>
-                  <th className="py-3 px-3 text-center">Situação</th>
-                  <th className="py-3 px-3 text-right">Ação</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                {filteredEquipments.map((item, idx) => {
-                  const isReturned = returnedIds.has(item.id) || Boolean(item.devolvido);
-                  const isPacked = cartPackedIds.has(item.id);
-                  const targetSec = (item.setor_retirada || item.setor || 'Setor Não Definido').trim();
-                  const secColor = getSectorColor(targetSec, sectorColors);
-
-                  return (
-                    <tr
-                      key={item.id}
-                      style={{ borderLeft: `4px solid ${secColor.hex}` }}
-                      className={`transition-colors duration-150 ${
-                        isReturned
-                          ? 'bg-slate-50/50 dark:bg-slate-900/30 opacity-75'
-                          : isPacked
-                          ? 'bg-emerald-50/40 dark:bg-emerald-950/15'
-                          : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
-                      }`}
-                    >
-                      {/* Nº Sequencial */}
-                      <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-400">
-                        {idx + 1}
-                      </td>
-
-                      {/* Botão Devolver */}
-                      <td className="py-2.5 px-3 text-center">
-                        {isReturned ? (
-                          <button
-                            type="button"
-                            onClick={() => handleUndoReturn(item.id)}
-                            className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 hover:text-amber-500 border border-slate-200 dark:border-slate-700 transition"
-                            title="Bomba já devolvida. Clique para desfazer."
-                          >
-                            ✓ Devolvida
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleConfirmReturn(item.id)}
-                            className="px-2.5 py-1 rounded-xl text-xs font-black bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white transition flex items-center gap-1 mx-auto shadow-xs border border-emerald-500"
-                            title="Confirmar devolução desta bomba ao setor (ela sairá da lista de pendentes)"
-                          >
-                            <Check className="w-3.5 h-3.5 stroke-[3]" />
-                            <span>Devolver</span>
-                          </button>
-                        )}
-                      </td>
-
-                      {/* Tag / Código */}
-                      <td className="py-2.5 px-3">
-                        <span className="font-mono font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800">
-                          {item.tag || item.codigoBarras || item.id}
-                        </span>
-                      </td>
-
-                      {/* Nº Série */}
-                      <td className="py-2.5 px-3 font-mono text-slate-600 dark:text-slate-300">
-                        {item.serie || '-'}
-                      </td>
-
-                      {/* Equipamento */}
-                      <td className="py-2.5 px-3 font-bold text-slate-900 dark:text-white">
-                        <span>{item.equipamento}</span>
-                        {item.modelo && (
-                          <span className="text-slate-400 font-normal ml-1">({item.modelo})</span>
-                        )}
-                      </td>
-
-                      {/* Setor de Destino */}
-                      <td className="py-2.5 px-3">
-                        <span
-                          style={getSectorBadgeStyles(secColor)}
-                          className="px-2.5 py-0.5 rounded-md text-[11px] font-bold border inline-flex items-center gap-1.5 shadow-xs"
-                        >
-                          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: secColor.hex }} />
-                          <span>{targetSec}</span>
-                        </span>
-                      </td>
-
-                      {/* Situação */}
-                      <td className="py-2.5 px-3 text-center">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
-                          <CheckCircle2 className="w-3 h-3" />
-                          <span>Pronta</span>
-                        </span>
-                      </td>
-
-                      {/* Ação */}
-                      <td className="py-2.5 px-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => handleQuickLookup(item.tag || item.serie || item.codigoBarras || item.id)}
-                          className="px-2.5 py-1 rounded-lg text-xs font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 transition inline-flex items-center gap-1"
-                          title="Bipar na fila em série"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Bipar</span>
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* MOBILE: CARDS COMPACTOS EM LINHA (LISTA MENOR) */}
-          <div className="sm:hidden divide-y divide-slate-100 dark:divide-slate-800">
-            {filteredEquipments.map((item, idx) => {
-              const isReturned = returnedIds.has(item.id) || Boolean(item.devolvido);
-              const isPacked = cartPackedIds.has(item.id);
-              const targetSec = (item.setor_retirada || item.setor || 'Setor Não Definido').trim();
-              const secColor = getSectorColor(targetSec, sectorColors);
-
-              return (
-                <div
-                  key={item.id}
-                  style={{ borderLeft: `4px solid ${secColor.hex}` }}
-                  className={`p-3 flex items-center justify-between gap-2.5 transition ${
-                    isReturned
-                      ? 'bg-slate-50/50 dark:bg-slate-900/30 opacity-75'
-                      : isPacked
-                      ? 'bg-emerald-50/40 dark:bg-emerald-950/15'
-                      : ''
-                  }`}
-                >
-                  <div className="space-y-1 min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="font-mono font-bold text-[10px] text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-1.5 py-0.2 rounded">
-                        {item.tag || item.codigoBarras}
-                      </span>
-                      {item.serie && (
-                        <span className="font-mono text-[10px] text-slate-500">
-                          SN: {item.serie}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="font-bold text-xs text-slate-900 dark:text-white truncate">
-                      {item.equipamento}
-                    </div>
-
-                    <div>
-                      <span
-                        style={getSectorBadgeStyles(secColor)}
-                        className="px-2 py-0.5 rounded text-[10px] font-bold border inline-flex items-center gap-1"
-                      >
-                        <MapPin className="w-2.5 h-2.5 shrink-0" style={{ color: secColor.hex }} />
-                        <span>{targetSec}</span>
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Botão Devolver Mobile */}
-                  {isReturned ? (
-                    <button
-                      type="button"
-                      onClick={() => handleUndoReturn(item.id)}
-                      className="px-2.5 py-1 rounded-xl text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 hover:text-amber-500 border border-slate-200 dark:border-slate-700 transition flex items-center gap-1 shrink-0"
-                      title="Bomba já devolvida. Clique para desfazer."
-                    >
-                      <span>✓ Devolvida</span>
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => handleConfirmReturn(item.id)}
-                      className="px-3 py-1.5 rounded-xl font-black text-xs bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow-xs flex items-center gap-1 shrink-0 border border-emerald-500"
-                      title="Confirmar devolução (sairá da lista)"
-                    >
-                      <Check className="w-3.5 h-3.5 stroke-[3]" />
-                      <span>Devolver</span>
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-        </div>
-      ) : (
-        /* ======================================================================= */
-        /* MODO 2: AGRUPADO POR SETOR DE RETORNO (PASTAS SANFONADAS)               */
-        /* ======================================================================= */
-        <div className="space-y-4">
-          {filteredGroups.map(group => {
-            const isExpanded = expandedSectors[group.name] ?? true;
-            const secColor = getSectorColor(group.name, sectorColors);
-            const packedInThisGroup = group.items.filter(it => cartPackedIds.has(it.id)).length;
-
-            return (
-              <div 
-                key={group.name}
-                className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm transition"
-              >
-                {/* Header do Setor */}
-                <div 
-                  onClick={() => toggleSectorExpand(group.name)}
-                  className="p-4 sm:p-5 flex items-center justify-between gap-3 cursor-pointer select-none hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition border-b border-slate-100 dark:border-slate-800/60"
-                >
-                  <div className="flex items-center gap-3">
-                    <div 
-                      className="w-10 h-10 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-xs font-black text-sm"
-                      style={{ backgroundColor: secColor.hex }}
-                    >
-                      <Building2 className="w-5 h-5" />
-                    </div>
-
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h2 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white">
-                          {group.name}
-                        </h2>
-                        <span 
-                          className="px-2.5 py-0.5 rounded-full text-xs font-black text-white shadow-xs"
-                          style={{ backgroundColor: secColor.hex }}
-                        >
-                          {group.count} {group.count === 1 ? 'bomba' : 'bombas'}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                        {packedInThisGroup > 0 
-                          ? `${packedInThisGroup} de ${group.count} separadas no carrinho` 
-                          : 'Prontas para embarcar no carrinho de devolução'}
-                      </p>
-                    </div>
-                  </div>
-
+          {/* COLUNA ESQUERDA (lg:col-span-6): CÂMERA NO TOPO + DESTINO + ENTRADA USB */}
+          <div className="lg:col-span-6 space-y-3">
+            
+            {/* Viewfinder da Câmera (50MP Sensor + Foco de Perto Macro) */}
+            {isCameraActive ? (
+              <div className="rounded-2xl sm:rounded-3xl bg-slate-950 border-2 border-blue-500/80 p-3 sm:p-4 text-white shadow-xl relative animate-in zoom-in-95 duration-150">
+                <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
                   <div className="flex items-center gap-2">
-                    <span className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1">
-                      {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                    <Camera className="w-4 h-4 text-blue-400" />
+                    <h3 className="font-extrabold text-xs sm:text-sm">Scanner de Devolução Contínua</h3>
+                    <span className="text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.2 rounded-full font-bold flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                      🎯 Foco de Perto
                     </span>
                   </div>
+
+                  <button
+                    onClick={() => setIsCameraActive(false)}
+                    className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                    title="Fechar câmera"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
 
-                {/* Itens do Setor (Grade de Bombas) */}
-                {isExpanded && (
-                  <div className="p-3 sm:p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 bg-slate-50/50 dark:bg-slate-900/40">
-                    {group.items.map(item => {
-                      const isReturned = returnedIds.has(item.id) || Boolean(item.devolvido);
-                      const isPacked = cartPackedIds.has(item.id);
-                      return (
-                        <div
-                          key={item.id}
-                          className={`p-3 rounded-2xl border transition flex items-center justify-between gap-3 ${
-                            isReturned
-                              ? 'bg-slate-50/50 dark:bg-slate-900/30 opacity-75'
-                              : isPacked
-                              ? 'bg-emerald-50/70 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800 shadow-xs'
-                              : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700/80 hover:border-slate-300'
+                {/* Box de Vídeo da Câmera */}
+                <div className="relative rounded-2xl overflow-hidden bg-black border border-slate-800 h-[260px] sm:h-[300px] flex items-center justify-center shadow-inner">
+                  <div 
+                    id="carrinho-barcode-reader" 
+                    className="w-full h-full flex items-center justify-center [&_video]:w-full [&_video]:h-full [&_video]:object-cover"
+                  ></div>
+
+                  {/* Linha Laser Vermelha (1D) ou Mira QR (2D) */}
+                  {scanning && !cameraError && (
+                    <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-3">
+                      {reticleType === '1d' ? (
+                        <div className="relative w-[96%] max-w-[420px] h-[90px] sm:h-[110px] border-2 border-dashed border-red-500/80 rounded-2xl shadow-[0_0_25px_rgba(239,68,68,0.35)] flex items-center justify-center">
+                          <div className="absolute left-0 right-0 h-1 bg-gradient-to-r from-red-600 via-rose-300 to-red-600 shadow-[0_0_14px_#ef4444] animate-pulse"></div>
+                          <div className="absolute -top-1 -left-1 w-4 h-4 border-t-4 border-l-4 border-red-500 rounded-tl-lg"></div>
+                          <div className="absolute -top-1 -right-1 w-4 h-4 border-t-4 border-r-4 border-red-500 rounded-tr-lg"></div>
+                          <div className="absolute -bottom-1 -left-1 w-4 h-4 border-b-4 border-l-4 border-red-500 rounded-bl-lg"></div>
+                          <div className="absolute -bottom-1 -right-1 w-4 h-4 border-b-4 border-r-4 border-red-500 rounded-br-lg"></div>
+                        </div>
+                      ) : (
+                        <div className="relative w-[180px] h-[180px] border-2 border-dashed border-blue-500/80 rounded-2xl shadow-[0_0_25px_rgba(59,130,246,0.35)] flex items-center justify-center">
+                          <div className="absolute -top-1 -left-1 w-4 h-4 border-t-4 border-l-4 border-blue-500 rounded-tl-lg"></div>
+                          <div className="absolute -top-1 -right-1 w-4 h-4 border-t-4 border-r-4 border-blue-500 rounded-tr-lg"></div>
+                          <div className="absolute -bottom-1 -left-1 w-4 h-4 border-b-4 border-l-4 border-blue-500 rounded-bl-lg"></div>
+                          <div className="absolute -bottom-1 -right-1 w-4 h-4 border-b-4 border-r-4 border-blue-500 rounded-br-lg"></div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* BARRA SUPERIOR SOBRE O VÍDEO: LENTE + MIRA + LANTERNA */}
+                  <div className="absolute top-2 left-2 right-2 z-20 flex items-center justify-between gap-1 pointer-events-auto">
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setReticleType(r => r === '1d' ? '2d' : '1d')}
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 border shadow-md transition active:scale-95 ${
+                          reticleType === '1d'
+                            ? 'bg-red-500/25 text-red-200 border-red-500/50 shadow-red-500/20'
+                            : 'bg-blue-500/25 text-blue-200 border-blue-500/50 shadow-blue-500/20'
+                        }`}
+                      >
+                        <ScanLine className="w-3 h-3" />
+                        <span>{reticleType === '1d' ? '1D Laser' : '2D QR'}</span>
+                      </button>
+
+                      {rearCamerasList.length > 1 ? (
+                        <button
+                          type="button"
+                          onClick={handleToggleRearCamera}
+                          className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-900/90 hover:bg-slate-800 text-blue-300 border border-blue-500/50 shadow-md backdrop-blur-xs transition active:scale-95"
+                          title="Alternar lentes traseiras do aparelho"
+                        >
+                          <SwitchCamera className="w-3 h-3 text-blue-400" />
+                          <span>{currentLensDisplay}</span>
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-950/85 text-blue-300 border border-blue-500/40 shadow-md">
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
+                          <span>🎯 50MP Principal</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={handleTriggerCenterFocus}
+                        className="px-2 py-0.5 rounded-full bg-slate-900/90 hover:bg-slate-800 text-amber-300 font-bold text-[10px] flex items-center gap-1 border border-amber-500/40 shadow-lg transition active:scale-95"
+                        title="Refocar de perto agora (5-15cm)"
+                      >
+                        <Crosshair className="w-3 h-3 text-amber-400" />
+                        <span className="hidden xs:inline">Focar Perto</span>
+                      </button>
+
+                      {hasTorch && (
+                        <button
+                          type="button"
+                          onClick={toggleTorch}
+                          className={`p-1 rounded-full flex items-center justify-center shadow-lg transition border ${
+                            torchOn
+                              ? 'bg-amber-400 text-slate-950 border-amber-300 ring-2 ring-amber-400/50'
+                              : 'bg-slate-900/90 text-white hover:bg-slate-800 border-slate-700/80'
+                          }`}
+                          title={torchOn ? "Desligar lanterna" : "Ligar lanterna"}
+                        >
+                          <Zap className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Feedback de foco flutuante */}
+                  {focusFeedbackText && (
+                    <div className="absolute top-11 left-1/2 -translate-x-1/2 z-20 px-3 py-1 bg-slate-900/95 text-emerald-400 text-[10px] font-bold rounded-full border border-emerald-500/50 shadow-lg">
+                      {focusFeedbackText}
+                    </div>
+                  )}
+
+                  {/* BARRA INFERIOR SOBRE O VÍDEO: PRESETS DE ZOOM */}
+                  <div className="absolute bottom-2 left-2 right-2 z-20 flex items-center justify-between pointer-events-auto gap-2">
+                    <div className="flex items-center gap-1 bg-slate-950/90 backdrop-blur-md p-0.5 rounded-full border border-slate-700/80 shadow-lg">
+                      {opticalPresets.map(p => (
+                        <button
+                          key={p.label}
+                          type="button"
+                          onClick={() => applyOpticalLensZoom(p.value, p.fullName)}
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition active:scale-95 ${
+                            Math.abs(zoomLevel - p.value) < 0.15
+                              ? 'bg-blue-600 text-white shadow-xs'
+                              : 'text-slate-300 hover:text-white'
                           }`}
                         >
-                          <div className="space-y-1 min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-extrabold text-slate-900 dark:text-white text-xs truncate">
-                                {item.equipamento}
-                              </span>
-                              {item.modelo && (
-                                <span className="text-[10px] text-slate-400 truncate">
-                                  {item.modelo}
-                                </span>
-                              )}
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="bg-slate-950/90 backdrop-blur-md text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full text-[9px] font-bold shadow-lg flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
+                      <span>Macro 5-15cm</span>
+                    </div>
+                  </div>
+
+                  {/* Loading da Câmera */}
+                  {isCameraStarting && !scanning && !cameraError && (
+                    <div className="absolute inset-0 z-15 flex flex-col items-center justify-center p-4 text-center bg-slate-950/90 space-y-2 animate-in fade-in">
+                      <div className="w-7 h-7 border-3 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+                      <p className="text-white font-bold text-xs">Iniciando câmera Full HD com foco de perto...</p>
+                    </div>
+                  )}
+
+                  {/* Erro de Câmera */}
+                  {cameraError && (
+                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-4 text-center bg-slate-900/95 space-y-2">
+                      <AlertCircle className="w-7 h-7 text-amber-500" />
+                      <p className="text-white font-semibold text-xs">Câmera não iniciada</p>
+                      <p className="text-slate-400 text-[11px] max-w-sm">{cameraError}</p>
+                      <button
+                        onClick={() => startScanner(selectedCamera)}
+                        className="py-1.5 px-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" /> Tentar Novamente
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              /* CARD DE ATIVAÇÃO DA CÂMERA CASO PAUSADA */
+              <div className="p-4 rounded-2xl sm:rounded-3xl bg-slate-900 border border-slate-800 text-center space-y-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-blue-600/20 text-blue-400 flex items-center justify-center mx-auto border border-blue-500/30">
+                  <Camera className="w-5 h-5 text-blue-400" />
+                </div>
+                <h4 className="text-sm font-bold text-white">Câmera Pausada</h4>
+                <p className="text-xs text-slate-400 max-w-xs mx-auto">
+                  Ative a câmera para bipar as bombas continuamente com macro e foco de perto ou use o campo abaixo.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setIsCameraActive(true)}
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md transition active:scale-95 inline-flex items-center gap-1.5"
+                >
+                  <Camera className="w-3.5 h-3.5" />
+                  <span>Ativar Câmera de Devolução</span>
+                </button>
+              </div>
+            )}
+
+            {/* CARD DESTAQUE: SETOR DE DESTINO DA ÚLTIMA BOMBA BIPADA */}
+            {lastScannedDest ? (
+              <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-900 border-2 border-emerald-500/80 shadow-xl animate-in fade-in duration-150 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded-md border border-emerald-500/30">
+                    ✓ Bomba Bipada com Sucesso
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    #{scannedSeries.length} na fila
+                  </span>
+                </div>
+
+                <div>
+                  <h4 className="text-sm sm:text-base font-extrabold text-white">
+                    {lastScannedDest.equipment.equipamento}
+                  </h4>
+                  <div className="flex items-center gap-2 mt-1 text-xs text-slate-300">
+                    <span className="font-mono bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded font-bold">
+                      Tag: {lastScannedDest.equipment.tag || lastScannedDest.equipment.codigoBarras}
+                    </span>
+                    {lastScannedDest.equipment.serie && (
+                      <span className="font-mono text-slate-400">
+                        S/N: {lastScannedDest.equipment.serie}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Banner do Setor de Destino em Destaque */}
+                <div className="pt-2 border-t border-slate-800">
+                  <div className="text-[10px] text-slate-400 font-bold mb-1 flex items-center gap-1">
+                    <MapPin className="w-3.5 h-3.5 text-blue-400" />
+                    <span>LEVAR E DEVOLVER PARA O SETOR:</span>
+                  </div>
+                  {(() => {
+                    const color = getSectorColor(lastScannedDest.targetSector, sectorColors);
+                    return (
+                      <div
+                        style={getSectorBadgeStyles(color)}
+                        className="px-3.5 py-2 rounded-xl text-sm sm:text-base font-black border flex items-center justify-between gap-2 shadow-md"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: color.hex }} />
+                          <span>{lastScannedDest.targetSector}</span>
+                        </div>
+                        <span className="text-xs font-bold opacity-80">Devolução</span>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 text-center text-slate-400 border border-dashed border-slate-800 rounded-2xl bg-slate-900/40 space-y-1.5">
+                <ScanLine className="w-6 h-6 mx-auto text-blue-400 opacity-60 animate-pulse" />
+                <p className="text-xs font-bold text-slate-200">Aponte a mira para a etiqueta da bomba</p>
+                <p className="text-[11px] text-slate-500">
+                  O setor de destino onde a bomba deve ser entregue aparecerá aqui imediatamente em destaque com cores do setor.
+                </p>
+              </div>
+            )}
+
+            {/* CAMPO DE ENTRADA RÁPIDA USB / DIGITAÇÃO */}
+            <div className="p-2.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  ref={quickSearchInputRef}
+                  type="text"
+                  placeholder="Bipar leitor USB ou digitar Tag/Série e Enter..."
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleQuickLookup(searchTerm);
+                    }
+                  }}
+                  className="w-full pl-9 pr-16 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleQuickLookup(searchTerm)}
+                  className="absolute right-1 top-1 bottom-1 px-2.5 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-bold text-xs rounded-lg transition"
+                >
+                  Bipar
+                </button>
+              </div>
+            </div>
+
+          </div>
+
+          {/* COLUNA DIREITA (lg:col-span-6): FILA DE BOMBAS BIPADAS PARA DEVOLUÇÃO */}
+          <div className="lg:col-span-6 space-y-3">
+            <div className="rounded-2xl sm:rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3.5 sm:p-4 shadow-sm space-y-3">
+              
+              {/* Header da Fila */}
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold shrink-0">
+                    <ListOrdered className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-white flex items-center gap-2">
+                      <span>Bombas no Carrinho</span>
+                      <span className="px-2 py-0.2 rounded-full text-xs font-black bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300">
+                        {scannedSeries.length}
+                      </span>
+                    </h3>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                      Ordem de bipagem (mais recentes no topo)
+                    </p>
+                  </div>
+                </div>
+
+                {/* Atalho para ver a lista completa por setores */}
+                <button
+                  type="button"
+                  onClick={() => setViewMode('sectors')}
+                  className="px-2.5 py-1.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-blue-600 dark:text-blue-400 border border-slate-200 dark:border-slate-700 transition flex items-center gap-1 active:scale-95"
+                  title="Ver relação organizada por ordem dos setores"
+                >
+                  <span>Ver por Setores</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Resumo Rápido dos Setores na Carga */}
+              {Object.keys(cartSummaryBySector).length > 0 && (
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+                  <span className="text-[10px] font-bold text-slate-400 shrink-0">Setores na carga:</span>
+                  {Object.keys(cartSummaryBySector).map(sec => {
+                    const secCol = getSectorColor(sec, sectorColors);
+                    return (
+                      <span
+                        key={sec}
+                        style={getSectorBadgeStyles(secCol)}
+                        className="px-2 py-0.5 rounded-full text-[10px] font-bold border shrink-0 flex items-center gap-1 shadow-xs"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: secCol.hex }} />
+                        <span>{sec}</span>
+                        <span className="font-mono font-black">({cartSummaryBySector[sec]})</span>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* LISTAGEM EM SÉRIE DAS BOMBAS BIPADAS */}
+              {scannedSeries.length === 0 ? (
+                <div className="py-10 text-center text-slate-400 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl bg-slate-50/50 dark:bg-slate-950/40 space-y-1.5">
+                  <Layers className="w-7 h-7 mx-auto opacity-40 text-blue-500" />
+                  <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Nenhuma bomba bipada para o carrinho ainda
+                  </p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-xs mx-auto">
+                    Use a câmera ao lado ou digite a Tag para bipar em série. Cada bomba aparecerá na ordem com o setor de destino em destaque.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-[460px] overflow-y-auto pr-1 touch-pan-y" style={{ WebkitOverflowScrolling: 'touch' }}>
+                  {scannedSeries.map((item, idx) => {
+                    const eq = item.equipment;
+                    const isTopNewest = idx === 0;
+                    const secColor = getSectorColor(item.targetSector, sectorColors);
+
+                    return (
+                      <div
+                        key={item.scanId || `${eq.id}-${idx}`}
+                        className={`p-2.5 rounded-2xl transition flex flex-col gap-2 border ${
+                          isTopNewest
+                            ? 'bg-blue-50/70 dark:bg-blue-950/30 border-blue-400 dark:border-blue-600 ring-2 ring-blue-500/20 shadow-sm'
+                            : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700/80 hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2.5 w-full">
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            {/* Número na Série (#10, #9, #8... #1) */}
+                            <div 
+                              className={`w-7 h-7 rounded-xl flex items-center justify-center font-black text-xs shrink-0 border ${
+                                isTopNewest
+                                  ? 'bg-blue-600 text-white border-blue-500 shadow-xs'
+                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                              }`}
+                            >
+                              {scannedSeries.length - idx}
                             </div>
 
-                            <div className="flex items-center gap-2 text-[11px] text-slate-600 dark:text-slate-300 flex-wrap">
-                              <span className="font-bold flex items-center gap-1 text-blue-600 dark:text-blue-400">
-                                <Tag className="w-3 h-3" />
-                                {item.tag || item.serie || item.codigoBarras || item.id}
-                              </span>
-                              {item.serie && item.tag && (
-                                <span className="text-slate-400">
-                                  SN: {item.serie}
+                            <div className="min-w-0 flex-1 space-y-0.5">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-extrabold text-xs text-slate-900 dark:text-white truncate">
+                                  {eq.equipamento}
                                 </span>
-                              )}
+                                {eq.modelo && (
+                                  <span className="text-[10px] text-slate-400 truncate hidden sm:inline">
+                                    ({eq.modelo})
+                                  </span>
+                                )}
+                                {isTopNewest && (
+                                  <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded-md bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 border border-emerald-500/40 animate-pulse">
+                                    ⚡ Recém Bipada
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-1.5 flex-wrap text-[10px]">
+                                <span className="font-mono font-bold px-1.5 py-0.2 rounded bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30">
+                                  Tag: {eq.tag || eq.codigoBarras || 'S/Tag'}
+                                </span>
+
+                                {eq.serie && (
+                                  <span className="font-mono text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700/60 px-1.5 py-0.2 rounded border border-slate-200 dark:border-slate-600/60">
+                                    S/N: {eq.serie}
+                                  </span>
+                                )}
+
+                                {/* Setor de Destino em Destaque (1-Tap Editável) */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (editingSectorId === eq.id) {
+                                      setEditingSectorId(null);
+                                    } else {
+                                      setEditingSectorId(eq.id);
+                                      setCustomSeriesSectorInput(item.targetSector || '');
+                                    }
+                                  }}
+                                  style={getSectorBadgeStyles(secColor)}
+                                  className="px-2 py-0.5 rounded-md text-[10px] font-bold border flex items-center gap-1 shadow-xs transition active:scale-95 hover:brightness-110"
+                                  title="Clique para alterar o setor de destino desta bomba antes de devolver"
+                                >
+                                  <MapPin className="w-2.5 h-2.5 shrink-0" style={{ color: secColor.hex }} />
+                                  <span>{item.targetSector}</span>
+                                  <Pencil className="w-2.5 h-2.5 opacity-70 ml-0.5" />
+                                </button>
+                              </div>
                             </div>
                           </div>
 
-                          {isReturned ? (
+                          {/* Ações: Devolver (Verde) e Remover */}
+                          <div className="flex items-center gap-1.5 shrink-0">
                             <button
                               type="button"
-                              onClick={() => handleUndoReturn(item.id)}
-                              className="px-2.5 py-1 rounded-xl text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 hover:text-amber-500 border border-slate-200 dark:border-slate-700 transition flex items-center gap-1 shrink-0"
-                              title="Bomba já devolvida. Clique para desfazer."
-                            >
-                              <span>✓ Devolvida</span>
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => handleConfirmReturn(item.id)}
-                              className="px-3 py-1.5 rounded-xl font-black text-xs bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow-xs flex items-center gap-1 shrink-0 border border-emerald-500"
-                              title="Devolver ao setor (sairá da lista)"
+                              onClick={() => handleConfirmReturn(eq.id)}
+                              className="px-2.5 py-1.5 rounded-xl font-extrabold text-xs bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow-sm flex items-center gap-1 border border-emerald-500"
+                              title="Confirmar devolução desta bomba ao setor (ela sairá desta lista)"
                             >
                               <Check className="w-3.5 h-3.5 stroke-[3]" />
                               <span>Devolver</span>
                             </button>
-                          )}
+
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveFromSeries(eq.id)}
+                              className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl transition"
+                              title="Remover desta fila sem marcar devolução"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
+
+                        {/* Painel Rápido de Alteração do Setor de Destino */}
+                        {editingSectorId === eq.id && (
+                          <div className="p-2.5 rounded-xl bg-slate-950/95 border border-blue-500/50 shadow-xl space-y-2 animate-in zoom-in-95 duration-150">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-[10px] font-black text-blue-300 uppercase tracking-wide flex items-center gap-1">
+                                <MapPin className="w-3 h-3 text-blue-400" />
+                                <span>Alterar Setor de Devolução desta bomba:</span>
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setEditingSectorId(null)}
+                                className="p-1 text-slate-400 hover:text-white rounded"
+                                title="Fechar"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+
+                            {/* 1-Tap Pills dos Setores */}
+                            {availableSectors.length > 0 && (
+                              <div className="flex items-center gap-1 flex-wrap max-h-24 overflow-y-auto pr-0.5">
+                                {availableSectors.map(sec => {
+                                  const isCurrent = item.targetSector === sec;
+                                  return (
+                                    <button
+                                      key={sec}
+                                      type="button"
+                                      onClick={() => handleUpdateSeriesSector(eq.id, sec)}
+                                      className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border transition active:scale-95 ${
+                                        isCurrent
+                                          ? 'bg-blue-600 text-white border-blue-500 font-black shadow-xs'
+                                          : 'bg-slate-900 text-blue-200 border-blue-800/80 hover:bg-blue-950 hover:border-blue-400'
+                                      }`}
+                                    >
+                                      {sec}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+
+                            {/* Campo para Digitar ou Customizar */}
+                            <div className="flex items-center gap-1.5 pt-0.5">
+                              <input
+                                type="text"
+                                list="carrinho-item-sector-datalist"
+                                value={customSeriesSectorInput}
+                                onChange={(e) => setCustomSeriesSectorInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleUpdateSeriesSector(eq.id, customSeriesSectorInput);
+                                  }
+                                }}
+                                placeholder="Ou digite o setor..."
+                                className="bg-slate-900 border border-slate-700 focus:border-blue-400 rounded-lg px-2 py-1 text-xs text-white placeholder-slate-500 flex-1 focus:outline-none"
+                                autoFocus
+                              />
+                              <datalist id="carrinho-item-sector-datalist">
+                                {availableSectors.map(s => (
+                                  <option key={s} value={s} />
+                                ))}
+                              </datalist>
+
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateSeriesSector(eq.id, customSeriesSectorInput)}
+                                className="px-3 py-1 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-lg text-xs font-bold transition shrink-0 flex items-center gap-1"
+                              >
+                                <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                <span>Salvar</span>
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Ação em Lote: Devolver Todas do Carrinho */}
+              {scannedSeries.length > 0 && (
+                <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={handleClearSeries}
+                    className="text-[11px] font-bold text-slate-400 hover:text-red-500 transition px-2 py-1"
+                    title="Limpar a lista sem marcar devolução"
+                  >
+                    Limpar Fila
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleReturnAllInSeries}
+                    className="px-4 py-2 rounded-xl font-black text-xs bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/20 flex items-center gap-1.5 transition active:scale-95 border border-emerald-500"
+                    title="Confirmar devolução de todas as bombas do carrinho aos seus respectivos setores"
+                  >
+                    <Check className="w-4 h-4 stroke-[3]" />
+                    <span>Devolver Todas do Carrinho ({scannedSeries.length})</span>
+                  </button>
+                </div>
+              )}
+
+            </div>
+          </div>
+
+        </div>
+      ) : (
+        /* MODO 2: RELAÇÃO COMPLETA ORGANIZADA POR SETORES DE RETORNO */
+        <div className="space-y-4">
+          
+          {/* Barra Superior da Visualização por Setor */}
+          <div className="p-3 sm:p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('compact_list')}
+                  className="px-3 py-1.5 rounded-xl font-bold text-xs bg-blue-600 hover:bg-blue-500 text-white shadow-sm flex items-center gap-1.5 transition active:scale-95"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Voltar para Bipar mais Bombas</span>
+                </button>
+                <span className="text-xs text-slate-500 dark:text-slate-400 hidden sm:inline">
+                  Relação de bombas agrupadas por setor de destino
+                </span>
               </div>
-            );
-          })}
+
+              {/* Filtro / Busca */}
+              <div className="relative flex-1 max-w-xs">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Filtrar setor, tag ou série..."
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
+                />
+              </div>
+            </div>
+
+            {/* Filtros de Status */}
+            <div className="flex items-center justify-between gap-2 flex-wrap pt-2 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-1.5 overflow-x-auto">
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('PENDING')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0 ${
+                    statusFilter === 'PENDING'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                  }`}
+                >
+                  Pendentes ({pendingReturnEquipments.length})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('RETURNED')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0 ${
+                    statusFilter === 'RETURNED'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-emerald-600'
+                  }`}
+                >
+                  Já Devolvidas ({alreadyReturnedEquipments.length})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('ALL')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0 ${
+                    statusFilter === 'ALL'
+                      ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                  }`}
+                >
+                  Todas ({readyEquipments.length})
+                </button>
+              </div>
+
+              {/* Filtro Dropdown por Setor */}
+              <div className="flex items-center gap-1.5">
+                <Filter className="w-3.5 h-3.5 text-slate-400" />
+                <select
+                  value={selectedSectorFilter}
+                  onChange={e => setSelectedSectorFilter(e.target.value)}
+                  className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value="ALL">Todos os Setores ({availableSectors.length})</option>
+                  {availableSectors.map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Pastas de Setores Sanfonadas */}
+          {filteredGroups.length === 0 ? (
+            <div className="p-8 text-center rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-2">
+              <Truck className="w-8 h-8 mx-auto text-slate-400 opacity-60" />
+              <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                Nenhuma bomba atende aos filtros atuais
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {filteredGroups.map(group => {
+                const isExpanded = expandedSectors[group.name] ?? true;
+                const secColor = getSectorColor(group.name, sectorColors);
+                const inSeriesFromSector = scannedSeries.filter(item => (item.targetSector || item.equipment?.setor_retirada || item.equipment?.setor || 'Geral').trim() === group.name.trim()).length;
+
+                return (
+                  <div 
+                    key={group.name}
+                    className="rounded-2xl sm:rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm transition"
+                  >
+                    {/* Header do Setor */}
+                    <div 
+                      onClick={() => toggleSectorExpand(group.name)}
+                      className="p-3.5 sm:p-4 flex items-center justify-between gap-3 cursor-pointer select-none hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition border-b border-slate-100 dark:border-slate-800/60"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div 
+                          className="w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0 shadow-xs font-black text-sm"
+                          style={{ backgroundColor: secColor.hex }}
+                        >
+                          <Building2 className="w-4 h-4" />
+                        </div>
+
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h2 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white">
+                              {group.name}
+                            </h2>
+                            <span 
+                              className="px-2 py-0.2 rounded-full text-xs font-black text-white shadow-xs"
+                              style={{ backgroundColor: secColor.hex }}
+                            >
+                              {group.count} {group.count === 1 ? 'bomba' : 'bombas'}
+                            </span>
+                            {inSeriesFromSector > 0 && (
+                              <span className="px-2 py-0.2 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
+                                🛒 {inSeriesFromSector} no carrinho atual
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                            Prontas para entrega no setor
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {/* Botão de Entregar Todas no Setor */}
+                        {group.count > 0 && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleReturnAllInSector(group.name);
+                            }}
+                            className="px-3 py-1.5 rounded-xl font-extrabold text-xs bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm flex items-center gap-1.5 transition active:scale-95 border border-emerald-500 shrink-0"
+                            title={`Confirmar devolução de todas as bombas do setor ${group.name}`}
+                          >
+                            <Check className="w-3.5 h-3.5 stroke-[3]" />
+                            <span>Entregar Todas ({inSeriesFromSector > 0 ? inSeriesFromSector : group.count})</span>
+                          </button>
+                        )}
+
+                        <span className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1">
+                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Itens do Setor (Grade de Bombas) */}
+                    {isExpanded && (
+                      <div className="p-3 sm:p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 bg-slate-50/50 dark:bg-slate-900/40">
+                        {group.items.map(item => {
+                          const isReturned = returnedIds.has(item.id) || Boolean(item.devolvido);
+                          const isPacked = cartPackedIds.has(item.id);
+                          return (
+                            <div
+                              key={item.id}
+                              className={`p-3 rounded-2xl border transition flex items-center justify-between gap-3 ${
+                                isReturned
+                                  ? 'bg-slate-50/50 dark:bg-slate-900/30 opacity-75'
+                                  : isPacked
+                                  ? 'bg-emerald-50/70 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800 shadow-xs'
+                                  : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700/80 hover:border-slate-300'
+                              }`}
+                            >
+                              <div className="space-y-1 min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-extrabold text-slate-900 dark:text-white text-xs truncate">
+                                    {item.equipamento}
+                                  </span>
+                                  {item.modelo && (
+                                    <span className="text-[10px] text-slate-400 truncate">
+                                      ({item.modelo})
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-2 text-[11px] text-slate-600 dark:text-slate-300 flex-wrap">
+                                  <span className="font-bold flex items-center gap-1 text-blue-600 dark:text-blue-400 font-mono">
+                                    <Tag className="w-3 h-3" />
+                                    {item.tag || item.serie || item.codigoBarras || item.id}
+                                  </span>
+                                  {item.serie && item.tag && (
+                                    <span className="text-slate-400 font-mono text-[10px]">
+                                      SN: {item.serie}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {isReturned ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleUndoReturn(item.id)}
+                                  className="px-2.5 py-1 rounded-xl text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 hover:text-amber-500 border border-slate-200 dark:border-slate-700 transition flex items-center gap-1 shrink-0"
+                                  title="Bomba já devolvida. Clique para desfazer."
+                                >
+                                  <span>✓ Devolvida</span>
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleConfirmReturn(item.id)}
+                                  className="px-3 py-1.5 rounded-xl font-black text-xs bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow-xs flex items-center gap-1 shrink-0 border border-emerald-500"
+                                  title="Devolver ao setor (sairá da lista)"
+                                >
+                                  <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                  <span>Devolver</span>
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
         </div>
       )}
 
       {/* Card Informativo com Dica Operacional */}
-      <div className="p-4 rounded-2xl bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 text-xs text-blue-800 dark:text-blue-300 flex items-start gap-3">
+      <div className="p-3.5 rounded-2xl bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 text-xs text-blue-800 dark:text-blue-300 flex items-start gap-2.5">
         <Sparkles className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
         <div>
           <strong>Câmera com Foco de Perto (50MP Nativo):</strong> A câmera de devolução utiliza as mesmas diretrizes de lente da conferência de entrada. Ela inicia com enquadramento de perto (1.5x) para leitura instantânea de etiquetas pequenas sem distorção.
