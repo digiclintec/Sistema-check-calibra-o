@@ -68,9 +68,20 @@ export default function Navbar({
 }) {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const moreMenuRef = useRef(null);
+  const mobileNavRef = useRef(null);
 
   const isMaster = currentUser?.role === 'master' || currentUser?.email?.toLowerCase() === 'digiclintec@gmail.com';
   const activeHospital = hospitals.find(h => h.id === activeHospitalId) || hospitals[0];
+
+  // Auto-scroll da aba ativa para o centro no mobile/tablet
+  useEffect(() => {
+    if (mobileNavRef.current) {
+      const activeEl = mobileNavRef.current.querySelector('[data-active="true"]');
+      if (activeEl) {
+        activeEl.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+      }
+    }
+  }, [activeMainTab]);
 
   // Fecha menu ao clicar fora
   useEffect(() => {
@@ -123,7 +134,7 @@ export default function Navbar({
             <div className="h-5 w-px bg-slate-200 dark:bg-slate-800 hidden sm:block shrink-0" />
 
             {/* Seletor de Hospital Elegante com largura elástica protegida */}
-            <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200/70 dark:hover:bg-slate-700/60 px-2 sm:px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700/80 transition shadow-xs w-36 xs:w-44 sm:w-52 md:w-60 max-w-[240px] shrink min-w-0">
+            <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200/70 dark:hover:bg-slate-700/60 px-2 sm:px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700/80 transition shadow-xs min-w-[130px] sm:min-w-[180px] max-w-[260px] flex-1 sm:flex-initial shrink">
               <Building2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
               <select
                 value={activeHospitalId || ''}
@@ -588,26 +599,33 @@ export default function Navbar({
       ============================================================ */}
       {onChangeMainTab && (
         <div className="xl:hidden w-full bg-slate-50/95 dark:bg-[#090f1d]/95 border-t border-slate-200 dark:border-slate-800 px-2 sm:px-4 py-1.5">
-          <nav className="w-full max-w-2xl mx-auto flex items-center gap-1 bg-white/90 dark:bg-slate-800/90 p-1 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-xs overflow-x-auto">
+          <nav 
+            ref={mobileNavRef}
+            className="w-full max-w-4xl mx-auto flex items-center gap-1.5 bg-white/95 dark:bg-slate-800/90 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-700/80 shadow-xs overflow-x-auto no-scrollbar scroll-smooth touch-pan-x"
+          >
             <button
+              type="button"
+              data-active={activeMainTab === 'conferencia'}
               onClick={() => onChangeMainTab('conferencia')}
-              className={`py-1.5 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 sm:gap-1.5 shrink-0 ${
+              className={`py-1.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap select-none active:scale-95 ${
                 activeMainTab === 'conferencia'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-500'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-750'
               }`}
-              title="Conferência de Bombas"
+              title="Conferência de Bombas e Equipamentos"
             >
               <FileCheck className="w-3.5 h-3.5 shrink-0" />
               <span>Conferência</span>
             </button>
 
             <button
+              type="button"
+              data-active={activeMainTab === 'consulta'}
               onClick={() => onChangeMainTab('consulta')}
-              className={`py-1.5 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 sm:gap-1.5 shrink-0 ${
+              className={`py-1.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap select-none active:scale-95 ${
                 activeMainTab === 'consulta'
-                  ? 'bg-cyan-600 text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  ? 'bg-cyan-600 text-white shadow-sm ring-1 ring-cyan-500'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-750'
               }`}
               title="Consulta de Aparelhos & QR Code Arkmeds"
             >
@@ -616,33 +634,35 @@ export default function Navbar({
             </button>
 
             <button
+              type="button"
+              data-active={activeMainTab === 'auditoria'}
               onClick={() => onChangeMainTab('auditoria')}
-              className={`py-1.5 px-1 sm:px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 sm:gap-1.5 truncate ${
+              className={`py-1.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap select-none active:scale-95 ${
                 activeMainTab === 'auditoria'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  ? 'bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-500'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-750'
               }`}
               title="Espelho Seguro da Planilha"
             >
               <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate hidden sm:inline">Espelho Seguro</span>
-              <span className="truncate sm:hidden">Espelho</span>
+              <span>Espelho Seguro</span>
             </button>
 
             <button
+              type="button"
+              data-active={activeMainTab === 'planejamento'}
               onClick={() => onChangeMainTab('planejamento')}
-              className={`py-1.5 px-1 sm:px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 sm:gap-1.5 relative truncate ${
+              className={`py-1.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap select-none active:scale-95 ${
                 activeMainTab === 'planejamento'
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  ? 'bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-500'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-750'
               }`}
-              title="Planejamento de Cronogramas e Metas"
+              title="Planejamento de Cronogramas e Metas Mensais"
             >
               <Calendar className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate hidden sm:inline">Planejamento</span>
-              <span className="truncate sm:hidden">Metas</span>
+              <span>Planejamento</span>
               {monthlyPlans.length > 0 && (
-                <span className={`text-[9px] px-1 py-0.2 rounded-full font-black shrink-0 ${
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black leading-none shrink-0 ${
                   activeMainTab === 'planejamento' 
                     ? 'bg-white/30 text-white' 
                     : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
@@ -654,49 +674,55 @@ export default function Navbar({
 
             {serviceConfig?.enableCarrinhoDevolucao && (
               <button
+                type="button"
+                data-active={activeMainTab === 'devolucao'}
                 onClick={() => onChangeMainTab('devolucao')}
-                className={`py-1.5 px-1 sm:px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 sm:gap-1.5 truncate ${
+                className={`py-1.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap select-none active:scale-95 ${
                   activeMainTab === 'devolucao'
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    ? 'bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-500'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-750'
                 }`}
-                title="Carrinho de Devolução"
+                title="Carrinho & Devolução de Bombas aos Setores"
               >
                 <Truck className="w-3.5 h-3.5 shrink-0" />
-                <span className="truncate hidden sm:inline">Carrinho & Devolução</span>
-                <span className="truncate sm:hidden">Carrinho</span>
+                <span>Carrinho & Devolução</span>
                 {cartBadgeCount > 0 && (
-                  <span className="ml-0.5 text-[9px] font-black px-1.5 py-0.2 rounded-full bg-emerald-500 text-white shadow-xs">
+                  <span className="inline-flex items-center justify-center text-[10px] font-black px-1.5 py-0.2 rounded-full bg-emerald-500 text-white shadow-xs shrink-0 animate-pulse">
                     {cartBadgeCount}
                   </span>
                 )}
               </button>
             )}
 
+            {onOpenArkmedsSync && (
+              <button
+                type="button"
+                onClick={onOpenArkmedsSync}
+                className="py-1.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap select-none bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 border border-teal-500/30 active:scale-95"
+                title="Sincronizar e Consultar Equipamentos no Arkmeds"
+              >
+                <Database className="w-3.5 h-3.5 shrink-0 text-teal-500" />
+                <span>Arkmeds</span>
+                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-teal-500/20 text-teal-400 font-bold leading-none shrink-0 border border-teal-500/30">
+                  Sync
+                </span>
+              </button>
+            )}
+
             <button
+              type="button"
+              data-active={activeMainTab === 'perfil'}
               onClick={() => onChangeMainTab('perfil')}
-              className={`py-1.5 px-1 sm:px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 sm:gap-1.5 truncate ${
+              className={`py-1.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap select-none active:scale-95 ${
                 activeMainTab === 'perfil'
-                  ? 'bg-purple-600 text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  ? 'bg-purple-600 text-white shadow-sm ring-1 ring-purple-500'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-750'
               }`}
               title="Perfil do Técnico: Frente de Trabalho e Opções de Checagem"
             >
               <User className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate hidden sm:inline">Perfil Técnico</span>
-              <span className="truncate sm:hidden">Perfil</span>
+              <span>Perfil</span>
             </button>
-
-            {onOpenArkmedsSync && (
-              <button
-                onClick={onOpenArkmedsSync}
-                className="py-1.5 px-1 sm:px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 sm:gap-1.5 truncate bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/30"
-                title="Sincronizar Arkmeds"
-              >
-                <Database className="w-3.5 h-3.5 shrink-0 text-teal-500" />
-                <span className="truncate">Arkmeds</span>
-              </button>
-            )}
           </nav>
         </div>
       )}
