@@ -429,3 +429,252 @@ export async function checkArkmedsStatus() {
     };
   }
 }
+
+// ---------------- GESTÃO DE PLANOS MENSAIS ARKMEDS (SOMENTE LEITURA) ---------------- //
+
+let cachedPlansList = null;
+let cachedPlansListTime = 0;
+
+/**
+ * Lista todos os planos mensais cadastrados no Arkmeds (SOMENTE LEITURA)
+ */
+export async function listArkmedsPlans(forceRefresh = false) {
+  const now = Date.now();
+  if (!forceRefresh && cachedPlansList && (now - cachedPlansListTime) < 15 * 60 * 1000) {
+    return cachedPlansList;
+  }
+
+  const session = await getArkmedsSession();
+  const res = await fetch(`${BASE_URL}/relatorio/planos/`, {
+    headers: {
+      'Cookie': session,
+      'User-Agent': 'Mozilla/5.0 (CalibraCheck-Arkmeds-Integration/1.0)'
+    }
+  });
+
+  if (!res.ok) {
+    throw new Error(`Falha ao obter planos do Arkmeds (Status ${res.status})`);
+  }
+
+  const html = await res.text();
+  const selectMatch = html.match(/<select[^>]*name=[\"\']planos[\"\'][^>]*>([\s\S]*?)<\/select>/i);
+  if (!selectMatch) {
+    return { success: true, count: 0, plans: [] };
+  }
+
+  const rawOpts = [...selectMatch[1].matchAll(/<option[^>]*value=[\"\'](\d+)[\"\'][^>]*>([\s\S]*?)<\/option>/gi)];
+  const MONTHS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+
+  const plans = [];
+
+  for (const opt of rawOpts) {
+    const id = opt[1];
+    const rawTitle = opt[2].trim();
+    if (rawTitle.toLowerCase() === 'excluir') continue;
+
+    // Detect unit
+    let unitTag = 'GERAL';
+    let unitName = 'Geral / Outros';
+    const upper = rawTitle.toUpperCase();
+
+    if (upper.includes('HGLB') || upper.includes('LUIZ BUAIZ')) {
+      unitTag = 'HGLB';
+      unitName = 'Hospital Geral Dr. Luiz Buaiz';
+    } else if (upper.includes('HA') || upper.includes('AQUIDABAN')) {
+      unitTag = 'HA';
+      unitName = 'HIFA Aquidaban';
+    } else if (upper.includes('HM') || upper.includes('MATERNIDADE') || upper.includes('SUMARÉ') || upper.includes('SUMARE')) {
+      unitTag = 'HM';
+      unitName = 'HIFA Maternidade (Sumaré)';
+    } else if (upper.includes('HG') || upper.includes('GUARAPARI')) {
+      unitTag = 'HG';
+      unitName = 'HIFA Guarapari';
+    } else if (upper.includes('NEFROLOGIA')) {
+      unitTag = 'NEFRO';
+      unitName = 'Nefrologia';
+    } else if (upper.includes('CME')) {
+      unitTag = 'CME';
+      unitName = 'Central de Material e Esterilização';
+    } else if (upper.includes('IPEM')) {
+      unitTag = 'IPEM';
+      unitName = 'Verificação Anual IPEM';
+    } else if (upper.includes('HL')) {
+      unitTag = 'HGLB';
+      unitName = 'Hospital Geral Dr. Luiz Buaiz';
+    }
+
+    // Detect month or period
+    let period = 'Anual';
+    const lower = rawTitle.toLowerCase();
+    for (const m of MONTHS) {
+      if (lower.includes(m)) {
+        period = m.charAt(0).toUpperCase() + m.slice(1);
+        break;
+      }
+    }
+    if (period === 'Anual') {
+      if (lower.includes('mensa')) period = 'Mensal';
+      else if (lower.includes('bimestral')) period = 'Bimestral';
+      else if (lower.includes('trimestral')) period = 'Trimestral';
+      else if (lower.includes('semestral')) period = 'Semestral';
+      else if (lower.includes('diária') || lower.includes('diaria')) period = 'Diária';
+      else if (lower.includes('bianual')) period = 'Bianual';
+    }
+
+    plans.push({
+      id,
+      title: rawTitle,
+      unitTag,
+      unitName,
+      period,
+      readOnly: true
+    });
+  }
+
+  // Sort by Unit then by Title
+  plans.sort((a, b) => {
+    if (a.unitTag !== b.unitTag) return a.unitTag.localeCompare(b.unitTag);
+    return a.title.localeCompare(b.title);
+  });
+
+  cachedPlansList = {
+    success: true,
+    readOnly: true,
+    count: plans.length,
+    plans
+  };
+  cachedPlansListTime = now;
+
+  return cachedPlansList;
+}
+
+/**
+ * Consulta e extrai todos os equipamentos vinculados a um plano no Arkmeds (SOMENTE LEITURA)
+ */
+export async function fetchArkmedsPlanEquipments(planId) {
+  if (!planId) throw new Error('ID do plano do Arkmeds é obrigatório.');
+
+  const session = await getArkmedsSession();
+  const csrfMatch = session.match(/csrftoken=([^;]+)/);
+  const csrf = csrfMatch ? csrfMatch[1] : '';
+
+  const formParams = new URLSearchParams();
+  formParams.append('csrfmiddlewaretoken', csrf);
+  formParams.append('planos', String(planId));
+
+  const res = await fetch(`${BASE_URL}/relatorio/planos/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Cookie': session,
+      'Referer': `${BASE_URL}/relatorio/planos/`,
+      'User-Agent': 'Mozilla/5.0 (CalibraCheck-Arkmeds-Integration/1.0)'
+    },
+    body: formParams.toString()
+  });
+
+  if (!res.ok) {
+    throw new Error(`Erro ao consultar equipamentos do plano no Arkmeds (Status ${res.status})`);
+  }
+
+  const html = await res.text();
+
+  // Parsing sections by H3 (Sector / Hospital)
+  const sections = html.split(/<h3[^>]*>/i);
+  const equipments = [];
+
+  for (let i = 1; i < sections.length; i++) {
+    const sec = sections[i];
+    const endH3 = sec.indexOf('</h3>');
+    if (endH3 === -1) continue;
+
+    const proprietario = sec.substring(0, endH3).trim();
+    let setor = proprietario;
+    let hospital = '';
+    if (proprietario.includes(' - ')) {
+      const parts = proprietario.split(' - ');
+      setor = parts[0].trim();
+      hospital = parts.slice(1).join(' - ').trim();
+    }
+
+    const equipBlocks = sec.split(/<h4[^>]*>/i);
+    for (let j = 1; j < equipBlocks.length; j++) {
+      const block = equipBlocks[j];
+      const endH4 = block.indexOf('</h4>');
+      if (endH4 === -1) continue;
+      const h4Text = block.substring(0, endH4).replace(/<[^>]+>/g, '').trim();
+
+      // "<Nome> tag: <Tag> ns: <Serie> p: <Patrimonio>"
+      const match = h4Text.match(/^(.*?)\s+tag:\s*(\S+)\s+ns:\s*(\S+)\s+p:\s*(.*)$/i);
+      let nome = h4Text;
+      let tag = '';
+      let serie = '';
+      let patrimonio = '';
+
+      if (match) {
+        nome = match[1].trim();
+        tag = match[2].trim() === 'N/A' ? '' : match[2].trim();
+        serie = match[3].trim() === 'N/A' ? '' : match[3].trim();
+        patrimonio = match[4].trim() === 'N/A' ? '' : match[4].trim();
+      }
+
+      // Ignora avisos de texto puro que não são equipamentos reais
+      if (nome.toLowerCase().includes('não existe') || nome.toLowerCase().includes('nenhum agendamento') || (!tag && !serie && nome.length > 50)) {
+        continue;
+      }
+
+      const tableRows = [...block.matchAll(/<tr>([\s\S]*?)<\/tr>/gi)];
+      let tipoServico = '';
+      let vencimento = '';
+      let ultimaData = '';
+      let frequencia = '';
+      let estado = 'Ativo';
+
+      for (const row of tableRows) {
+        const cells = [...row[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map(c => c[1].replace(/<[^>]+>/g, '').trim());
+        if (cells.length >= 6) {
+          frequencia = cells[1] || '';
+          ultimaData = cells[2] || '';
+          vencimento = cells[3] || '';
+          tipoServico = cells[4] || '';
+          estado = cells[5] || 'Em dia';
+        }
+      }
+
+      const cleanCode = tag || serie || `ARK-${planId}-${equipments.length + 1}`;
+
+      equipments.push({
+        id: `ARK-${tag || serie || (equipments.length + 1)}`,
+        arkmedsPlanId: String(planId),
+        codigoBarras: cleanCode,
+        tag: tag || cleanCode,
+        equipamento: nome,
+        fabricante: '',
+        modelo: '',
+        serie: serie,
+        patrimonio: patrimonio,
+        setor: setor || 'Geral',
+        unidadeHospital: hospital || proprietario,
+        proprietarioCompleto: proprietario,
+        tipoServico: tipoServico || 'Calibração',
+        validadeCalibracao: vencimento || 'N/A',
+        statusCalibracao: estado.toLowerCase().includes('dia') ? 'Válido' : (estado || 'Válido'),
+        checado: false,
+        dataCheck: null,
+        frequencia,
+        ultimaData,
+        vencimento,
+        observacao: `Plano Arkmeds (ID: ${planId}) • ${tipoServico || 'Calibração'}`,
+        origem: 'arkmeds'
+      });
+    }
+  }
+
+  return {
+    success: true,
+    readOnly: true,
+    planId: String(planId),
+    totalEquipments: equipments.length,
+    equipments
+  };
+}

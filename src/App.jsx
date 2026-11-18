@@ -56,6 +56,7 @@ import AlreadyScannedAlertModal from './components/AlreadyScannedAlertModal';
 import EditEquipmentModal from './components/EditEquipmentModal';
 import AddEquipmentModal from './components/AddEquipmentModal';
 import ArkmedsSyncModal from './components/ArkmedsSyncModal';
+import ConsultaAparelhoTab from './components/ConsultaAparelhoTab';
 import { addEquipmentToCart, addMultipleEquipmentsToCart, getCartSeries } from './utils/cartStorage';
 
 import { parseSpreadsheetFile, exportToExcel } from './utils/sheetParser';
@@ -2253,7 +2254,26 @@ export default function App() {
           </div>
         )}
         
-        {activeMainTab === 'auditoria' ? (
+        {activeMainTab === 'consulta' ? (
+          <ConsultaAparelhoTab
+            equipments={equipments}
+            activeHospital={activeHospital}
+            activePlanId={activePlanId}
+            onOpenScanner={() => setIsScannerOpen(true)}
+            onAddEquipmentToActivePlan={async (eqToAdd) => {
+              const code = eqToAdd.serie || eqToAdd.tag || eqToAdd.codigoBarras;
+              await handleScanCode(code);
+            }}
+            onCheckEquipment={(id) => {
+              const eq = equipments.find(e => e.id === id);
+              if (eq) {
+                handleScanCode(eq.serie || eq.tag || eq.codigoBarras);
+              }
+            }}
+            onNavigateToConferencia={() => setActiveMainTab('conferencia')}
+            sectorColors={sectorColors}
+          />
+        ) : activeMainTab === 'auditoria' ? (
           <SpreadsheetAuditView
             equipments={equipments}
             hospitalName={activeHospital?.name}
@@ -2274,6 +2294,9 @@ export default function App() {
             onUpdatePlan={handleUpdatePlan}
             onDeletePlan={handleDeletePlan}
             hospitalName={activeHospital?.name}
+            activeHospitalId={activeHospital?.id}
+            onRefreshData={syncWithServer}
+            onNavigateToConferencia={() => setActiveMainTab('conferencia')}
             onNavigateToScanner={() => {
               setActiveMainTab('conferencia');
               setIsScannerOpen(true);

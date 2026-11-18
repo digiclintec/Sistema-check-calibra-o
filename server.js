@@ -9,7 +9,13 @@ import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
 import { parseWorkbookBuffer, parseCsvText } from './src/utils/sheetParser.js';
 import { PDFParse } from 'pdf-parse';
-import { checkArkmedsStatus, resolveArkmedsQrCode, syncArkmedsEquipments } from './server/arkmedsService.js';
+import { 
+  checkArkmedsStatus, 
+  resolveArkmedsQrCode, 
+  syncArkmedsEquipments,
+  listArkmedsPlans,
+  fetchArkmedsPlanEquipments
+} from './server/arkmedsService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -3007,6 +3013,127 @@ app.post('/api/arkmeds/sync', async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error('[Arkmeds] Erro na sincronização:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Listagem de Planos Mensais do Arkmeds (SOMENTE LEITURA)
+app.get('/api/arkmeds/plans', async (req, res) => {
+  try {
+    const forceRefresh = req.query.refresh === 'true';
+    const result = await listArkmedsPlans(forceRefresh);
+    res.json(result);
+  } catch (err) {
+    console.error('[Arkmeds] Erro ao listar planos:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Consulta de Equipamentos de um Plano do Arkmeds (SOMENTE LEITURA)
+app.get('/api/arkmeds/plans/:planId/equipments', async (req, res) => {
+  try {
+    const { planId } = req.params;
+    const result = await fetchArkmedsPlanEquipments(planId);
+    res.json(result);
+  } catch (err) {
+    console.error('[Arkmeds] Erro ao buscar equipamentos do plano:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Habilitar Plano do Arkmeds no CalibraCheck (Inicia Conferência do Plano)
+app.post('/api/arkmeds/plans/enable', async (req, res) => {
+  try {
+    const { planId, planTitle, hospitalId } = req.body || {};
+    if (!planId) {
+      return res.status(400).json({ success: false, message: 'ID do plano do Arkmeds é obrigatório.' });
+    }
+
+    // Busca equipamentos no Arkmeds (SOMENTE LEITURA)
+    const eqResult = await fetchArkmedsPlanEquipments(planId);
+    if (!eqResult.equipments || eqResult.equipments.length === 0) {
+      return res.status(404).json({ success: false, message: 'Nenhum equipamento retornado para este plano no Arkmeds.' });
+    }
+
+    const db = readDb();
+    const targetHospId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
+    const hosp = (db.hospitals || []).find(h => h.id === targetHospId);
+
+    if (!hosp) {
+      return res.status(404).json({ success: false, message: 'Hospital de destino não encontrado no CalibraCheck.' });
+    }
+
+    hosp.plans = hosp.plans || [];
+
+    // Verifica se já existe um plano no CalibraCheck vinculado a este arkmedsPlanId
+    let plan = hosp.plans.find(p => p.arkmedsPlanId === String(planId) || p.id === `plan_arkmeds_${planId}`);
+
+    const curYear = new Date().getFullYear();
+    const title = planTitle || `Plano Arkmeds: ${planId}`;
+
+    if (!plan) {
+      plan = {
+        id: `plan_arkmeds_${planId}`,
+        arkmedsPlanId: String(planId),
+        title,
+        tipo: 'mensal',
+        ano: String(curYear),
+        mes: 'Arkmeds',
+        dataInicio: `${curYear}-01-01`,
+        dataFim: `${curYear}-12-31`,
+        fileName: `Arkmeds_${planId}.xlsx`,
+        equipments: eqResult.equipments,
+        createdAt: new Date().toISOString(),
+        lastUpdated: Date.now(),
+        origem: 'arkmeds'
+      };
+      hosp.plans.push(plan);
+    } else {
+      // Atualiza lista de equipamentos preservando os já checados localmente pelo técnico
+      const checkedTagsOrCodes = new Map();
+      (plan.equipments || []).forEach(eq => {
+        if (eq.checado) {
+          const key = (eq.tag || eq.serie || eq.codigoBarras || '').toLowerCase();
+          if (key) checkedTagsOrCodes.set(key, eq);
+        }
+      });
+
+      plan.equipments = eqResult.equipments.map(newEq => {
+        const key = (newEq.tag || newEq.serie || newEq.codigoBarras || '').toLowerCase();
+        if (checkedTagsOrCodes.has(key)) {
+          const existing = checkedTagsOrCodes.get(key);
+          return {
+            ...newEq,
+            checado: true,
+            dataCheck: existing.dataCheck,
+            tecnico: existing.tecnico || existing.usuarioCheck
+          };
+        }
+        return newEq;
+      });
+
+      plan.title = title;
+      plan.lastUpdated = Date.now();
+    }
+
+    // Ativa o plano como corrente no hospital
+    hosp.activePlanId = plan.id;
+    hosp.equipments = plan.equipments;
+    hosp.lastUpdated = Date.now();
+    db.activeHospitalId = hosp.id;
+    db.lastUpdated = Date.now();
+    saveDb(db);
+
+    res.json({
+      success: true,
+      plan,
+      totalEquipments: plan.equipments.length,
+      hospitalId: hosp.id,
+      hospitalName: hosp.name,
+      message: `Plano "${title}" habilitado com sucesso (${plan.equipments.length} equipamentos carregados)!`
+    });
+  } catch (err) {
+    console.error('[Arkmeds] Erro ao habilitar plano:', err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 });

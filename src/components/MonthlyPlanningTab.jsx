@@ -26,7 +26,9 @@ import {
   ShieldAlert,
   Search,
   Pencil,
-  Zap
+  Zap,
+  Database,
+  RefreshCw
 } from 'lucide-react';
 import { parseEquipmentFile } from '../utils/fileEquipmentParser.js';
 
@@ -45,12 +47,89 @@ export default function MonthlyPlanningTab({
   hospitalName,
   onNavigateToScanner,
   onOpenAddEquipment,
-  onEditEquipment
+  onEditEquipment,
+  onNavigateToConferencia,
+  onRefreshData,
+  activeHospitalId
 }) {
-  // Sub-abas de visualização: 'planos' (Cards de Planos) ou 'cronograma' (Previsão Anual)
+  // Sub-abas de visualização: 'planos' (Cards de Planos), 'cronograma' (Previsão Anual) ou 'arkmeds' (Planos Mensais Arkmeds)
   const [activeSubTab, setActiveSubTab] = useState('planos');
 
-  // Filtros de Planos
+  // Planos Mensais do Arkmeds (Sincronização Somente Leitura)
+  const [arkmedsPlans, setArkmedsPlans] = useState([]);
+  const [isLoadingArkmedsPlans, setIsLoadingArkmedsPlans] = useState(false);
+  const [arkmedsLoadError, setArkmedsLoadError] = useState('');
+  const [enablingPlanId, setEnablingPlanId] = useState(null);
+  const [arkmedsUnitFilter, setArkmedsUnitFilter] = useState('todos'); // 'todos', 'HGLB', 'HA', 'HM', 'HG', 'outros'
+  const [arkmedsMonthFilter, setArkmedsMonthFilter] = useState('todos');
+  const [arkmedsSearch, setArkmedsSearch] = useState('');
+
+  // Carrega lista de planos mensais do Arkmeds
+  const loadArkmedsPlans = async (force = false) => {
+    setIsLoadingArkmedsPlans(true);
+    setArkmedsLoadError('');
+    try {
+      const res = await fetch(`/api/arkmeds/plans${force ? '?refresh=true' : ''}`);
+      const data = await res.json();
+      if (data.success && data.plans) {
+        setArkmedsPlans(data.plans);
+      } else {
+        setArkmedsLoadError(data.message || 'Erro ao carregar planos do Arkmeds.');
+      }
+    } catch (err) {
+      setArkmedsLoadError('Erro de conexão ao carregar planos: ' + err.message);
+    } finally {
+      setIsLoadingArkmedsPlans(false);
+    }
+  };
+
+  // Carrega ao entrar na aba Arkmeds
+  React.useEffect(() => {
+    if (activeSubTab === 'arkmeds' && arkmedsPlans.length === 0) {
+      loadArkmedsPlans();
+    }
+  }, [activeSubTab]);
+
+  // Habilita um plano do Arkmeds no CalibraCheck (Inicia a conferência com os equipamentos reais)
+  const handleEnableArkmedsPlan = async (plan) => {
+    if (!plan || !plan.id) return;
+    setEnablingPlanId(plan.id);
+    try {
+      const res = await fetch('/api/arkmeds/plans/enable', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          planId: plan.id,
+          planTitle: plan.title,
+          hospitalId: activeHospitalId
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        alert(data.message || 'Falha ao habilitar plano do Arkmeds.');
+        return;
+      }
+
+      if (onRefreshData) {
+        await onRefreshData();
+      }
+
+      if (onSwitchPlan && data.plan) {
+        onSwitchPlan(data.plan.id);
+      }
+
+      if (onNavigateToConferencia) {
+        onNavigateToConferencia();
+      }
+    } catch (err) {
+      alert('Erro ao habilitar plano: ' + err.message);
+    } finally {
+      setEnablingPlanId(null);
+    }
+  };
+
+  // Filtros de Planos Locais
   const [typeFilter, setTypeFilter] = useState('todos'); // 'todos', 'anual', 'mensal'
   const [yearFilter, setYearFilter] = useState('todos');
   const [searchPlan, setSearchPlan] = useState('');
@@ -436,6 +515,21 @@ export default function MonthlyPlanningTab({
               </span>
             )}
           </button>
+
+          <button
+            onClick={() => setActiveSubTab('arkmeds')}
+            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 ${
+              activeSubTab === 'arkmeds'
+                ? 'bg-purple-600 text-white shadow-md shadow-purple-500/20'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <Database className="w-4 h-4 text-purple-400" />
+            <span>Planos Arkmeds ({arkmedsPlans.length || 58})</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-purple-500/20 text-purple-600 dark:text-purple-300">
+              Sync
+            </span>
+          </button>
         </div>
       </div>
 
@@ -687,6 +781,229 @@ export default function MonthlyPlanningTab({
                   </div>
                 );
               })}
+            </div>
+          )}
+
+        </div>
+      )}
+
+      {/* ============================================================
+          SUB-ABA 3: PLANOS MENSAIS SINCRONIZADOS DO ARKMEDS (SOMENTE LEITURA)
+      ============================================================ */}
+      {activeSubTab === 'arkmeds' && (
+        <div className="space-y-5">
+          
+          {/* HEADER DO ARKMEDS COM STATUS */}
+          <div className="bg-gradient-to-r from-purple-900/90 via-indigo-900/90 to-slate-900 rounded-3xl p-5 sm:p-7 text-white shadow-xl border border-purple-500/20 relative overflow-hidden">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-purple-500/30 text-purple-200 border border-purple-400/30 flex items-center gap-1.5">
+                    <Database className="w-3 h-3 text-cyan-300" />
+                    Arkmeds Gestão Clínica
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    Modo Leitura Seguro (Read-Only)
+                  </span>
+                </div>
+                <h3 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2">
+                  Planos Mensais Sincronizados do Arkmeds
+                </h3>
+                <p className="text-xs sm:text-sm text-purple-200/90 mt-1 max-w-2xl">
+                  Selecione o plano de manutenção mensal (ex: <strong>Março - HGLB</strong>) e clique em <strong>Habilitar Plano</strong> para carregar todos os aparelhos programados para checagem e conferência imediata no CalibraCheck.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <button
+                  onClick={() => loadArkmedsPlans(true)}
+                  disabled={isLoadingArkmedsPlans}
+                  className="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-white/10 hover:bg-white/20 text-white transition flex items-center gap-2 border border-white/20 active:scale-95 disabled:opacity-50"
+                  title="Atualizar lista de planos do Arkmeds"
+                >
+                  <RefreshCw className={`w-4 h-4 text-purple-300 ${isLoadingArkmedsPlans ? 'animate-spin' : ''}`} />
+                  <span>{isLoadingArkmedsPlans ? 'Carregando...' : 'Atualizar'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* BARRA DE FILTROS POR HOSPITAL & BUSCA */}
+            <div className="mt-5 pt-4 border-t border-purple-500/20 flex flex-col md:flex-row md:items-center justify-between gap-3">
+              
+              {/* Filtro por Unidade Hospitalar */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 max-w-full">
+                {[
+                  { id: 'todos', label: 'Todos os Hospitais' },
+                  { id: 'HGLB', label: 'HGLB (Luiz Buaiz)' },
+                  { id: 'HA', label: 'HA (Aquidaban)' },
+                  { id: 'HM', label: 'HM (Maternidade)' },
+                  { id: 'HG', label: 'HG (Guarapari)' },
+                  { id: 'outros', label: 'Especialidades / CME' }
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setArkmedsUnitFilter(tab.id)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+                      arkmedsUnitFilter === tab.id
+                        ? 'bg-purple-500 text-white shadow-md shadow-purple-500/30'
+                        : 'bg-white/10 text-purple-200 hover:bg-white/20'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Busca por texto */}
+              <div className="relative w-full md:w-64">
+                <Search className="w-3.5 h-3.5 text-purple-300 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={arkmedsSearch}
+                  onChange={(e) => setArkmedsSearch(e.target.value)}
+                  placeholder="Buscar plano (ex: Março)..."
+                  className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl bg-purple-950/60 border border-purple-500/30 text-white placeholder-purple-300/60 focus:outline-none focus:border-cyan-400"
+                />
+              </div>
+
+            </div>
+          </div>
+
+          {/* ESTADO DE ERRO OU CARREGAMENTO */}
+          {isLoadingArkmedsPlans && arkmedsPlans.length === 0 && (
+            <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-3">
+              <RefreshCw className="w-8 h-8 text-purple-600 animate-spin mx-auto" />
+              <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                Consultando planos mensais cadastrados no Arkmeds...
+              </p>
+            </div>
+          )}
+
+          {arkmedsLoadError && (
+            <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 flex items-center gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+              <p className="text-xs sm:text-sm text-amber-800 dark:text-amber-300 font-medium">
+                {arkmedsLoadError}
+              </p>
+            </div>
+          )}
+
+          {/* GRID DE CARDS DOS PLANOS ARKMEDS */}
+          {arkmedsPlans.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+              {arkmedsPlans
+                .filter(p => {
+                  if (arkmedsUnitFilter === 'outros') {
+                    if (['HGLB', 'HA', 'HM', 'HG'].includes(p.unitTag)) return false;
+                  } else if (arkmedsUnitFilter !== 'todos' && p.unitTag !== arkmedsUnitFilter) {
+                    return false;
+                  }
+
+                  if (arkmedsSearch.trim()) {
+                    const q = arkmedsSearch.trim().toLowerCase();
+                    return p.title.toLowerCase().includes(q) || p.unitName.toLowerCase().includes(q);
+                  }
+
+                  return true;
+                })
+                .map(plan => {
+                  const localPlan = plans.find(p => p.arkmedsPlanId === String(plan.id) || p.id === `plan_arkmeds_${plan.id}`);
+                  const isCurrentlyActive = localPlan && localPlan.id === activePlanId;
+                  const isEnabling = enablingPlanId === plan.id;
+
+                  return (
+                    <div
+                      key={plan.id}
+                      className={`p-4 sm:p-5 rounded-3xl border transition flex flex-col justify-between gap-4 ${
+                        isCurrentlyActive
+                          ? 'bg-purple-50/80 dark:bg-purple-950/40 border-purple-500 shadow-md ring-1 ring-purple-500'
+                          : localPlan
+                          ? 'bg-blue-50/50 dark:bg-slate-800/60 border-blue-200 dark:border-slate-700'
+                          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 shadow-xs'
+                      }`}
+                    >
+                      <div>
+                        {/* TAGS DO PLANO */}
+                        <div className="flex items-center justify-between gap-1 mb-2">
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                            {plan.unitName}
+                          </span>
+
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                            {plan.period}
+                          </span>
+                        </div>
+
+                        {/* TÍTULO DO PLANO */}
+                        <h4 className="text-sm sm:text-base font-black text-slate-900 dark:text-white line-clamp-2">
+                          {plan.title}
+                        </h4>
+
+                        {/* STATUS DO PLANO NO SISTEMA */}
+                        <div className="mt-3 flex items-center gap-2">
+                          {isCurrentlyActive ? (
+                            <span className="text-[11px] font-black text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                              Plano Ativo no Momento ({localPlan.equipments?.length || 0} aparelhos)
+                            </span>
+                          ) : localPlan ? (
+                            <span className="text-[11px] font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                              <Layers className="w-3.5 h-3.5 text-blue-500" />
+                              Já Habilitado ({localPlan.equipments?.length || 0} aparelhos)
+                            </span>
+                          ) : (
+                            <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                              <Clock className="w-3.5 h-3.5 text-slate-400" />
+                              Pronto para habilitar e conferir
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* BOTÕES DE AÇÃO */}
+                      <div className="pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between gap-2">
+                        <span className="text-[10px] font-mono text-slate-400">
+                          ID Arkmeds: #{plan.id}
+                        </span>
+
+                        {isCurrentlyActive ? (
+                          <button
+                            onClick={() => onNavigateToConferencia && onNavigateToConferencia()}
+                            className="px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center gap-1.5 shadow-sm active:scale-95"
+                          >
+                            <span>Ir para Conferência</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </button>
+                        ) : localPlan ? (
+                          <button
+                            onClick={() => {
+                              if (onSwitchPlan) onSwitchPlan(localPlan.id);
+                              if (onNavigateToConferencia) onNavigateToConferencia();
+                            }}
+                            className="px-3.5 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition flex items-center gap-1.5 shadow-sm active:scale-95"
+                          >
+                            <span>Ativar e Conferir</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleEnableArkmedsPlan(plan)}
+                            disabled={isEnabling}
+                            className="px-3.5 py-2 rounded-xl text-xs font-bold bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white transition flex items-center gap-1.5 shadow-md shadow-purple-500/20 active:scale-95"
+                            title="Carrega os aparelhos deste plano e inicia a conferência"
+                          >
+                            {isEnabling ? (
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Zap className="w-3.5 h-3.5 text-amber-300" />
+                            )}
+                            <span>{isEnabling ? 'Carregando...' : 'Habilitar Plano'}</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
             </div>
           )}
 

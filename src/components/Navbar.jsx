@@ -26,7 +26,8 @@ import {
   Truck,
   FileSpreadsheet,
   UserPlus,
-  Database
+  Database,
+  Search
 } from 'lucide-react';
 
 export default function Navbar({ 
@@ -201,6 +202,19 @@ export default function Navbar({
               >
                 <FileCheck className="w-3.5 h-3.5 shrink-0" />
                 <span>Conferência</span>
+              </button>
+
+              <button
+                onClick={() => onChangeMainTab('consulta')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
+                  activeMainTab === 'consulta'
+                    ? 'bg-cyan-600 text-white shadow-sm ring-1 ring-cyan-500'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+                title="Consulta Rápida de Aparelho & QR Code Arkmeds"
+              >
+                <Search className="w-3.5 h-3.5 shrink-0" />
+                <span>Consulta</span>
               </button>
 
               <button
@@ -574,10 +588,10 @@ export default function Navbar({
       ============================================================ */}
       {onChangeMainTab && (
         <div className="xl:hidden w-full bg-slate-50/95 dark:bg-[#090f1d]/95 border-t border-slate-200 dark:border-slate-800 px-2 sm:px-4 py-1.5">
-          <nav className="w-full max-w-2xl mx-auto grid grid-cols-4 gap-1 sm:gap-2 bg-white/90 dark:bg-slate-800/90 p-1 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-xs">
+          <nav className="w-full max-w-2xl mx-auto flex items-center gap-1 bg-white/90 dark:bg-slate-800/90 p-1 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-xs overflow-x-auto">
             <button
               onClick={() => onChangeMainTab('conferencia')}
-              className={`py-1.5 px-1 sm:px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 sm:gap-1.5 truncate ${
+              className={`py-1.5 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 sm:gap-1.5 shrink-0 ${
                 activeMainTab === 'conferencia'
                   ? 'bg-blue-600 text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -585,7 +599,20 @@ export default function Navbar({
               title="Conferência de Bombas"
             >
               <FileCheck className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">Conferência</span>
+              <span>Conferência</span>
+            </button>
+
+            <button
+              onClick={() => onChangeMainTab('consulta')}
+              className={`py-1.5 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 sm:gap-1.5 shrink-0 ${
+                activeMainTab === 'consulta'
+                  ? 'bg-cyan-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+              title="Consulta de Aparelhos & QR Code Arkmeds"
+            >
+              <Search className="w-3.5 h-3.5 shrink-0" />
+              <span>Consulta</span>
             </button>
 
             <button
