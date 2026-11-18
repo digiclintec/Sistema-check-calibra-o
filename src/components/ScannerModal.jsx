@@ -36,7 +36,8 @@ import {
   Plus,
   Pencil,
   Save,
-  Eye
+  Eye,
+  Tag
 } from 'lucide-react';
 import {
   playSuccessSound,
