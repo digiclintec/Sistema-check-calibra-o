@@ -241,7 +241,7 @@ export default function EquipmentTable({
           </div>
           <input
             type="text"
-            placeholder="Bipe com leitor ou digite o código..."
+            placeholder="Bipe código, patrimônio ou digite o IDEC (ex: SVHL-0015)..."
             value={quickCodeInput}
             onChange={(e) => setQuickCodeInput(e.target.value)}
             className="w-full min-w-0 bg-white dark:bg-slate-950 border-2 border-blue-500/40 dark:border-blue-500/50 rounded-xl sm:rounded-2xl pl-9 sm:pl-11 pr-18 sm:pr-20 py-2 sm:py-3 text-xs sm:text-sm font-mono text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-500/15 shadow-sm"
@@ -260,7 +260,7 @@ export default function EquipmentTable({
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Buscar por nome, tag, série, modelo..."
+            placeholder="Buscar por nome, tag/IDEC (ex: SVHL-0015), patrimônio, série..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full min-w-0 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl pl-9 pr-8 py-2 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"

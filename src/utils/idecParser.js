@@ -50,6 +50,10 @@ export function normalizeIdec(rawIdec) {
   // Remove rótulos iniciais
   str = str.replace(/^(?:[iIlL1]?IDENTIFICA[CÇ][AÃ]O|IDEC|TAG|PATR[IÍ]M[OÔ]NIO|APARELHO|ID)[\s:\-_]+/i, '').trim();
 
+  // Corrige confusões de hospital no fim de siglas de setores (ex: UTIAHI -> UTIAHL, SVH1 -> SVHL, SVHI -> SVHL)
+  str = str.replace(/([A-Z]{2,6})H[I|l|1](?=[-_ ]?\d|\b)/gi, '$1HL');
+  str = str.replace(/([A-Z]{2,6})H4(?=[-_ ]?\d|\b)/gi, '$1HA');
+
   // Divide letras e números
   const match = str.match(/^([A-Z]+)[-_ ]*(.*)$/);
   if (match) {
@@ -101,9 +105,9 @@ export function preprocessOcrText(rawText) {
   // Corrige 'lentificação', 'entificação', 'Idenficacao'
   str = str.replace(/\b(?:l|i|1|L)?(?:dentifica[cç][aã]o|dentificacao)\b/gi, 'identificacao');
 
-  // Corrige confusões de hospital no fim de siglas de setores (ex: UTIAHI -> UTIAHL, SVPHI -> SVPHL)
-  str = str.replace(/\b([A-Z]{2,6})H[I|l|1]\b/gi, '$1HL');
-  str = str.replace(/\b([A-Z]{2,6})H4\b/gi, '$1HA');
+  // Corrige confusões de hospital no fim de siglas de setores (ex: UTIAHI -> UTIAHL, SVPHI -> SVPHL, SVH1 -> SVHL)
+  str = str.replace(/([A-Z]{2,6})H[I|l|1](?=[-_ ]?\d|\b)/gi, '$1HL');
+  str = str.replace(/([A-Z]{2,6})H4(?=[-_ ]?\d|\b)/gi, '$1HA');
 
   return str;
 }

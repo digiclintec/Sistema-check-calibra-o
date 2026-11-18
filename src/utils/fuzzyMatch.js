@@ -171,6 +171,25 @@ function evaluateFieldMatch(scannedRaw, fieldRaw, tokens = []) {
     };
   }
 
+  // 1b2. Coincidência de IDEC desconsiderando Zeros à Esquerda no número (ex: "SVHL-15" === "SVHL-0015")
+  if (normScannedIdec && normFieldIdec) {
+    const sMatch = normScannedIdec.match(/^([A-Z]+)-(\d+)$/);
+    const fMatch = normFieldIdec.match(/^([A-Z]+)-(\d+)$/);
+    if (sMatch && fMatch && sMatch[1] === fMatch[1]) {
+      const sNum = sMatch[2].replace(/^0+/, '');
+      const fNum = fMatch[2].replace(/^0+/, '');
+      if (sNum && fNum && sNum === fNum) {
+        return {
+          score: 1345,
+          confidence: 100,
+          matchingDigits: sMatch[2].length,
+          matchedSnippet: fieldStr,
+          reason: `IDEC correspondente: "${fieldStr}"`
+        };
+      }
+    }
+  }
+
   // 1c. Coincidência Numérica de Patrimônio desconsiderando Zeros à Esquerda (ex: código de barras "0045812" === "45812")
   const normScannedNoZeros = scannedDigits.replace(/^0+/, '');
   const normFieldNoZeros = fieldDigits.replace(/^0+/, '');

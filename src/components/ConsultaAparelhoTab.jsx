@@ -275,7 +275,7 @@ export default function ConsultaAparelhoTab({
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Digite Tag (UTIAHL-0119), Série (CN23950450), ID (3538), QR Code (001005)..."
+                placeholder="Buscar por IDEC (ex: SVHL-0015), Tag (UTIAHL-0119), Série, Patrimônio, QR Code..."
                 className="w-full pl-10 pr-24 py-3 rounded-2xl bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder-slate-400 border-2 border-transparent focus:border-cyan-400 focus:outline-none text-xs sm:text-sm shadow-md font-medium"
               />
               {searchTerm && (
@@ -315,11 +315,11 @@ export default function ConsultaAparelhoTab({
           <div className="flex items-center gap-2 mt-3 text-[11px] text-slate-300 flex-wrap">
             <span className="opacity-75">Consultar exemplos:</span>
             {[
+              { label: 'Bomba Yonah (IDEC SVHL-0015)', val: 'SVHL-0015' },
               { label: 'Monitor UTI (Tag UTIAHL-0119)', val: 'UTIAHL-0119' },
               { label: 'Série CN23950450', val: 'CN23950450' },
               { label: 'QR Token 001005', val: '001005' },
-              { label: 'URL QR Code Arkmeds', val: 'https://hifaclinica.arkmeds.com/qr_code/equipamento/001005' },
-              { label: 'ID Arkmeds #3538', val: '3538' }
+              { label: 'ID Arkmeds #3243', val: '3243' }
             ].map(item => (
               <button
                 key={item.val}

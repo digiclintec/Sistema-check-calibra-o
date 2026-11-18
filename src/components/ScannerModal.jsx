@@ -1686,7 +1686,7 @@ export default function ScannerModal({
                   }`}
                 title="Alternar alvo de busca: Auto (Tudo) / Patrimônio / IDEC / Série"
               >
-                <span>🔍 {searchTarget === 'all' ? 'Auto (Tudo)' : searchTarget === 'patrimonio' ? 'Patrimônio' : searchTarget === 'idec' ? 'IDEC' : 'Série'}</span>
+                <span>🔍 {searchTarget === 'all' ? 'Auto (Tudo)' : searchTarget === 'patrimonio' ? 'Patrimônio' : searchTarget === 'idec' ? 'IDEC (SVHL-0015)' : 'Série'}</span>
               </button>
             </div>
 
@@ -1777,22 +1777,6 @@ export default function ScannerModal({
                       <span>{currentLensDisplay}</span>
                     </button>
                   )}
-
-                  {/* Botão de Leitura de IDEC da Etiqueta */}
-                  <button
-                    type="button"
-                    onClick={handleScanIdecFromCamera}
-                    disabled={isReadingIdec}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-bold shadow-md backdrop-blur-xs transition active:scale-95 shrink-0 ${
-                      isReadingIdec
-                        ? 'bg-amber-500 text-slate-950 animate-pulse border border-amber-300'
-                        : 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white border border-amber-400/50 shadow-orange-500/30'
-                    }`}
-                    title="Lê o IDEC / Tag gravado na etiqueta física da bomba/aparelho"
-                  >
-                    <Zap className={`w-3.5 h-3.5 ${isReadingIdec ? 'animate-spin' : ''}`} />
-                    <span>{isReadingIdec ? (idecReadStatus || 'Lendo IDEC...') : '⚡ Ler IDEC'}</span>
-                  </button>
                 </div>
 
                 <div>
@@ -1965,24 +1949,29 @@ export default function ScannerModal({
                   </div>
                 </div>
               )}
+            </div>
 
-              {/* Botão Flutuante de Ação Rápida: Ler IDEC da Etiqueta (Ergonomia Mobile) */}
-              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-25 pointer-events-auto">
-                <button
-                  type="button"
-                  onClick={handleScanIdecFromCamera}
-                  disabled={isReadingIdec}
-                  className={`px-4 py-2 rounded-full font-black text-xs flex items-center gap-2 shadow-2xl backdrop-blur-md transition active:scale-95 ${
-                    isReadingIdec
-                      ? 'bg-amber-500 text-slate-950 border-2 border-amber-300 ring-4 ring-amber-400/30 animate-pulse'
-                      : 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-400 hover:to-orange-400 text-white border-2 border-amber-300/80 shadow-orange-500/50 ring-2 ring-white/20'
-                  }`}
-                  title="Captura a imagem e faz OCR do IDEC (ex: SVPHL-0010, UTIAHL-0119) impresso na etiqueta"
-                >
-                  <Zap className={`w-4 h-4 ${isReadingIdec ? 'animate-spin' : 'stroke-[3]'}`} />
-                  <span>{isReadingIdec ? (idecReadStatus || 'Digitalizando IDEC...') : '⚡ Ler IDEC da Etiqueta'}</span>
-                </button>
+            {/* BARRA DE AÇÃO EXTERNA: LEITURA DE IDEC 100% FORA DA TELA DE CAPTURA DA CÂMERA */}
+            <div className="w-full bg-slate-950 px-3 py-2 border-t border-slate-800 flex items-center justify-between gap-2 shrink-0 select-none">
+              <div className="flex items-center gap-1.5 text-xs text-slate-300 min-w-0 truncate">
+                <Tag className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span className="truncate">Padrão IDEC: <strong className="font-mono text-amber-300">SVHL-0015</strong></span>
               </div>
+
+              <button
+                type="button"
+                onClick={handleScanIdecFromCamera}
+                disabled={isReadingIdec}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition flex items-center gap-1.5 shadow-md active:scale-95 shrink-0 ${
+                  isReadingIdec
+                    ? 'bg-amber-500 text-slate-950 border border-amber-300 animate-pulse'
+                    : 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black border border-amber-300/60 shadow-amber-500/30'
+                }`}
+                title="Captura o quadro atual e faz OCR do IDEC (ex: SVHL-0015) da etiqueta física"
+              >
+                <Zap className={`w-3.5 h-3.5 ${isReadingIdec ? 'animate-spin' : 'stroke-[3]'}`} />
+                <span>{isReadingIdec ? (idecReadStatus || 'Digitalizando...') : '⚡ Capturar IDEC (Etiqueta)'}</span>
+              </button>
             </div>
 
           </div> {/* Fim do PAINEL DA ESQUERDA (CÂMERA) */}

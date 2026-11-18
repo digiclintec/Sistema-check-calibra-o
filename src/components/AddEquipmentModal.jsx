@@ -633,7 +633,7 @@ export default function AddEquipmentModal({
                   type="text"
                   value={tag}
                   onChange={(e) => setTag(e.target.value)}
-                  placeholder="Ex: SVPHL-0010"
+                  placeholder="Ex: SVHL-0015"
                   className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-300 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
                 />
               </div>
