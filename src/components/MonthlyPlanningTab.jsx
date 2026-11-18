@@ -60,9 +60,40 @@ export default function MonthlyPlanningTab({
   const [isLoadingArkmedsPlans, setIsLoadingArkmedsPlans] = useState(false);
   const [arkmedsLoadError, setArkmedsLoadError] = useState('');
   const [enablingPlanId, setEnablingPlanId] = useState(null);
-  const [arkmedsUnitFilter, setArkmedsUnitFilter] = useState('todos'); // 'todos', 'HGLB', 'HA', 'HM', 'HG', 'outros'
+
+  // Detecta a unidade correspondente ao hospital ativo da equipe
+  const activeHospitalUnitTag = useMemo(() => {
+    const name = String(hospitalName || '').toUpperCase();
+    if (name.includes('LUIZ BUAIZ') || name.includes('HGLB') || name.includes('GERAL')) return 'HGLB';
+    if (name.includes('AQUIDABAN') || name.includes(' HA ') || name.endsWith(' HA')) return 'HA';
+    if (name.includes('MATERNIDADE') || name.includes('SUMARÉ') || name.includes('SUMARE') || name.includes(' HM ') || name.endsWith(' HM')) return 'HM';
+    if (name.includes('GUARAPARI') || name.includes(' HG ') || name.endsWith(' HG')) return 'HG';
+    return 'HGLB';
+  }, [hospitalName]);
+
+  const [arkmedsUnitFilter, setArkmedsUnitFilter] = useState(() => activeHospitalUnitTag);
   const [arkmedsMonthFilter, setArkmedsMonthFilter] = useState('todos');
   const [arkmedsSearch, setArkmedsSearch] = useState('');
+
+  // Atualiza filtro de unidade caso o hospital ativo da equipe mude
+  useEffect(() => {
+    if (activeHospitalUnitTag) {
+      setArkmedsUnitFilter(activeHospitalUnitTag);
+    }
+  }, [activeHospitalUnitTag]);
+
+  // Contagem de planos por unidade hospitalar
+  const arkmedsUnitCounts = useMemo(() => {
+    const counts = { todos: arkmedsPlans.length, HGLB: 0, HA: 0, HM: 0, HG: 0, outros: 0 };
+    arkmedsPlans.forEach(p => {
+      if (['HGLB', 'HA', 'HM', 'HG'].includes(p.unitTag)) {
+        counts[p.unitTag] = (counts[p.unitTag] || 0) + 1;
+      } else {
+        counts.outros = (counts.outros || 0) + 1;
+      }
+    });
+    return counts;
+  }, [arkmedsPlans]);
 
   // Carrega lista de planos mensais do Arkmeds
   const loadArkmedsPlans = async (force = false) => {
@@ -827,31 +858,48 @@ export default function MonthlyPlanningTab({
               </div>
             </div>
 
+            {/* INFORMAÇÃO DA UNIDADE / EQUIPE ATIVA */}
+            <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/10 backdrop-blur-xs border border-white/20 text-xs">
+              <Building2 className="w-4 h-4 text-cyan-300" />
+              <span>Sua equipe está alocada em: <strong className="text-white underline">{hospitalName || 'Hospital Geral Dr. Luiz Buaiz'}</strong></span>
+            </div>
+
             {/* BARRA DE FILTROS POR HOSPITAL & BUSCA */}
             <div className="mt-5 pt-4 border-t border-purple-500/20 flex flex-col md:flex-row md:items-center justify-between gap-3">
               
-              {/* Filtro por Unidade Hospitalar */}
+              {/* Filtro por Unidade Hospitalar com Cores e Contagens */}
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 max-w-full">
                 {[
-                  { id: 'todos', label: 'Todos os Hospitais' },
-                  { id: 'HGLB', label: 'HGLB (Luiz Buaiz)' },
-                  { id: 'HA', label: 'HA (Aquidaban)' },
-                  { id: 'HM', label: 'HM (Maternidade)' },
-                  { id: 'HG', label: 'HG (Guarapari)' },
-                  { id: 'outros', label: 'Especialidades / CME' }
-                ].map(tab => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setArkmedsUnitFilter(tab.id)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap ${
-                      arkmedsUnitFilter === tab.id
-                        ? 'bg-purple-500 text-white shadow-md shadow-purple-500/30'
-                        : 'bg-white/10 text-purple-200 hover:bg-white/20'
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
+                  { id: 'HGLB', label: 'HGLB - Dr. Luiz Buaiz', count: arkmedsUnitCounts.HGLB, color: 'bg-blue-600', ring: 'ring-blue-400' },
+                  { id: 'HA', label: 'HA - Aquidaban', count: arkmedsUnitCounts.HA, color: 'bg-emerald-600', ring: 'ring-emerald-400' },
+                  { id: 'HM', label: 'HM - Maternidade (Sumaré)', count: arkmedsUnitCounts.HM, color: 'bg-rose-600', ring: 'ring-rose-400' },
+                  { id: 'HG', label: 'HG - Guarapari', count: arkmedsUnitCounts.HG, color: 'bg-amber-600', ring: 'ring-amber-400' },
+                  { id: 'outros', label: 'Especialidades / CME', count: arkmedsUnitCounts.outros, color: 'bg-purple-600', ring: 'ring-purple-400' },
+                  { id: 'todos', label: 'Todos os Hospitais', count: arkmedsUnitCounts.todos, color: 'bg-slate-700', ring: 'ring-slate-400' }
+                ].map(tab => {
+                  const isSelected = arkmedsUnitFilter === tab.id;
+                  const isTeamHospital = activeHospitalUnitTag === tab.id;
+
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setArkmedsUnitFilter(tab.id)}
+                      className={`px-3 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1.5 ${
+                        isSelected
+                          ? `${tab.color} text-white shadow-lg ring-2 ${tab.ring}`
+                          : 'bg-white/10 text-purple-200 hover:bg-white/20'
+                      }`}
+                    >
+                      <span>{tab.label}</span>
+                      <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${isSelected ? 'bg-white/30 text-white' : 'bg-black/20 text-purple-200'}`}>
+                        {tab.count}
+                      </span>
+                      {isTeamHospital && (
+                        <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" title="Hospital da sua equipe" />
+                      )}
+                    </button>
+                  );
+                })}
               </div>
 
               {/* Busca por texto */}
@@ -888,7 +936,7 @@ export default function MonthlyPlanningTab({
             </div>
           )}
 
-          {/* GRID DE CARDS DOS PLANOS ARKMEDS */}
+          {/* GRID DE CARDS DOS PLANOS ARKMEDS COM DIFERENCIAÇÃO VISUAL POR HOSPITAL */}
           {arkmedsPlans.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
               {arkmedsPlans
@@ -910,6 +958,19 @@ export default function MonthlyPlanningTab({
                   const localPlan = plans.find(p => p.arkmedsPlanId === String(plan.id) || p.id === `plan_arkmeds_${plan.id}`);
                   const isCurrentlyActive = localPlan && localPlan.id === activePlanId;
                   const isEnabling = enablingPlanId === plan.id;
+                  const isSameHospital = plan.unitTag === activeHospitalUnitTag;
+
+                  // Cores personalizadas por hospital
+                  const unitColorBadge = {
+                    HGLB: 'bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 border-blue-300 dark:border-blue-800',
+                    HA: 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800',
+                    HM: 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-800',
+                    HG: 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800',
+                    GERAL: 'bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 border-purple-300 dark:border-purple-800',
+                    CME: 'bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800',
+                    IPEM: 'bg-cyan-100 dark:bg-cyan-950 text-cyan-800 dark:text-cyan-300 border-cyan-300 dark:border-cyan-800',
+                    NEFRO: 'bg-violet-100 dark:bg-violet-950 text-violet-800 dark:text-violet-300 border-violet-300 dark:border-violet-800'
+                  }[plan.unitTag] || 'bg-slate-100 text-slate-800 border-slate-300';
 
                   return (
                     <div
@@ -923,16 +984,24 @@ export default function MonthlyPlanningTab({
                       }`}
                     >
                       <div>
-                        {/* TAGS DO PLANO */}
-                        <div className="flex items-center justify-between gap-1 mb-2">
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
-                            {plan.unitName}
+                        {/* BANNER DISTINTIVO DA UNIDADE HOSPITALAR */}
+                        <div className={`px-3 py-1.5 rounded-xl border flex items-center justify-between text-xs font-black mb-3 ${unitColorBadge}`}>
+                          <span className="flex items-center gap-1.5 truncate">
+                            <Building2 className="w-3.5 h-3.5 shrink-0" />
+                            <span className="truncate">{plan.unitName}</span>
                           </span>
-
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                          <span className="px-2 py-0.5 rounded-md bg-white/40 dark:bg-black/30 text-[10px] uppercase font-black shrink-0">
                             {plan.period}
                           </span>
                         </div>
+
+                        {/* AVISO SE FOR PLANO DE OUTRO HOSPITAL */}
+                        {!isSameHospital && arkmedsUnitFilter === 'todos' && (
+                          <div className="mb-2 px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-[10px] font-bold text-amber-700 dark:text-amber-300 flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3" />
+                            <span>Plano de outra unidade hospitalar</span>
+                          </div>
+                        )}
 
                         {/* TÍTULO DO PLANO */}
                         <h4 className="text-sm sm:text-base font-black text-slate-900 dark:text-white line-clamp-2">

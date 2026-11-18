@@ -14,7 +14,8 @@ import {
   resolveArkmedsQrCode, 
   syncArkmedsEquipments,
   listArkmedsPlans,
-  fetchArkmedsPlanEquipments
+  fetchArkmedsPlanEquipments,
+  searchArkmedsEquipmentUniversal
 } from './server/arkmedsService.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -2926,6 +2927,22 @@ app.post('/api/arkmeds/resolve-qr', async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error('[Arkmeds] Erro ao resolver QR Code:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Consulta Universal Completa de Equipamento no Arkmeds (SOMENTE LEITURA)
+// Retorna Ficha Técnica, Visitas Programadas e Histórico Completo de Ordens de Serviço (com última OS em destaque e PDF)
+app.post('/api/arkmeds/search-complete', async (req, res) => {
+  try {
+    const { query } = req.body || {};
+    if (!query) {
+      return res.status(400).json({ success: false, message: 'Termo de busca não informado.' });
+    }
+    const result = await searchArkmedsEquipmentUniversal(query);
+    res.json(result);
+  } catch (err) {
+    console.error('[Arkmeds] Erro na consulta completa:', err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 });

@@ -238,8 +238,64 @@ async function processResolvedLocation(locationUrl, session, originalQrUrl) {
     hospital = parts.slice(1).join(' - ').trim();
   }
 
+  // Extrai visitas programadas (planos em que o equipamento está cadastrado)
+  const visitasProgramadas = [];
+  const visSectionMatch = html.match(/Visitas Programadas[\s\S]*?<table[^>]*>([\s\S]*?)<\/table>/i);
+  if (visSectionMatch) {
+    const rows = [...visSectionMatch[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)];
+    for (const r of rows) {
+      const cells = [...r[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map(c => c[1].replace(/<[^>]+>/g, '').trim());
+      if (cells.length >= 3) {
+        visitasProgramadas.push({
+          plano: cells[0],
+          periodoPrevisto: cells[1],
+          tipoServico: cells[2]
+        });
+      }
+    }
+  }
+
+  // Extrai histórico completo de Ordens de Serviço (OS) via API dedicada do Arkmeds
+  let ordensServico = [];
+  if (arkmedsId) {
+    try {
+      const osUrl = `${BASE_URL}/cadastros/apis/os_equipamento_paginada/?draw=1&start=0&length=100&equipamento=${arkmedsId}`;
+      const osRes = await fetch(osUrl, {
+        headers: {
+          'Cookie': session,
+          'X-Requested-With': 'XMLHttpRequest',
+          'Referer': fullVisualUrl,
+          'User-Agent': 'Mozilla/5.0 (CalibraCheck-Arkmeds-Integration/1.0)'
+        }
+      });
+      if (osRes.ok) {
+        const osJson = await osRes.json();
+        ordensServico = (osJson.data || []).map(os => ({
+          id: os.id,
+          numero: os.numero,
+          estado: os.estado,
+          tipoServico: os.tipo_servico,
+          titulo: os.titulo,
+          problema: os.problema,
+          responsavel: os.responsavel,
+          solicitante: os.solicitante,
+          prioridade: os.prioridade,
+          dataCriacao: os.data_criacao,
+          dataConclusao: os.data_conclusao,
+          pdfUrl: os.print_url ? `${BASE_URL}${os.print_url}` : null,
+          visualUrl: `${BASE_URL}/ordem_servico/visual/${os.id}/`
+        }));
+      }
+    } catch (osErr) {
+      console.warn('[Arkmeds] Falha ao consultar Ordens de Serviço para equipamento', arkmedsId, osErr.message);
+    }
+  }
+
+  // Destaque para a última Ordem de Serviço (a mais recente cadastrada)
+  const ultimaOrdemServico = ordensServico.length > 0 ? ordensServico[0] : null;
+
   // Token numérico extraído do QR Code original
-  const tokenMatch = originalQrUrl.match(/\/qr_code\/equipamento\/([a-zA-Z0-9_\-]+)/i);
+  const tokenMatch = originalQrUrl ? originalQrUrl.match(/\/qr_code\/equipamento\/([a-zA-Z0-9_\-]+)/i) : null;
   const qrToken = tokenMatch ? tokenMatch[1] : '';
 
   return {
@@ -247,6 +303,7 @@ async function processResolvedLocation(locationUrl, session, originalQrUrl) {
     arkmedsId: arkmedsId || fields['id'] || '',
     qrCodeToken: qrToken,
     qrCodeUrl: originalQrUrl,
+    visualUrl: fullVisualUrl,
     equipamento: equipamentoNome,
     tipo,
     fabricante,
@@ -260,6 +317,9 @@ async function processResolvedLocation(locationUrl, session, originalQrUrl) {
     anvisa,
     dataAquisicao,
     rawFields: fields,
+    visitasProgramadas,
+    ordensServico,
+    ultimaOrdemServico,
     // Formato pronto para inserção no CalibraCheck
     calibraCheckPayload: {
       id: `ARK-${arkmedsId || identificacao || serie}`,
@@ -281,6 +341,99 @@ async function processResolvedLocation(locationUrl, session, originalQrUrl) {
       origem: 'arkmeds'
     }
   };
+}
+
+/**
+ * Consulta Universal Completa de Equipamento no Arkmeds (SOMENTE LEITURA)
+ * Pesquisa em todos os hospitais e setores por QR Code, ID Arkmeds, Tag, Número de Série ou termo livre.
+ */
+export async function searchArkmedsEquipmentUniversal(searchTerm) {
+  if (!searchTerm) throw new Error('Termo de busca não informado.');
+  const query = String(searchTerm).trim();
+  const session = await getArkmedsSession();
+
+  // 1. Se for URL de QR code ou caminho
+  if (query.includes('/qr_code/') || query.startsWith('http://') || query.startsWith('https://')) {
+    return resolveArkmedsQrCode(query);
+  }
+
+  // 2. Se for número puro (pode ser QR Token como 001005 ou ID Arkmeds como 3538)
+  if (/^\d+$/.test(query)) {
+    // Tenta primeiro como QR Code token
+    try {
+      const qrRes = await fetch(`${BASE_URL}/qr_code/equipamento/${query}/`, {
+        headers: { 
+          'Cookie': session,
+          'User-Agent': 'Mozilla/5.0 (CalibraCheck-Arkmeds-Integration/1.0)'
+        },
+        redirect: 'manual'
+      });
+      const loc = qrRes.headers.get('Location') || qrRes.headers.get('location');
+      if (loc && loc.includes('/visual/')) {
+        return processResolvedLocation(loc, session, `${BASE_URL}/qr_code/equipamento/${query}/`);
+      }
+    } catch {}
+
+    // Tenta diretamente como ID visual
+    try {
+      const visRes = await fetch(`${BASE_URL}/cadastros/equipamento/visual/${query}/`, {
+        headers: { 
+          'Cookie': session,
+          'User-Agent': 'Mozilla/5.0 (CalibraCheck-Arkmeds-Integration/1.0)'
+        }
+      });
+      if (visRes.ok) {
+        return processResolvedLocation(`/cadastros/equipamento/visual/${query}/`, session, '');
+      }
+    } catch {}
+  }
+
+  // 3. Busca por identificacao / tag
+  try {
+    const tagRes = await fetch(`${BASE_URL}/cadastros/equipamento/?identificacao=${encodeURIComponent(query)}`, {
+      headers: { 
+        'Cookie': session,
+        'User-Agent': 'Mozilla/5.0 (CalibraCheck-Arkmeds-Integration/1.0)'
+      }
+    });
+    const tagHtml = await tagRes.text();
+    let m = tagHtml.match(/href=[\"\']visual\/(\d+)\/[\"\']/i) || tagHtml.match(/\/cadastros\/equipamento\/visual\/(\d+)\//i);
+    if (m) {
+      return processResolvedLocation(`/cadastros/equipamento/visual/${m[1]}/`, session, '');
+    }
+  } catch {}
+
+  // 4. Busca por numero_serie
+  try {
+    const serieRes = await fetch(`${BASE_URL}/cadastros/equipamento/?numero_serie=${encodeURIComponent(query)}`, {
+      headers: { 
+        'Cookie': session,
+        'User-Agent': 'Mozilla/5.0 (CalibraCheck-Arkmeds-Integration/1.0)'
+      }
+    });
+    const serieHtml = await serieRes.text();
+    let m = serieHtml.match(/href=[\"\']visual\/(\d+)\/[\"\']/i) || serieHtml.match(/\/cadastros\/equipamento\/visual\/(\d+)\//i);
+    if (m) {
+      return processResolvedLocation(`/cadastros/equipamento/visual/${m[1]}/`, session, '');
+    }
+  } catch {}
+
+  // 5. Busca por global_term
+  try {
+    const globRes = await fetch(`${BASE_URL}/cadastros/equipamento/?global_term=${encodeURIComponent(query)}`, {
+      headers: { 
+        'Cookie': session,
+        'User-Agent': 'Mozilla/5.0 (CalibraCheck-Arkmeds-Integration/1.0)'
+      }
+    });
+    const globHtml = await globRes.text();
+    let m = globHtml.match(/href=[\"\']visual\/(\d+)\/[\"\']/i) || globHtml.match(/\/cadastros\/equipamento\/visual\/(\d+)\//i);
+    if (m) {
+      return processResolvedLocation(`/cadastros/equipamento/visual/${m[1]}/`, session, '');
+    }
+  } catch {}
+
+  throw new Error(`Aparelho "${query}" não localizado em nenhum hospital do Arkmeds.`);
 }
 
 /**
