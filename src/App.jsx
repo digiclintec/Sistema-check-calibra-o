@@ -207,6 +207,8 @@ export default function App() {
       return false;
     }
   });
+  const [scannerMode, setScannerMode] = useState('bipagem'); // 'bipagem' | 'consulta'
+  const [consultaSearchTerm, setConsultaSearchTerm] = useState('');
 
   // Persiste a aba principal atual para não perder contexto ao recarregar a tela
   useEffect(() => {
@@ -2283,7 +2285,11 @@ export default function App() {
             equipments={equipments}
             activeHospital={activeHospital}
             activePlanId={activePlanId}
-            onOpenScanner={() => setIsScannerOpen(true)}
+            initialSearchTerm={consultaSearchTerm}
+            onOpenScanner={() => {
+              setScannerMode('consulta');
+              setIsScannerOpen(true);
+            }}
             onAddEquipmentToActivePlan={async (eqToAdd) => {
               const code = eqToAdd.serie || eqToAdd.tag || eqToAdd.codigoBarras;
               await handleScanCode(code);
@@ -2439,7 +2445,23 @@ export default function App() {
       {/* Scanner Modal com Conferência em Lote, Ajuste Exato de Tipos e Painel Redimensionável */}
       <ScannerModal
         isOpen={isScannerOpen}
-        onClose={() => setIsScannerOpen(false)}
+        onClose={() => {
+          setIsScannerOpen(false);
+          setScannerMode('bipagem');
+        }}
+        scannerMode={scannerMode}
+        onConsultScan={(code) => {
+          setIsScannerOpen(false);
+          setScannerMode('bipagem');
+          setActiveMainTab('consulta');
+          setConsultaSearchTerm(code);
+        }}
+        onNavigateToConsulta={(code) => {
+          setIsScannerOpen(false);
+          setScannerMode('bipagem');
+          setActiveMainTab('consulta');
+          setConsultaSearchTerm(code);
+        }}
         onScan={handleScanCode}
         onBatchCheck={handleBatchCheck}
         equipments={equipments}

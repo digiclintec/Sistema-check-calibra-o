@@ -35,7 +35,8 @@ import {
   Check,
   Plus,
   Pencil,
-  Save
+  Save,
+  Eye
 } from 'lucide-react';
 import {
   playSuccessSound,
@@ -84,7 +85,10 @@ export default function ScannerModal({
   serviceConfig = null,
   onOpenAddEquipment = null,
   activeHospitalId = '',
-  activePlanId = ''
+  activePlanId = '',
+  scannerMode = 'bipagem',
+  onConsultScan = null,
+  onNavigateToConsulta = null
 }) {
   const [cameras, setCameras] = useState([]);
   const [selectedCamera, setSelectedCamera] = useState('');
@@ -1271,6 +1275,13 @@ export default function ScannerModal({
       navigator.vibrate([60]);
     }
 
+    // No Modo Consulta, entrega o código para exibição do dossiê completo e histórico de OS
+    if (scannerMode === 'consulta' && onConsultScan) {
+      if (soundEnabled) playSuccessSound();
+      onConsultScan(cleanCode || rawCode);
+      return;
+    }
+
     // Busca inteligente com decomposição de código composto (procura IDEC ou Série)
     let matches = findBestEquipmentMatches(cleanCode, equipments, searchTarget);
 
@@ -1742,6 +1753,16 @@ export default function ScannerModal({
                 </div>
               )}
 
+              {/* Banner Informativo no Modo Consulta */}
+              {scannerMode === 'consulta' && (
+                <div className="absolute top-12 left-1/2 -translate-x-1/2 z-30 pointer-events-none animate-in fade-in slide-in-from-top-2 duration-150 max-w-[92%]">
+                  <div className="bg-cyan-950/95 text-cyan-200 border border-cyan-400/60 px-3 py-1.5 rounded-full text-[11px] sm:text-xs font-bold shadow-2xl flex items-center gap-2 backdrop-blur-md">
+                    <Sparkles className="w-3.5 h-3.5 text-cyan-300 animate-pulse shrink-0" />
+                    <span>Modo Consulta: Aponte para o QR Code ou etiqueta do aparelho</span>
+                  </div>
+                </div>
+              )}
+
               {/* Barra Superior Discreta: Lentes, Leitura de IDEC e Lanterna */}
               <div className="absolute top-2.5 left-2.5 right-2.5 z-20 flex items-center justify-between gap-1.5 pointer-events-auto" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center gap-1.5 flex-wrap">
@@ -2067,6 +2088,26 @@ export default function ScannerModal({
                         <span>+ Adicionar ao Plano</span>
                       </button>
                     )}
+                    {onNavigateToConsulta && lastScannedFeedback.equipment && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const targetEq = lastScannedFeedback.equipment;
+                          const codeToSearch = targetEq.arkmedsQrUrl ||
+                            targetEq.tag ||
+                            targetEq.patrimonio ||
+                            targetEq.serie ||
+                            targetEq.arkmedsId ||
+                            lastScannedFeedback.code;
+                          onNavigateToConsulta(codeToSearch);
+                        }}
+                        className="px-2 py-1 bg-cyan-950 hover:bg-cyan-900 text-cyan-300 border border-cyan-500/40 rounded-lg text-[11px] font-bold shadow-xs flex items-center gap-1 active:scale-95 transition"
+                        title="Ver dossiê, ficha técnica e histórico de OS no Arkmeds"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>Ficha & OS</span>
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => setLastScannedFeedback(null)}
@@ -2220,14 +2261,30 @@ export default function ScannerModal({
                             </div>
                           </div>
 
-                          {/* Botão de Remover */}
-                          <button
-                            onClick={() => handleRemoveStagedItem(eq.id)}
-                            className="p-1 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition shrink-0"
-                            title="Remover desta lista"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {onNavigateToConsulta && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const codeToSearch = eq.arkmedsQrUrl || eq.tag || eq.patrimonio || eq.serie || eq.arkmedsId || item.scannedCode;
+                                  onNavigateToConsulta(codeToSearch);
+                                }}
+                                className="p-1 text-slate-400 hover:text-cyan-300 hover:bg-cyan-500/10 rounded-lg transition"
+                                title="Ver Ficha Técnica e Histórico de OS no Arkmeds"
+                              >
+                                <Eye className="w-4 h-4 text-cyan-400" />
+                              </button>
+                            )}
+
+                            {/* Botão de Remover */}
+                            <button
+                              onClick={() => handleRemoveStagedItem(eq.id)}
+                              className="p-1 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition shrink-0"
+                              title="Remover desta lista"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
 
                         {/* Informações detalhadas da bomba: Tag, Série, Setor e Modalidades */}

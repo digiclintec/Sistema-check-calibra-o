@@ -34,18 +34,27 @@ export default function ConsultaAparelhoTab({
   equipments = [],
   activeHospital,
   activePlanId,
+  initialSearchTerm = '',
   onOpenScanner,
   onAddEquipmentToActivePlan,
   onCheckEquipment,
   onNavigateToConferencia,
   sectorColors = {}
 }) {
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(initialSearchTerm || '');
   const [selectedEquipment, setSelectedEquipment] = useState(null);
   const [isSearchingArkmeds, setIsSearchingArkmeds] = useState(false);
   const [searchError, setSearchError] = useState('');
   const [copiedKey, setCopiedKey] = useState('');
   const [activeCardTab, setActiveCardTab] = useState('os'); // 'os' (Ordens de Serviço), 'tecnico' (Dados Técnicos), 'visitas' (Planos / Visitas Programadas)
+
+  // Dispara busca automática se um termo inicial foi injetado (via scanner ou prop)
+  useEffect(() => {
+    if (initialSearchTerm && initialSearchTerm.trim()) {
+      setSearchTerm(initialSearchTerm.trim());
+      handleSearch(initialSearchTerm.trim());
+    }
+  }, [initialSearchTerm]);
   const [recentConsultas, setRecentConsultas] = useState(() => {
     try {
       const saved = localStorage.getItem('calibracheck_recent_consultas');
@@ -308,9 +317,9 @@ export default function ConsultaAparelhoTab({
             {[
               { label: 'Monitor UTI (Tag UTIAHL-0119)', val: 'UTIAHL-0119' },
               { label: 'Série CN23950450', val: 'CN23950450' },
-              { label: 'Termômetro (UTIPHL-0099)', val: 'UTIPHL-0099' },
-              { label: 'ID 3538', val: '3538' },
-              { label: 'QR Token 001005', val: '001005' }
+              { label: 'QR Token 001005', val: '001005' },
+              { label: 'URL QR Code Arkmeds', val: 'https://hifaclinica.arkmeds.com/qr_code/equipamento/001005' },
+              { label: 'ID Arkmeds #3538', val: '3538' }
             ].map(item => (
               <button
                 key={item.val}
@@ -787,6 +796,27 @@ export default function ConsultaAparelhoTab({
                   {selectedEquipment.dataAquisicao || 'N/A'}
                 </p>
               </div>
+
+              {(selectedEquipment.qrCodeToken || selectedEquipment.qrCodeUrl) && (
+                <div className="p-3.5 rounded-2xl bg-cyan-50/70 dark:bg-cyan-950/40 border border-cyan-200 dark:border-cyan-800">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-cyan-700 dark:text-cyan-300 uppercase tracking-wider flex items-center gap-1">
+                      <QrCode className="w-3 h-3" />
+                      QR Code Arkmeds
+                    </span>
+                    <button
+                      onClick={() => handleCopy(selectedEquipment.qrCodeUrl || selectedEquipment.qrCodeToken, 'qr')}
+                      className="text-cyan-600 hover:text-cyan-800 dark:text-cyan-400 dark:hover:text-cyan-200 p-1"
+                      title="Copiar token / link do QR Code"
+                    >
+                      {copiedKey === 'qr' ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                  <p className="text-sm sm:text-base font-black text-cyan-900 dark:text-cyan-100 font-mono mt-1 truncate">
+                    {selectedEquipment.qrCodeToken ? `#${selectedEquipment.qrCodeToken}` : 'Ativo'}
+                  </p>
+                </div>
+              )}
 
             </div>
           )}
