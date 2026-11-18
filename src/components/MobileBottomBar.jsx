@@ -1,5 +1,5 @@
 import React from 'react';
-import { Camera, ListFilter, Smartphone, Truck, PlusCircle } from 'lucide-react';
+import { Camera, ListFilter, Truck, PlusCircle } from 'lucide-react';
 
 export default function MobileBottomBar({
   onOpenScanner,
@@ -88,19 +88,6 @@ export default function MobileBottomBar({
           </span>
         </button>
       )}
-
-      {/* Install Mobile App / APK Button */}
-      <button
-        type="button"
-        onClick={onOpenInstall}
-        className="flex flex-col items-center justify-center px-2 py-1 text-slate-600 dark:text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 active:scale-95 transition"
-        title="Baixar Aplicativo Android / APK"
-      >
-        <Smartphone className="w-5 h-5 text-blue-500" />
-        <span className="text-[10px] font-extrabold mt-0.5 text-blue-600 dark:text-blue-400">
-          Baixar APK
-        </span>
-      </button>
 
     </div>
   );

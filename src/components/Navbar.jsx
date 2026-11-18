@@ -6,7 +6,6 @@ import {
   VolumeX, 
   CheckCircle, 
   LogOut, 
-  Crown, 
   Users,
   Smartphone,
   Building2,
@@ -558,35 +557,7 @@ export default function Navbar({
               )}
             </div>
 
-            {/* Perfil do Usuário e Sair */}
-            {currentUser && (
-              <div className="flex items-center gap-1.5 pl-1.5 border-l border-slate-200 dark:border-slate-800 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => onChangeMainTab && onChangeMainTab('perfil')}
-                  className={`w-7 h-7 sm:w-8 sm:h-8 rounded-xl border flex items-center justify-center font-bold text-xs transition active:scale-95 shrink-0 ${
-                    activeMainTab === 'perfil'
-                      ? 'bg-purple-600 text-white border-purple-400 shadow-md shadow-purple-500/30 ring-2 ring-purple-500/40'
-                      : 'bg-slate-100 dark:bg-slate-800 hover:bg-purple-50 dark:hover:bg-purple-950/40 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200'
-                  }`}
-                  title={`Abrir Perfil do Técnico: ${currentUser.name || 'Usuário'} (${currentUser.email || ''})`}
-                >
-                  {isMaster ? (
-                    <Crown className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-500" />
-                  ) : (
-                    <span>{(currentUser.name || currentUser.email || 'U').charAt(0).toUpperCase()}</span>
-                  )}
-                </button>
 
-                <button
-                  onClick={onLogout}
-                  className="hidden md:flex p-1.5 rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition shrink-0"
-                  title="Sair da conta"
-                >
-                  <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                </button>
-              </div>
-            )}
 
           </div>
 
