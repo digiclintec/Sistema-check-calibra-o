@@ -1350,7 +1350,7 @@ export default function CarrinhoDevolucaoTab({
                     <h3 className="font-extrabold text-xs sm:text-sm">Scanner de Devolução Contínua</h3>
                     <span className="text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.2 rounded-full font-bold flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                      🎯 Foco de Perto
+                      Leitor Ativo
                     </span>
                   </div>
 
@@ -1370,89 +1370,41 @@ export default function CarrinhoDevolucaoTab({
                     className="w-full h-full flex items-center justify-center [&_video]:w-full [&_video]:h-full [&_video]:object-cover"
                   ></div>
 
-                  {/* Linha Laser Vermelha (1D) ou Mira QR (2D) */}
-                  {scanning && !cameraError && (
-                    <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-3">
-                      {reticleType === '1d' ? (
-                        <div className="relative w-[96%] max-w-[420px] h-[90px] sm:h-[110px] border-2 border-dashed border-red-500/80 rounded-2xl shadow-[0_0_25px_rgba(239,68,68,0.35)] flex items-center justify-center">
-                          <div className="absolute left-0 right-0 h-1 bg-gradient-to-r from-red-600 via-rose-300 to-red-600 shadow-[0_0_14px_#ef4444] animate-pulse"></div>
-                          <div className="absolute -top-1 -left-1 w-4 h-4 border-t-4 border-l-4 border-red-500 rounded-tl-lg"></div>
-                          <div className="absolute -top-1 -right-1 w-4 h-4 border-t-4 border-r-4 border-red-500 rounded-tr-lg"></div>
-                          <div className="absolute -bottom-1 -left-1 w-4 h-4 border-b-4 border-l-4 border-red-500 rounded-bl-lg"></div>
-                          <div className="absolute -bottom-1 -right-1 w-4 h-4 border-b-4 border-r-4 border-red-500 rounded-br-lg"></div>
-                        </div>
-                      ) : (
-                        <div className="relative w-[180px] h-[180px] border-2 border-dashed border-blue-500/80 rounded-2xl shadow-[0_0_25px_rgba(59,130,246,0.35)] flex items-center justify-center">
-                          <div className="absolute -top-1 -left-1 w-4 h-4 border-t-4 border-l-4 border-blue-500 rounded-tl-lg"></div>
-                          <div className="absolute -top-1 -right-1 w-4 h-4 border-t-4 border-r-4 border-blue-500 rounded-tr-lg"></div>
-                          <div className="absolute -bottom-1 -left-1 w-4 h-4 border-b-4 border-l-4 border-blue-500 rounded-bl-lg"></div>
-                          <div className="absolute -bottom-1 -right-1 w-4 h-4 border-b-4 border-r-4 border-blue-500 rounded-br-lg"></div>
-                        </div>
-                      )}
+                  {/* BARRA SUPERIOR DISCRETA SOBRE O VÍDEO: APENAS TROCA DE LENTE E LANTERNA */}
+                  {(rearCamerasList.length > 1 || hasTorch) && (
+                    <div className="absolute top-2 left-2 right-2 z-20 flex items-center justify-between gap-1 pointer-events-auto">
+                      <div>
+                        {rearCamerasList.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={handleToggleRearCamera}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-900/90 hover:bg-slate-800 text-blue-300 border border-blue-500/50 shadow-md backdrop-blur-xs transition active:scale-95"
+                            title="Alternar lentes traseiras do aparelho"
+                          >
+                            <SwitchCamera className="w-3 h-3 text-blue-400" />
+                            <span>{currentLensDisplay}</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <div>
+                        {hasTorch && (
+                          <button
+                            type="button"
+                            onClick={toggleTorch}
+                            className={`p-1.5 rounded-full flex items-center justify-center shadow-lg transition border ${
+                              torchOn
+                                ? 'bg-amber-400 text-slate-950 border-amber-300 ring-2 ring-amber-400/50'
+                                : 'bg-slate-900/90 text-white hover:bg-slate-800 border-slate-700/80'
+                            }`}
+                            title={torchOn ? "Desligar lanterna" : "Ligar lanterna"}
+                          >
+                            <Zap className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )}
-
-                  {/* BARRA SUPERIOR SOBRE O VÍDEO: LENTE + MIRA + LANTERNA */}
-                  <div className="absolute top-2 left-2 right-2 z-20 flex items-center justify-between gap-1 pointer-events-auto">
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => setReticleType(r => r === '1d' ? '2d' : '1d')}
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 border shadow-md transition active:scale-95 ${
-                          reticleType === '1d'
-                            ? 'bg-red-500/25 text-red-200 border-red-500/50 shadow-red-500/20'
-                            : 'bg-blue-500/25 text-blue-200 border-blue-500/50 shadow-blue-500/20'
-                        }`}
-                      >
-                        <ScanLine className="w-3 h-3" />
-                        <span>{reticleType === '1d' ? '1D Laser' : '2D QR'}</span>
-                      </button>
-
-                      {rearCamerasList.length > 1 ? (
-                        <button
-                          type="button"
-                          onClick={handleToggleRearCamera}
-                          className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-900/90 hover:bg-slate-800 text-blue-300 border border-blue-500/50 shadow-md backdrop-blur-xs transition active:scale-95"
-                          title="Alternar lentes traseiras do aparelho"
-                        >
-                          <SwitchCamera className="w-3 h-3 text-blue-400" />
-                          <span>{currentLensDisplay}</span>
-                        </button>
-                      ) : (
-                        <div className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-950/85 text-blue-300 border border-blue-500/40 shadow-md">
-                          <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
-                          <span>🎯 50MP Principal</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={handleTriggerCenterFocus}
-                        className="px-2 py-0.5 rounded-full bg-slate-900/90 hover:bg-slate-800 text-amber-300 font-bold text-[10px] flex items-center gap-1 border border-amber-500/40 shadow-lg transition active:scale-95"
-                        title="Refocar de perto agora (5-15cm)"
-                      >
-                        <Crosshair className="w-3 h-3 text-amber-400" />
-                        <span className="hidden xs:inline">Focar Perto</span>
-                      </button>
-
-                      {hasTorch && (
-                        <button
-                          type="button"
-                          onClick={toggleTorch}
-                          className={`p-1 rounded-full flex items-center justify-center shadow-lg transition border ${
-                            torchOn
-                              ? 'bg-amber-400 text-slate-950 border-amber-300 ring-2 ring-amber-400/50'
-                              : 'bg-slate-900/90 text-white hover:bg-slate-800 border-slate-700/80'
-                          }`}
-                          title={torchOn ? "Desligar lanterna" : "Ligar lanterna"}
-                        >
-                          <Zap className="w-3 h-3" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
 
                   {/* Feedback de foco flutuante */}
                   {focusFeedbackText && (
@@ -1462,7 +1414,7 @@ export default function CarrinhoDevolucaoTab({
                   )}
 
                   {/* BARRA INFERIOR SOBRE O VÍDEO: PRESETS DE ZOOM */}
-                  <div className="absolute bottom-2 left-2 right-2 z-20 flex items-center justify-between pointer-events-auto gap-2">
+                  <div className="absolute bottom-2 left-2 z-20 flex items-center pointer-events-auto">
                     <div className="flex items-center gap-1 bg-slate-950/90 backdrop-blur-md p-0.5 rounded-full border border-slate-700/80 shadow-lg">
                       {opticalPresets.map(p => (
                         <button
@@ -1478,11 +1430,6 @@ export default function CarrinhoDevolucaoTab({
                           {p.label}
                         </button>
                       ))}
-                    </div>
-
-                    <div className="bg-slate-950/90 backdrop-blur-md text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full text-[9px] font-bold shadow-lg flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
-                      <span>Macro 5-15cm</span>
                     </div>
                   </div>
 

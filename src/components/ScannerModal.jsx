@@ -1800,61 +1800,6 @@ export default function ScannerModal({
                 className="w-full h-full flex items-center justify-center pointer-events-none [&_video]:w-full [&_video]:h-full [&_video]:object-cover"
               ></div>
 
-              {/* Mira Laser Ampla de Enquadramento */}
-              {scanning && !cameraError && (
-                <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-3">
-                  {reticleType === '1d' ? (
-                    // Mira 1D: Ampla e horizontal ideal para bombas de infusão (Code 128 / GS1)
-                    <div className="relative w-[96%] max-w-[480px] h-[100px] sm:h-[130px] border-2 border-dashed border-red-500/80 rounded-2xl shadow-[0_0_25px_rgba(239,68,68,0.35)] flex items-center justify-center">
-                      {/* Linha Laser Vermelha Horizontal Contínua e Brilhante */}
-                      <div className="absolute left-0 right-0 h-1 bg-gradient-to-r from-red-600 via-rose-300 to-red-600 shadow-[0_0_14px_#ef4444] animate-pulse"></div>
-
-                      {/* Marcadores de Canto Vermelhos */}
-                      <div className="absolute -top-1 -left-1 w-5 h-5 border-t-4 border-l-4 border-red-500 rounded-tl-lg"></div>
-                      <div className="absolute -top-1 -right-1 w-5 h-5 border-t-4 border-r-4 border-red-500 rounded-tr-lg"></div>
-                      <div className="absolute -bottom-1 -left-1 w-5 h-5 border-b-4 border-l-4 border-red-500 rounded-bl-lg"></div>
-                      <div className="absolute -bottom-1 -right-1 w-5 h-5 border-b-4 border-r-4 border-red-500 rounded-br-lg"></div>
-
-                      {/* Dica da Linha Laser no rodapé da mira */}
-                      <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-semibold text-white/95 bg-slate-900/95 px-2.5 py-0.5 rounded-full border border-red-500/40 shadow-md flex items-center gap-1.5">
-                        <ScanLine className="w-3 h-3 text-red-400" />
-                        <span>Laser vermelho sobre o código</span>
-                      </div>
-                    </div>
-                  ) : (
-                    // Mira 2D: Caixa quadrada para QR Code / DataMatrix
-                    <div className="relative w-full max-w-[260px] h-[220px] border-2 border-dashed border-blue-400/80 rounded-2xl shadow-[0_0_30px_rgba(59,130,246,0.35)]">
-                      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-cyan-300 to-blue-500 shadow-[0_0_12px_#3b82f6] animate-[bounce_2s_infinite]"></div>
-                      <div className="absolute -top-1 -left-1 w-5 h-5 border-t-4 border-l-4 border-blue-500 rounded-tl-lg"></div>
-                      <div className="absolute -top-1 -right-1 w-5 h-5 border-t-4 border-r-4 border-blue-500 rounded-tr-lg"></div>
-                      <div className="absolute -bottom-1 -left-1 w-5 h-5 border-b-4 border-l-4 border-blue-500 rounded-bl-lg"></div>
-                      <div className="absolute -bottom-1 -right-1 w-5 h-5 border-b-4 border-r-4 border-blue-500 rounded-br-lg"></div>
-                      <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-semibold text-white/95 bg-slate-900/90 px-2.5 py-0.5 rounded-full border border-slate-700/80 shadow-md flex items-center gap-1.5">
-                        <Crosshair className="w-3 h-3 text-amber-400 animate-spin" />
-                        <span>Enquadre o código QR</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Mira Visual Animada de Toque no Ponto Tocado (Tap Reticle) */}
-              {focusRing.visible && (
-                <div
-                  className={`absolute pointer-events-none -translate-x-1/2 -translate-y-1/2 transition-transform duration-200 z-30 ${focusRing.status === 'focused' ? 'scale-95 text-emerald-400' : 'scale-110 text-amber-400 animate-pulse'
-                    }`}
-                  style={{ left: focusRing.x, top: focusRing.y, width: 64, height: 64 }}
-                >
-                  <div className="w-full h-full border-2 border-dashed border-current rounded-2xl relative shadow-[0_0_15px_currentColor]">
-                    <div className="absolute -top-1 -left-1 w-3 h-3 border-t-2 border-l-2 border-current"></div>
-                    <div className="absolute -top-1 -right-1 w-3 h-3 border-t-2 border-r-2 border-current"></div>
-                    <div className="absolute -bottom-1 -left-1 w-3 h-3 border-b-2 border-l-2 border-current"></div>
-                    <div className="absolute -bottom-1 -right-1 w-3 h-3 border-b-2 border-r-2 border-current"></div>
-                    <div className="absolute inset-0 m-auto w-2 h-2 rounded-full bg-current"></div>
-                  </div>
-                </div>
-              )}
-
               {/* Toast Pill de Confirmação de Foco */}
               {focusFeedbackText && (
                 <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 pointer-events-none animate-in fade-in slide-in-from-top-2 duration-150">
@@ -1865,67 +1810,39 @@ export default function ScannerModal({
                 </div>
               )}
 
-              {/* Barra Superior Unificada do Viewfinder: NÃO SOBREPÕE */}
-              <div className="absolute top-2.5 left-2.5 right-2.5 z-20 flex items-center justify-between gap-1.5 pointer-events-auto" onClick={e => e.stopPropagation()}>
-                {/* Controles da Esquerda: Alternador 1D/2D e Seletor/Indicador da Câmera Principal */}
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <button
-                    type="button"
-                    onClick={() => setReticleType(r => r === '1d' ? '2d' : '1d')}
-                    className={`px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 border shadow-lg transition active:scale-95 shrink-0 ${reticleType === '1d'
-                        ? 'bg-red-500/25 text-red-200 border-red-500/50 shadow-red-500/20'
-                        : 'bg-blue-500/25 text-blue-200 border-blue-500/50 shadow-blue-500/20'
-                      }`}
-                    title="Alternar entre mira para Código de Barras (1D) e mira para QR Code (2D)"
-                  >
-                    <ScanLine className="w-3 h-3" />
-                    <span>{reticleType === '1d' ? '1D Laser' : '2D QR'}</span>
-                  </button>
+              {/* Barra Superior Discreta: Apenas Lanterna e Troca de Lente se houver múltiplas */}
+              {(rearCamerasList.length > 1 || hasTorch) && (
+                <div className="absolute top-2.5 left-2.5 right-2.5 z-20 flex items-center justify-between gap-1.5 pointer-events-auto" onClick={e => e.stopPropagation()}>
+                  <div>
+                    {rearCamerasList.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={handleToggleRearCamera}
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-bold bg-slate-900/90 hover:bg-slate-800 text-blue-300 border border-blue-500/50 shadow-md backdrop-blur-xs transition active:scale-95 shrink-0"
+                        title="Toque para alternar entre as lentes traseiras do celular"
+                      >
+                        <SwitchCamera className="w-3.5 h-3.5 text-blue-400" />
+                        <span>{currentLensDisplay}</span>
+                      </button>
+                    )}
+                  </div>
 
-                  {/* Botão Dinâmico de Alternar Lente Traseira (se houver mais de 1 câmera) ou Indicador Fixo */}
-                  {rearCamerasList.length > 1 ? (
-                    <button
-                      type="button"
-                      onClick={handleToggleRearCamera}
-                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-bold bg-slate-900/90 hover:bg-slate-800 text-blue-300 border border-blue-500/50 shadow-md backdrop-blur-xs transition active:scale-95 shrink-0"
-                      title="Toque para alternar entre as lentes traseiras do celular"
-                    >
-                      <SwitchCamera className="w-3.5 h-3.5 text-blue-400" />
-                      <span>{currentLensDisplay}</span>
-                    </button>
-                  ) : (
-                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-bold bg-slate-950/85 text-blue-300 border border-blue-500/40 shadow-md backdrop-blur-xs">
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
-                      <span>🎯 50MP Principal</span>
-                    </div>
-                  )}
+                  <div>
+                    {hasTorch && (
+                      <button
+                        onClick={toggleTorch}
+                        className={`p-1.5 rounded-full flex items-center justify-center shadow-lg transition border ${torchOn
+                            ? 'bg-amber-400 text-slate-950 font-bold border-amber-300 ring-2 ring-amber-400/50 shadow-amber-400/30'
+                            : 'bg-slate-900/90 text-white hover:bg-slate-800 border-slate-700/80'
+                          }`}
+                        title={torchOn ? "Desligar lanterna" : "Ligar lanterna"}
+                      >
+                        <Zap className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
-
-                {/* Controles da Direita: Foco de Perto (Macro) e Lanterna */}
-                <div className="flex items-center gap-1 shrink-0">
-                  <button
-                    onClick={handleTriggerCenterFocus}
-                    className="px-2.5 py-1 rounded-full bg-slate-900/90 hover:bg-slate-800 text-amber-300 font-bold text-xs flex items-center gap-1.5 border border-amber-500/40 shadow-lg transition active:scale-95"
-                    title="Focar de perto agora (Calibrar motor da lente para 5-15cm)"
-                  >
-                    <Crosshair className="w-3.5 h-3.5 text-amber-400" />
-                    <span className="text-[10px] hidden xs:inline">Focar Perto</span>
-                  </button>
-
-                  {hasTorch && (
-                    <button
-                      onClick={toggleTorch}
-                      className={`p-1.5 rounded-full flex items-center justify-center shadow-lg transition border ${torchOn
-                          ? 'bg-amber-400 text-slate-950 font-bold border-amber-300 ring-2 ring-amber-400/50 shadow-amber-400/30'
-                          : 'bg-slate-900/90 text-white hover:bg-slate-800 border-slate-700/80'
-                        }`}
-                      title={torchOn ? "Desligar lanterna" : "Ligar lanterna"}
-                    >
-                      <Zap className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-              </div>
+              )}
 
               {/* HUD FLOATING ALERT BANNER DIRETO SOBRE A CÂMERA (IMPOSSÍVEL DE NÃO VER PELO OPERADOR) */}
               {lastScannedFeedback && (lastScannedFeedback.status === 'already_checked' || lastScannedFeedback.status === 'in_maintenance') && (
@@ -2052,22 +1969,6 @@ export default function ScannerModal({
                       </button>
                     </div>
                   </div>
-                </div>
-              )}
-
-              {/* Barra Inferior do Viewfinder: Foco de Perto + Indicador Google AI */}
-              {scanning && !cameraError && (
-                <div className="absolute bottom-2.5 left-2.5 right-2.5 z-20 flex items-center justify-between pointer-events-none gap-1.5">
-                  <div className="bg-slate-950/85 backdrop-blur-md text-emerald-300 border border-emerald-500/40 px-3 py-1 rounded-full text-[10px] font-semibold shadow-lg flex items-center gap-1.5 truncate">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
-                    <span className="truncate">🎯 Foco de Perto (5-15cm) • 50MP Principal</span>
-                  </div>
-                  {typeof window !== 'undefined' && 'BarcodeDetector' in window && (
-                    <div className="bg-blue-950/85 backdrop-blur-md text-blue-200 border border-blue-500/60 px-2.5 py-1 rounded-full text-[9px] font-bold shadow-lg flex items-center gap-1 shrink-0" title="Motor Google ML Kit acelerado por hardware">
-                      <span className="text-[10px]">⚡</span>
-                      <span>Google AI</span>
-                    </div>
-                  )}
                 </div>
               )}
 
@@ -2273,7 +2174,7 @@ export default function ScannerModal({
                   <Layers className="w-6 h-6 mb-1 opacity-40 text-blue-400" />
                   <p className="text-xs font-semibold text-slate-300">Nenhuma bomba na fila ainda</p>
                   <p className="text-[11px] text-slate-500 mt-0.5 max-w-sm">
-                    Aponte o laser vermelho da câmera para o código da bomba. Cada bomba bipada aparecerá aqui nesta lista instantaneamente!
+                    Aponte a câmera para o código da bomba. Cada bomba bipada aparecerá aqui nesta lista instantaneamente!
                   </p>
                 </div>
               ) : (
