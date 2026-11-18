@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
 import { parseWorkbookBuffer, parseCsvText } from './src/utils/sheetParser.js';
 import { PDFParse } from 'pdf-parse';
+import { checkArkmedsStatus, resolveArkmedsQrCode, syncArkmedsEquipments } from './server/arkmedsService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -2894,6 +2895,120 @@ app.post('/api/reset', (req, res) => {
   saveDb(db);
 
   res.json({ success: true, message: 'Planilha do hospital limpa com sucesso.' });
+});
+
+// ---------------- INTEGRAÇÃO ARKMEDS (SOMENTE LEITURA - CONSULTA & SINCRONIZAÇÃO) ---------------- //
+
+// Status de conexão com o Arkmeds
+app.get('/api/arkmeds/status', async (req, res) => {
+  try {
+    const status = await checkArkmedsStatus();
+    res.json(status);
+  } catch (err) {
+    res.status(500).json({ connected: false, error: err.message, readOnly: true });
+  }
+});
+
+// Resolução de QR Code da Arkmeds (Leitura e Identificação instantânea)
+app.post('/api/arkmeds/resolve-qr', async (req, res) => {
+  try {
+    const { code } = req.body || {};
+    if (!code) {
+      return res.status(400).json({ success: false, message: 'Código ou URL do QR Code não fornecido.' });
+    }
+    const result = await resolveArkmedsQrCode(code);
+    res.json(result);
+  } catch (err) {
+    console.error('[Arkmeds] Erro ao resolver QR Code:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Sincronização em Massa de Equipamentos do Arkmeds (SOMENTE LEITURA)
+app.post('/api/arkmeds/sync', async (req, res) => {
+  try {
+    const { hospitalId, planId, proprietario, query, maxPages, importToPlan = true } = req.body || {};
+    const result = await syncArkmedsEquipments({
+      proprietario: proprietario || '',
+      query: query || '',
+      maxPages: maxPages || 20
+    });
+
+    // Se solicitado para importar diretamente ao plano ativo
+    if (importToPlan && result.equipments && result.equipments.length > 0) {
+      const db = readDb();
+      const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
+      const hosp = (db.hospitals || []).find(h => h.id === targetId);
+
+      if (hosp) {
+        hosp.plans = hosp.plans || [];
+        const targetPlanId = planId || hosp.activePlanId || hosp.plans[0]?.id;
+        let plan = hosp.plans.find(p => p.id === targetPlanId);
+
+        if (!plan) {
+          const curYear = new Date().getFullYear();
+          plan = {
+            id: 'plan_' + Date.now(),
+            title: `Plano Arkmeds ${curYear}`,
+            tipo: 'anual',
+            ano: String(curYear),
+            mes: `Arkmeds Sincronizado`,
+            dataInicio: `${curYear}-01-01`,
+            dataFim: `${curYear}-12-31`,
+            fileName: 'Arkmeds_Sync.xlsx',
+            equipments: [],
+            createdAt: new Date().toISOString(),
+            lastUpdated: Date.now()
+          };
+          hosp.plans.push(plan);
+          hosp.activePlanId = plan.id;
+        }
+
+        plan.equipments = plan.equipments || [];
+        const existingKeys = new Set();
+        plan.equipments.forEach(eq => {
+          if (eq.tag) existingKeys.add(String(eq.tag).trim().toLowerCase());
+          if (eq.serie) existingKeys.add(String(eq.serie).trim().toLowerCase());
+          if (eq.arkmedsId) existingKeys.add(String(eq.arkmedsId).trim());
+        });
+
+        let addedCount = 0;
+        result.equipments.forEach(item => {
+          const tag = String(item.tag || '').trim().toLowerCase();
+          const serie = String(item.serie || '').trim().toLowerCase();
+          const arkId = String(item.arkmedsId || '').trim();
+
+          const isDuplicate = (tag && existingKeys.has(tag)) ||
+                              (serie && existingKeys.has(serie)) ||
+                              (arkId && existingKeys.has(arkId));
+
+          if (!isDuplicate) {
+            plan.equipments.push(item);
+            if (tag) existingKeys.add(tag);
+            if (serie) existingKeys.add(serie);
+            if (arkId) existingKeys.add(arkId);
+            addedCount++;
+          }
+        });
+
+        plan.lastUpdated = Date.now();
+        hosp.equipments = plan.equipments;
+        hosp.lastUpdated = Date.now();
+        db.lastUpdated = Date.now();
+        saveDb(db);
+
+        result.addedToPlanCount = addedCount;
+        result.totalInPlan = plan.equipments.length;
+        result.planId = plan.id;
+        result.planTitle = plan.title;
+      }
+    }
+
+    res.json(result);
+  } catch (err) {
+    console.error('[Arkmeds] Erro na sincronização:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
 });
 
 // ---------------- DOWNLOAD APK & PWA ASSETLINKS ROUTES ---------------- //

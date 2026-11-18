@@ -23,7 +23,8 @@ import {
   User,
   Zap,
   Truck,
-  ArrowRight
+  ArrowRight,
+  Database
 } from 'lucide-react';
 
 import LoginScreen from './components/LoginScreen';
@@ -54,6 +55,7 @@ import AbruptChangeConfirmModal from './components/AbruptChangeConfirmModal';
 import AlreadyScannedAlertModal from './components/AlreadyScannedAlertModal';
 import EditEquipmentModal from './components/EditEquipmentModal';
 import AddEquipmentModal from './components/AddEquipmentModal';
+import ArkmedsSyncModal from './components/ArkmedsSyncModal';
 import { addEquipmentToCart, addMultipleEquipmentsToCart, getCartSeries } from './utils/cartStorage';
 
 import { parseSpreadsheetFile, exportToExcel } from './utils/sheetParser';
@@ -237,6 +239,8 @@ export default function App() {
   }, [activePlanId]);
 
   const [isSerialScanOpen, setIsSerialScanOpen] = useState(false);
+  const [isArkmedsSyncOpen, setIsArkmedsSyncOpen] = useState(false);
+  const [arkmedsAutoPrompt, setArkmedsAutoPrompt] = useState(null);
   const [massActionModal, setMassActionModal] = useState({ isOpen: false, action: 'check_all' });
   const [manualCheckModal, setManualCheckModal] = useState({ isOpen: false, equipment: null, modality: 'calibracao', nextState: true });
   const PIN_AUTH_KEY = 'calibracheck_pin_auth_until';
@@ -1596,7 +1600,47 @@ export default function App() {
     const appliedLabels = targetMods.map(m => MODALITIES[m]?.shortName || m).join(' + ');
 
     // Busca inteligente com algoritmo de similaridade de dígitos e caracteres
-    const matches = findBestEquipmentMatches(code, equipments);
+    let matches = findBestEquipmentMatches(code, equipments);
+
+    // Se não encontrou de imediato e o código lido for um QR Code da Arkmeds, resolve no servidor (SOMENTE LEITURA)
+    if ((!matches || matches.length === 0) && (String(code).includes('arkmeds.com') || String(code).includes('/qr_code/'))) {
+      try {
+        const res = await fetch('/api/arkmeds/resolve-qr', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code })
+        });
+        const arkData = await res.json();
+        if (arkData.success) {
+          const candKeys = [arkData.serie, arkData.tag, arkData.arkmedsId, arkData.qrCodeToken].filter(Boolean);
+          for (const k of candKeys) {
+            const m = findBestEquipmentMatches(k, equipments);
+            if (m && m.length > 0) {
+              matches = m;
+              break;
+            }
+          }
+
+          // Se o equipamento existe no Arkmeds mas ainda não consta neste plano, abre prompt para adicionar
+          if (!matches || matches.length === 0) {
+            if (soundEnabled) playWarningSound();
+            setArkmedsAutoPrompt({
+              isOpen: true,
+              equipment: arkData.calibraCheckPayload,
+              details: arkData
+            });
+            showToast('info', `🔍 Identificado no Arkmeds: ${arkData.equipamento} (${arkData.tag || arkData.serie || arkData.arkmedsId})`);
+            return {
+              status: 'found_in_arkmeds',
+              arkmedsInfo: arkData,
+              message: `Identificado no Arkmeds: ${arkData.equipamento}`
+            };
+          }
+        }
+      } catch (err) {
+        console.warn('[Arkmeds QR Resolve] Falha na requisição:', err);
+      }
+    }
 
     if (!matches || matches.length === 0) {
       if (soundEnabled) playErrorSound();
@@ -2161,6 +2205,7 @@ export default function App() {
         onOpenAddEquipment={(targetPlanId, code, mode) => setAddEquipmentModal({ isOpen: true, planId: targetPlanId || activePlanId, initialCode: code || '', initialMode: mode || 'manual' })}
         stagedBadgeCount={scannerStagedCount}
         cartBadgeCount={cartSeriesCount}
+        onOpenArkmedsSync={() => setIsArkmedsSyncOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -2555,6 +2600,99 @@ export default function App() {
         initialMode={addEquipmentModal.initialMode}
         initialSetor={addEquipmentModal.initialSetor}
       />
+
+      {/* Modal de Sincronização e Consulta Arkmeds (SOMENTE LEITURA) */}
+      <ArkmedsSyncModal
+        isOpen={isArkmedsSyncOpen}
+        onClose={() => setIsArkmedsSyncOpen(false)}
+        activeHospitalName={activeHospital?.name}
+        activeHospitalId={activeHospitalId}
+        activePlanId={activePlanId}
+        activePlanTitle={monthlyPlans.find(p => p.id === activePlanId)?.title || activeSheetName}
+        currentEquipments={equipments}
+        onEquipmentsSynced={(result) => {
+          showToast('success', `✓ ${result.addedToPlanCount || result.totalCount} equipamentos sincronizados com sucesso do Arkmeds!`);
+          if (soundEnabled) playSuccessSound();
+          loadMonthlyPlans(activeHospitalId);
+          loadHospitals();
+        }}
+      />
+
+      {/* Modal de Confirmação Rápida para Equipamento Identificado no Arkmeds via QR Code */}
+      {arkmedsAutoPrompt && arkmedsAutoPrompt.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-900 border border-teal-500/50 rounded-3xl shadow-2xl max-w-md w-full p-5 space-y-4 text-slate-100 animate-scale-in">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-teal-500/20 border border-teal-500/40 flex items-center justify-center text-teal-400 shrink-0">
+                <Database className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <span className="text-[10px] font-mono font-bold text-teal-400 bg-teal-500/20 px-2 py-0.5 rounded-full border border-teal-500/30">
+                  QR Code Arkmeds Identificado
+                </span>
+                <h4 className="text-sm font-bold text-white truncate mt-1">
+                  {arkmedsAutoPrompt.details.equipamento}
+                </h4>
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-800/80 rounded-2xl space-y-1.5 text-xs text-slate-300 border border-slate-700/60">
+              <div className="flex justify-between">
+                <span className="text-slate-400">ID Arkmeds:</span>
+                <span className="font-mono font-bold text-teal-400">#{arkmedsAutoPrompt.details.arkmedsId}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Identificação / Tag:</span>
+                <span className="font-mono font-bold text-amber-300">{arkmedsAutoPrompt.details.tag || '—'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Número de Série:</span>
+                <span className="font-mono font-bold text-white">{arkmedsAutoPrompt.details.serie || '—'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Setor:</span>
+                <span className="font-semibold text-white">{arkmedsAutoPrompt.details.setor || 'Geral'}</span>
+              </div>
+              {arkmedsAutoPrompt.details.hospital && (
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Unidade:</span>
+                  <span className="text-slate-300">{arkmedsAutoPrompt.details.hospital}</span>
+                </div>
+              )}
+            </div>
+
+            <p className="text-xs text-slate-300">
+              Este aparelho foi localizado no Arkmeds, mas ainda não estava cadastrado no plano deste mês. Deseja adicioná-lo e confirmar a conferência agora?
+            </p>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setArkmedsAutoPrompt(null)}
+                className="flex-1 py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const toAdd = arkmedsAutoPrompt.equipment;
+                  setArkmedsAutoPrompt(null);
+                  await handleSaveNewEquipment(toAdd, activePlanId);
+                  // Executa a conferência imediata nele
+                  setTimeout(() => {
+                    handleScanCode(toAdd.serie || toAdd.tag || toAdd.codigoBarras);
+                  }, 250);
+                }}
+                className="flex-1 py-2 px-3 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white font-bold text-xs rounded-xl shadow-md shadow-teal-600/30 transition flex items-center justify-center gap-1.5"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Adicionar & Checar</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Floating Mobile Bottom Action Bar (Thumb-friendly for Android & iOS) */}
       <MobileBottomBar

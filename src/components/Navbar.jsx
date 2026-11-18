@@ -25,7 +25,8 @@ import {
   Trash2,
   Truck,
   FileSpreadsheet,
-  UserPlus
+  UserPlus,
+  Database
 } from 'lucide-react';
 
 export default function Navbar({ 
@@ -61,7 +62,8 @@ export default function Navbar({
   serviceConfig = null,
   onOpenAddEquipment = null,
   stagedBadgeCount = 0,
-  cartBadgeCount = 0
+  cartBadgeCount = 0,
+  onOpenArkmedsSync = null
 }) {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const moreMenuRef = useRef(null);
@@ -256,6 +258,21 @@ export default function Navbar({
                 </button>
               )}
 
+              {onOpenArkmedsSync && (
+                <button
+                  type="button"
+                  onClick={onOpenArkmedsSync}
+                  className="px-2.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 border border-teal-500/30 active:scale-95 whitespace-nowrap"
+                  title="Sincronizar e Consultar Equipamentos no Arkmeds (Somente Leitura)"
+                >
+                  <Database className="w-3.5 h-3.5 text-teal-500 shrink-0" />
+                  <span>Arkmeds</span>
+                  <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-teal-500/20 text-teal-300 font-bold">
+                    Sync
+                  </span>
+                </button>
+              )}
+
               <button
                 onClick={() => onChangeMainTab('perfil')}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
@@ -366,6 +383,24 @@ export default function Navbar({
                       >
                         <PlusCircle className="w-4 h-4 text-blue-500 shrink-0" />
                         <span>+ Adicionar ao Plano</span>
+                      </button>
+                    )}
+
+                    {onOpenArkmedsSync && (
+                      <button
+                        onClick={() => {
+                          setShowMoreMenu(false);
+                          onOpenArkmedsSync();
+                        }}
+                        className="w-full flex items-center justify-between px-3 py-2 text-xs font-bold hover:bg-teal-50 dark:hover:bg-teal-950/40 transition text-teal-600 dark:text-teal-400"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <Database className="w-4 h-4 text-teal-500 shrink-0" />
+                          <span>Sincronizar Arkmeds</span>
+                        </div>
+                        <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-teal-500/20 text-teal-400 border border-teal-500/30">
+                          Leitura
+                        </span>
                       </button>
                     )}
 
@@ -624,6 +659,17 @@ export default function Navbar({
               <span className="truncate hidden sm:inline">Perfil Técnico</span>
               <span className="truncate sm:hidden">Perfil</span>
             </button>
+
+            {onOpenArkmedsSync && (
+              <button
+                onClick={onOpenArkmedsSync}
+                className="py-1.5 px-1 sm:px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 sm:gap-1.5 truncate bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/30"
+                title="Sincronizar Arkmeds"
+              >
+                <Database className="w-3.5 h-3.5 shrink-0 text-teal-500" />
+                <span className="truncate">Arkmeds</span>
+              </button>
+            )}
           </nav>
         </div>
       )}

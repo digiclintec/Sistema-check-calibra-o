@@ -326,6 +326,9 @@ export function findBestEquipmentMatches(scannedCode, equipments = [], searchTar
         { name: 'IDEC / Tag', value: item.tag },
         { name: 'Identificação Original', value: item._originalRow?.['Identificação'] || item._originalRow?.['Identificacao'] },
         { name: 'ID do Sistema', value: item.id },
+        { name: 'ID Arkmeds', value: item.arkmedsId },
+        { name: 'QR Code Arkmeds', value: item.arkmedsQrToken },
+        { name: 'URL QR Arkmeds', value: item.arkmedsQrUrl },
         { name: 'Patrimônio', value: item.patrimonio || item._originalRow?.['Patrimônio'] || item._originalRow?.['Tombamento'] }
       );
     }
