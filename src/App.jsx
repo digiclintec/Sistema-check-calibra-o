@@ -1623,7 +1623,7 @@ export default function App() {
         });
         const arkData = await res.json();
         if (arkData.success) {
-          const candKeys = [arkData.serie, arkData.tag, arkData.arkmedsId, arkData.qrCodeToken].filter(Boolean);
+          const candKeys = [arkData.patrimonio, arkData.serie, arkData.tag, arkData.arkmedsId, arkData.qrCodeToken].filter(Boolean);
           for (const k of candKeys) {
             const m = findBestEquipmentMatches(k, equipments);
             if (m && m.length > 0) {
@@ -1640,8 +1640,9 @@ export default function App() {
               equipment: arkData.calibraCheckPayload || {
                 id: `ARK-${arkData.arkmedsId}`,
                 arkmedsId: arkData.arkmedsId,
-                codigoBarras: arkData.serie || arkData.tag || arkData.arkmedsId,
+                codigoBarras: arkData.patrimonio || arkData.serie || arkData.tag || arkData.arkmedsId,
                 tag: arkData.tag || `TAG-${arkData.arkmedsId}`,
+                patrimonio: arkData.patrimonio || '',
                 equipamento: arkData.equipamento,
                 fabricante: arkData.fabricante,
                 modelo: arkData.modelo,

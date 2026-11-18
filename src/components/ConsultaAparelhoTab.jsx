@@ -110,6 +110,7 @@ export default function ConsultaAparelhoTab({
           modelo: data.modelo,
           serie: data.serie,
           tag: data.tag,
+          patrimonio: data.patrimonio || data.calibraCheckPayload?.patrimonio || '',
           proprietario: data.proprietario,
           setor: data.setor || 'Geral',
           unidadeHospital: data.hospital || data.proprietario,
@@ -139,10 +140,12 @@ export default function ConsultaAparelhoTab({
       const termLower = raw.toLowerCase();
       const localMatch = equipments.find(eq => 
         (eq.tag && eq.tag.toLowerCase() === termLower) ||
+        (eq.patrimonio && eq.patrimonio.toLowerCase() === termLower) ||
         (eq.serie && eq.serie.toLowerCase() === termLower) ||
         (eq.codigoBarras && eq.codigoBarras.toLowerCase() === termLower) ||
         (eq.arkmedsId && String(eq.arkmedsId) === raw) ||
         (eq.tag && eq.tag.toLowerCase().includes(termLower)) ||
+        (eq.patrimonio && eq.patrimonio.toLowerCase().includes(termLower)) ||
         (eq.equipamento && eq.equipamento.toLowerCase().includes(termLower))
       );
 
@@ -192,6 +195,7 @@ export default function ConsultaAparelhoTab({
       const q = listSearch.trim().toLowerCase();
       list = list.filter(e => 
         (e.tag && e.tag.toLowerCase().includes(q)) ||
+        (e.patrimonio && e.patrimonio.toLowerCase().includes(q)) ||
         (e.serie && e.serie.toLowerCase().includes(q)) ||
         (e.equipamento && e.equipamento.toLowerCase().includes(q)) ||
         (e.setor && e.setor.toLowerCase().includes(q)) ||
@@ -398,6 +402,12 @@ export default function ConsultaAparelhoTab({
                 <span>Setor: <strong className="text-slate-700 dark:text-slate-200">{selectedEquipment.setor}</strong></span>
                 <span>•</span>
                 <span>Tag: <strong className="font-mono text-slate-700 dark:text-slate-200">{selectedEquipment.tag || 'N/A'}</strong></span>
+                {selectedEquipment.patrimonio && (
+                  <>
+                    <span>•</span>
+                    <span>Patrimônio: <strong className="font-mono text-slate-700 dark:text-slate-200">{selectedEquipment.patrimonio}</strong></span>
+                  </>
+                )}
                 {selectedEquipment.serie && (
                   <>
                     <span>•</span>
@@ -699,6 +709,23 @@ export default function ConsultaAparelhoTab({
                 </div>
                 <p className="text-sm sm:text-base font-black text-slate-900 dark:text-white font-mono mt-1 truncate">
                   {selectedEquipment.tag || 'Sem Tag'}
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Patrimônio / Tombamento</span>
+                  {selectedEquipment.patrimonio && (
+                    <button
+                      onClick={() => handleCopy(selectedEquipment.patrimonio, 'patrimonio')}
+                      className="text-slate-400 hover:text-slate-600 p-1"
+                    >
+                      {copiedKey === 'patrimonio' ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                  )}
+                </div>
+                <p className="text-sm sm:text-base font-black text-slate-900 dark:text-white font-mono mt-1 truncate">
+                  {selectedEquipment.patrimonio || 'N/A'}
                 </p>
               </div>
 

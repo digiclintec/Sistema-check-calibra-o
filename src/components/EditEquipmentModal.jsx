@@ -28,6 +28,7 @@ export default function EditEquipmentModal({
   onSave
 }) {
   const [tag, setTag] = useState('');
+  const [patrimonio, setPatrimonio] = useState('');
   const [serie, setSerie] = useState('');
   const [codigoBarras, setCodigoBarras] = useState('');
   const [equipamento, setEquipamento] = useState('');
@@ -50,6 +51,7 @@ export default function EditEquipmentModal({
   useEffect(() => {
     if (isOpen && equipment) {
       setTag(equipment.tag || '');
+      setPatrimonio(equipment.patrimonio || '');
       setSerie(equipment.serie || '');
       setCodigoBarras(equipment.codigoBarras || equipment.barcode || '');
       setEquipamento(equipment.equipamento || equipment.nome || '');
@@ -112,8 +114,9 @@ export default function EditEquipmentModal({
       const updatedData = {
         ...equipment,
         tag: tag.trim(),
+        patrimonio: patrimonio.trim(),
         serie: serie.trim(),
-        codigoBarras: codigoBarras.trim() || serie.trim() || tag.trim(),
+        codigoBarras: codigoBarras.trim() || serie.trim() || tag.trim() || patrimonio.trim(),
         equipamento: equipamento.trim() || equipment.equipamento,
         modelo: modelo.trim(),
         fabricante: fabricante.trim(),
@@ -282,6 +285,39 @@ export default function EditEquipmentModal({
                     onClick={handleUseTagAsBarcode}
                     className="text-blue-600 dark:text-blue-400 font-bold hover:underline shrink-0 text-[10px]"
                     title="Preencher o código de barras com o mesmo valor da tag"
+                  >
+                    Copiar para Código de Barras →
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* 2b. Patrimônio / Tombamento */}
+            <div className="p-3 rounded-2xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/50 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>Patrimônio / Tombamento:</span>
+                </label>
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                  Ativo Fixo
+                </span>
+              </div>
+              <input
+                type="text"
+                value={patrimonio}
+                onChange={(e) => setPatrimonio(e.target.value)}
+                placeholder="Ex: 045812, PAT-1234..."
+                className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-800 text-slate-900 dark:text-white text-xs sm:text-sm font-mono font-bold focus:ring-2 focus:ring-emerald-500 focus:outline-none shadow-xs"
+              />
+              <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 pt-0.5">
+                <span>Código de barras do patrimônio para busca direta.</span>
+                {patrimonio && (
+                  <button
+                    type="button"
+                    onClick={() => setCodigoBarras(patrimonio.trim())}
+                    className="text-emerald-600 dark:text-emerald-400 font-bold hover:underline shrink-0 text-[10px]"
+                    title="Preencher o código de barras com o valor do patrimônio"
                   >
                     Copiar para Código de Barras →
                   </button>

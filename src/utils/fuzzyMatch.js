@@ -171,6 +171,19 @@ function evaluateFieldMatch(scannedRaw, fieldRaw, tokens = []) {
     };
   }
 
+  // 1c. Coincidência Numérica de Patrimônio desconsiderando Zeros à Esquerda (ex: código de barras "0045812" === "45812")
+  const normScannedNoZeros = scannedDigits.replace(/^0+/, '');
+  const normFieldNoZeros = fieldDigits.replace(/^0+/, '');
+  if (normScannedNoZeros && normFieldNoZeros && normScannedNoZeros === normFieldNoZeros && normScannedNoZeros.length >= 2) {
+    return {
+      score: 1320,
+      confidence: 100,
+      matchingDigits: normScannedNoZeros.length,
+      matchedSnippet: fieldStr,
+      reason: `Patrimônio / Numeração correspondente: "${fieldStr}"`
+    };
+  }
+
   // 2. Extração Inteligente de GS1 (AI 21 = Número de Série)
   const gs1Data = parseCompositeBarcode(scannedStr);
   if (gs1Data.serialNumber) {
@@ -334,22 +347,23 @@ export function findBestEquipmentMatches(scannedCode, equipments = [], searchTar
     // Define quais campos testar de acordo com o modo escolhido
     const testFields = [];
 
-    // Campos de IDEC / Identificação / Tag
-    if (searchTarget === 'all' || searchTarget === 'idec') {
+    // Campos de IDEC / Identificação / Tag / Patrimônio
+    if (searchTarget === 'all' || searchTarget === 'idec' || searchTarget === 'patrimonio') {
       testFields.push(
+        { name: 'Patrimônio', value: item.patrimonio || item._originalRow?.['Patrimônio'] || item._originalRow?.['Patrimonio'] || item._originalRow?.['Tombamento'] },
         { name: 'IDEC / Tag', value: item.tag },
         { name: 'Identificação Original', value: item._originalRow?.['Identificação'] || item._originalRow?.['Identificacao'] },
         { name: 'ID do Sistema', value: item.id },
         { name: 'ID Arkmeds', value: item.arkmedsId },
         { name: 'QR Code Arkmeds', value: item.arkmedsQrToken },
-        { name: 'URL QR Arkmeds', value: item.arkmedsQrUrl },
-        { name: 'Patrimônio', value: item.patrimonio || item._originalRow?.['Patrimônio'] || item._originalRow?.['Tombamento'] }
+        { name: 'URL QR Arkmeds', value: item.arkmedsQrUrl }
       );
     }
 
-    // Campos de Número de Série
-    if (searchTarget === 'all' || searchTarget === 'serie') {
+    // Campos de Número de Série e Códigos de Barras de Patrimônio
+    if (searchTarget === 'all' || searchTarget === 'serie' || searchTarget === 'patrimonio') {
       testFields.push(
+        { name: 'Patrimônio', value: item.patrimonio || item._originalRow?.['Patrimônio'] || item._originalRow?.['Patrimonio'] || item._originalRow?.['Tombamento'] },
         { name: 'Número de Série', value: item.serie },
         { name: 'Série Original', value: item._originalRow?.['Número de Série'] || item._originalRow?.['Numero de Serie'] },
         { name: 'Código de Barras', value: item.codigoBarras }

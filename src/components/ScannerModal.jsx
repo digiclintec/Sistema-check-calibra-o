@@ -1291,7 +1291,7 @@ export default function ScannerModal({
         const arkData = await res.json();
         if (arkData && arkData.success) {
           // Verifica se algum identificador retornado pelo Arkmeds bate com um aparelho já carregado
-          const arkKeys = [arkData.tag, arkData.serie, arkData.arkmedsId, arkData.qrCodeToken].filter(Boolean);
+          const arkKeys = [arkData.patrimonio, arkData.tag, arkData.serie, arkData.arkmedsId, arkData.qrCodeToken].filter(Boolean);
           for (const k of arkKeys) {
             const m = findBestEquipmentMatches(k, equipments, searchTarget);
             if (m && m.length > 0) {
@@ -1306,8 +1306,9 @@ export default function ScannerModal({
             const payload = arkData.calibraCheckPayload || {
               id: `ARK-${arkData.arkmedsId}`,
               arkmedsId: arkData.arkmedsId,
-              codigoBarras: arkData.serie || arkData.tag || arkData.arkmedsId,
+              codigoBarras: arkData.patrimonio || arkData.serie || arkData.tag || arkData.arkmedsId,
               tag: arkData.tag || `TAG-${arkData.arkmedsId}`,
+              patrimonio: arkData.patrimonio || '',
               equipamento: arkData.equipamento,
               fabricante: arkData.fabricante,
               modelo: arkData.modelo,
@@ -1317,12 +1318,13 @@ export default function ScannerModal({
               statusCalibracao: 'Válido',
               checado: false
             };
+            const patLabel = arkData.patrimonio ? ` | Pat: ${arkData.patrimonio}` : '';
             setLastScannedFeedback({
               status: 'found_in_arkmeds',
               code: cleanCode,
               arkmedsData: arkData,
               equipment: payload,
-              message: `Identificado no Arkmeds: ${arkData.equipamento} (IDEC: ${arkData.tag || 'N/A'} | Série: ${arkData.serie || 'N/A'})`,
+              message: `Identificado no Arkmeds: ${arkData.equipamento} (IDEC: ${arkData.tag || 'N/A'}${patLabel} | Série: ${arkData.serie || 'N/A'})`,
               timestamp: new Date().toLocaleTimeString('pt-BR')
             });
             return;
@@ -1336,7 +1338,7 @@ export default function ScannerModal({
     if (!matches || matches.length === 0) {
       // Nenhum candidato encontrado
       if (soundEnabled) playErrorSound();
-      const targetHint = searchTarget === 'idec' ? ' pelo IDEC / Tag' : searchTarget === 'serie' ? ' pelo Nº de Série' : '';
+      const targetHint = searchTarget === 'patrimonio' ? ' pelo Patrimônio' : searchTarget === 'idec' ? ' pelo IDEC / Tag' : searchTarget === 'serie' ? ' pelo Nº de Série' : '';
       setLastScannedFeedback({
         status: 'not_found',
         code: cleanCode,
@@ -1668,12 +1670,12 @@ export default function ScannerModal({
           <div className="flex items-center gap-1 shrink-0">
             <div className="flex items-center bg-slate-900 p-0.5 rounded-lg border border-slate-800 text-[10px]">
               <button
-                onClick={() => setSearchTarget(t => t === 'all' ? 'idec' : t === 'idec' ? 'serie' : 'all')}
-                className={`px-2 py-0.5 rounded font-bold transition ${searchTarget === 'all' ? 'text-blue-400' : searchTarget === 'idec' ? 'text-amber-400' : 'text-purple-400'
+                onClick={() => setSearchTarget(t => t === 'all' ? 'patrimonio' : t === 'patrimonio' ? 'idec' : t === 'idec' ? 'serie' : 'all')}
+                className={`px-2 py-0.5 rounded font-bold transition ${searchTarget === 'all' ? 'text-blue-400' : searchTarget === 'patrimonio' ? 'text-emerald-400' : searchTarget === 'idec' ? 'text-amber-400' : 'text-purple-400'
                   }`}
-                title="Alternar alvo de busca: Auto / IDEC / Série"
+                title="Alternar alvo de busca: Auto (Tudo) / Patrimônio / IDEC / Série"
               >
-                <span>🔍 {searchTarget === 'all' ? 'Auto' : searchTarget === 'idec' ? 'IDEC' : 'Série'}</span>
+                <span>🔍 {searchTarget === 'all' ? 'Auto (Tudo)' : searchTarget === 'patrimonio' ? 'Patrimônio' : searchTarget === 'idec' ? 'IDEC' : 'Série'}</span>
               </button>
             </div>
 

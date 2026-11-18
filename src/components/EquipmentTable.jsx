@@ -115,12 +115,14 @@ export default function EquipmentTable({
         const serie = (e.serie || '').toLowerCase();
         const tag = (e.tag || '').toLowerCase();
         const code = (e.codigoBarras || '').toLowerCase();
+        const pat = (e.patrimonio || e._originalRow?.['Patrimônio'] || e._originalRow?.['Patrimonio'] || e._originalRow?.['Tombamento'] || '').toLowerCase();
 
         return (
           code.includes(q) || (code.length >= 4 && q.includes(code)) ||
-          tag.includes(q) || (tag.length >= 4 && q.includes(tag)) ||
-          serie.includes(q) || (serie.length >= 6 && q.includes(serie)) ||
-          (cleanSerial && cleanSerial.length >= 4 && (serie.includes(cleanSerial) || tag.includes(cleanSerial))) ||
+          tag.includes(q) || (tag.length >= 3 && q.includes(tag)) ||
+          pat.includes(q) || (pat.length >= 2 && q.includes(pat)) ||
+          serie.includes(q) || (serie.length >= 5 && q.includes(serie)) ||
+          (cleanSerial && cleanSerial.length >= 3 && (serie.includes(cleanSerial) || tag.includes(cleanSerial) || pat.includes(cleanSerial))) ||
           e.equipamento?.toLowerCase().includes(q) ||
           e.fabricante?.toLowerCase().includes(q) ||
           e.modelo?.toLowerCase().includes(q) ||
@@ -457,6 +459,11 @@ export default function EquipmentTable({
                       <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
                         {item.tag || item.codigoBarras}
                       </span>
+                      {item.patrimonio && (
+                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/50" title="Número de Patrimônio / Tombamento">
+                          🏷️ Pat: {item.patrimonio}
+                        </span>
+                      )}
                       {onEditEquipment && (
                         <button
                           type="button"
@@ -513,6 +520,7 @@ export default function EquipmentTable({
                       <Cpu className="w-3 h-3 text-slate-400 shrink-0" />
                       <span>{item.fabricante} {item.modelo}</span>
                       {item.serie && <span>• S/N: {item.serie}</span>}
+                      {item.patrimonio && <span>• Pat: {item.patrimonio}</span>}
                     </div>
                   )}
                 </div>
@@ -783,12 +791,16 @@ export default function EquipmentTable({
                         {item.fabricante && <span>{item.fabricante}</span>}
                         {item.modelo && <span>• Mod: {item.modelo}</span>}
                         {item.serie && <span>• S/N: {item.serie}</span>}
+                        {item.patrimonio && <span>• Pat: {item.patrimonio}</span>}
                       </div>
                     </td>
 
                     <td className="py-3 px-4 hidden md:table-cell font-mono">
                       <div className="flex items-center justify-between gap-1.5">
-                        <div className="text-slate-800 dark:text-slate-200 font-bold truncate">{item.tag}</div>
+                        <div>
+                          <div className="text-slate-800 dark:text-slate-200 font-bold truncate">{item.tag}</div>
+                          {item.patrimonio && <div className="text-[10px] text-slate-500 font-sans">Pat: {item.patrimonio}</div>}
+                        </div>
                         {onEditEquipment && (
                           <button
                             type="button"

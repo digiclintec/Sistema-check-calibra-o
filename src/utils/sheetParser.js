@@ -409,6 +409,10 @@ export function identifyColumns(headers, sampleRows = []) {
       mapping.tag = h;
       return;
     }
+    if (norm === 'patrimonio' || norm === 'tombamento' || norm === 'npatrimonio' || norm === 'numepatrimonio') {
+      mapping.patrimonio = h;
+      return;
+    }
     if (norm === 'ndeserie' || norm === 'numerodeserie') {
       mapping.serie = h;
       return;
@@ -542,14 +546,24 @@ export function identifyColumns(headers, sampleRows = []) {
     }
 
     // --- CAMPOS DE IDENTIFICAÇÃO BÁSICA ---
-    // Tag / Identificador / IDEC / Tombamento / Patrimônio
+    // Patrimônio / Tombamento
+    else if (!mapping.patrimonio && (
+      norm.includes('patrimonio') || 
+      norm.includes('tombamento') ||
+      norm.includes('npatrimonio') ||
+      norm.includes('codpatrimonio') ||
+      norm.includes('ativo') ||
+      norm === 'pat' ||
+      norm === 'tomb'
+    )) {
+      mapping.patrimonio = h;
+    }
+    // Tag / Identificador / IDEC
     else if (!mapping.tag && (
       norm.includes('tag') || 
       norm.includes('idec') ||
       norm.includes('identifica') || 
       norm.includes('identificador') || 
-      norm.includes('patrimonio') ||
-      norm.includes('tombamento') ||
       norm.includes('codigoequipamento')
     )) {
       mapping.tag = h;
@@ -802,6 +816,9 @@ export function normalizeRows(rows, mapping) {
   return rows.map((row, idx) => {
     const rawBarcode = mapping.codigoBarras ? String(row[mapping.codigoBarras] ?? '').trim() : '';
     const rawTag = mapping.tag ? String(row[mapping.tag] ?? '').trim() : '';
+    const rawPatrimonio = mapping.patrimonio ? String(row[mapping.patrimonio] ?? '').trim() : (
+      row['Patrimônio'] || row['Patrimonio'] || row['Tombamento'] || row['patrimonio'] || row['tombamento'] || row['PATRIMÔNIO'] || row['PATRIMONIO'] || ''
+    );
     const rawEquipamento = mapping.equipamento ? String(row[mapping.equipamento] ?? '').trim() : `Equipamento #${idx + 1}`;
     const rawFabricante = mapping.fabricante ? String(row[mapping.fabricante] ?? '').trim() : '';
     const rawModelo = mapping.modelo ? String(row[mapping.modelo] ?? '').trim() : '';
@@ -1016,6 +1033,7 @@ export function normalizeRows(rows, mapping) {
       id: uniqueId,
       codigoBarras: finalBarcode,
       tag: finalTag,
+      patrimonio: String(rawPatrimonio || '').trim(),
       equipamento: resolvedEquip,
       fabricante: rawFabricante,
       modelo: rawModelo,

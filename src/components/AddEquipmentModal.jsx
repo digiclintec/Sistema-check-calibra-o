@@ -37,10 +37,13 @@ export function parsePastedExcelText(text, defaultSetor = 'Geral') {
   // Checa se primeira linha é cabeçalho
   const firstCols = lines[0].split(/\t|,|;/).map(c => c.trim().toLowerCase());
   let hasHeader = false;
-  let headerMap = { tag: -1, serie: -1, equipamento: -1, fabricante: -1, modelo: -1, setor: -1, validade: -1 };
+  let headerMap = { tag: -1, patrimonio: -1, serie: -1, equipamento: -1, fabricante: -1, modelo: -1, setor: -1, validade: -1 };
 
   firstCols.forEach((col, idx) => {
-    if (col.includes('tag') || col.includes('patrimonio') || col.includes('idec')) {
+    if (col.includes('patrimonio') || col.includes('tombamento')) {
+      headerMap.patrimonio = idx;
+      hasHeader = true;
+    } else if (col.includes('tag') || col.includes('idec')) {
       headerMap.tag = idx;
       hasHeader = true;
     } else if (col.includes('serie') || col.includes('serial') || col.includes('sn')) {
@@ -73,6 +76,7 @@ export function parsePastedExcelText(text, defaultSetor = 'Geral') {
     if (rawCols.length === 0 || (rawCols.length === 1 && !rawCols[0])) continue;
 
     let tag = '';
+    let patrimonio = '';
     let serie = '';
     let eqNome = '';
     let fabricante = '';
@@ -82,6 +86,7 @@ export function parsePastedExcelText(text, defaultSetor = 'Geral') {
 
     if (hasHeader) {
       if (headerMap.tag >= 0) tag = rawCols[headerMap.tag] || '';
+      if (headerMap.patrimonio >= 0) patrimonio = rawCols[headerMap.patrimonio] || '';
       if (headerMap.serie >= 0) serie = rawCols[headerMap.serie] || '';
       if (headerMap.equipamento >= 0) eqNome = rawCols[headerMap.equipamento] || '';
       if (headerMap.fabricante >= 0) fabricante = rawCols[headerMap.fabricante] || '';
@@ -117,6 +122,7 @@ export function parsePastedExcelText(text, defaultSetor = 'Geral') {
     results.push({
       id: 'EQP-' + Date.now().toString(36) + '-' + i + '-' + Math.random().toString(36).substring(2, 5),
       tag: tag || finalBarcode,
+      patrimonio: patrimonio || '',
       serie: serie || finalBarcode,
       codigoBarras: finalBarcode,
       equipamento: eqNome || 'Equipamento',
@@ -162,6 +168,7 @@ export default function AddEquipmentModal({
   // --- FORMULÁRIO INDIVIDUAL (MANUAL) ---
   const [equipamento, setEquipamento] = useState('');
   const [tag, setTag] = useState('');
+  const [patrimonio, setPatrimonio] = useState('');
   const [serie, setSerie] = useState('');
   const [codigoBarras, setCodigoBarras] = useState('');
   const [fabricante, setFabricante] = useState('');
@@ -363,7 +370,7 @@ export default function AddEquipmentModal({
       return;
     }
 
-    const finalBarcode = codigoBarras.trim() || serie.trim() || tag.trim();
+    const finalBarcode = codigoBarras.trim() || serie.trim() || tag.trim() || patrimonio.trim();
 
     setIsLoading(true);
 
@@ -372,6 +379,7 @@ export default function AddEquipmentModal({
         id: 'EQP-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 6),
         equipamento: equipamento.trim(),
         tag: tag.trim() || finalBarcode,
+        patrimonio: patrimonio.trim(),
         serie: serie.trim() || finalBarcode,
         codigoBarras: finalBarcode,
         fabricante: fabricante.trim() || 'Não especificado',

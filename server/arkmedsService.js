@@ -218,6 +218,7 @@ async function processResolvedLocation(locationUrl, session, originalQrUrl) {
   const fabricante = fields['fabricante'] || '';
   const serie = fields['numero de serie'] || fields['serie'] || '';
   const identificacao = fields['identificacao'] || fields['tag'] || '';
+  const patrimonio = fields['patrimonio'] || fields['tombamento'] || '';
   const proprietario = fields['proprietario'] || '';
   const estado = fields['estado'] || 'Ativo';
   const anvisa = fields['registro anvisa'] || fields['anvisa'] || '';
@@ -310,6 +311,7 @@ async function processResolvedLocation(locationUrl, session, originalQrUrl) {
     modelo,
     serie,
     tag: identificacao,
+    patrimonio: patrimonio && patrimonio !== 'N/A' ? patrimonio : '',
     proprietario,
     setor,
     hospital,
@@ -322,12 +324,13 @@ async function processResolvedLocation(locationUrl, session, originalQrUrl) {
     ultimaOrdemServico,
     // Formato pronto para inserção no CalibraCheck
     calibraCheckPayload: {
-      id: `ARK-${arkmedsId || identificacao || serie}`,
+      id: `ARK-${arkmedsId || identificacao || serie || patrimonio}`,
       arkmedsId: arkmedsId || '',
       arkmedsQrToken: qrToken,
       arkmedsQrUrl: originalQrUrl,
-      codigoBarras: serie || identificacao || arkmedsId || qrToken,
+      codigoBarras: serie || identificacao || patrimonio || arkmedsId || qrToken,
       tag: identificacao || `TAG-${arkmedsId}`,
+      patrimonio: patrimonio && patrimonio !== 'N/A' ? patrimonio : '',
       equipamento: equipamentoNome,
       fabricante,
       modelo,
@@ -413,6 +416,21 @@ export async function searchArkmedsEquipmentUniversal(searchTerm) {
     });
     const serieHtml = await serieRes.text();
     let m = serieHtml.match(/href=[\"\']visual\/(\d+)\/[\"\']/i) || serieHtml.match(/\/cadastros\/equipamento\/visual\/(\d+)\//i);
+    if (m) {
+      return processResolvedLocation(`/cadastros/equipamento/visual/${m[1]}/`, session, '');
+    }
+  } catch {}
+
+  // 4b. Busca por patrimonio / tombamento
+  try {
+    const patRes = await fetch(`${BASE_URL}/cadastros/equipamento/?patrimonio=${encodeURIComponent(query)}`, {
+      headers: { 
+        'Cookie': session,
+        'User-Agent': 'Mozilla/5.0 (CalibraCheck-Arkmeds-Integration/1.0)'
+      }
+    });
+    const patHtml = await patRes.text();
+    let m = patHtml.match(/href=[\"\']visual\/(\d+)\/[\"\']/i) || patHtml.match(/\/cadastros\/equipamento\/visual\/(\d+)\//i);
     if (m) {
       return processResolvedLocation(`/cadastros/equipamento/visual/${m[1]}/`, session, '');
     }

@@ -14,7 +14,7 @@
 const IDEC_HOSPITAL_REGEX = /\b([A-Z]{2,6}(?:HL|HA|HM|HG|HLB|HI|H1|Hl|H4)[-_ ]?[0-9OIl]{2,6})\b/gi;
 const IDEC_GENERIC_TAG_REGEX = /\b([A-Z]{2,6}[-_][0-9OIl]{2,6})\b/gi;
 const IDEC_BI_REGEX = /\b(BI[-_ ]?[0-9OIl]{1,5})\b/gi;
-const IDEC_LABELED_REGEX = /\b(?:[iIlL1]?dentifica[cç][aã]o|idec|tag|patr[ií]m[oô]nio|ns|s[eé]rie|aparelho)\b[:\s-]*([A-Z0-9\-_ ]{3,25})/gi;
+const IDEC_LABELED_REGEX = /\b(?:[iIlL1]?dentifica[cç][aã]o|idec|tag|patr[ií]m[oô]nio|patrimonio|pat|tombamento|tomb|ns|s[eé]rie|aparelho)\b[:\s-]*([A-Z0-9\-_ ]{3,25})/gi;
 const ARKMEDS_ID_REGEX = /\bID[:\s]+(\d{3,7})\b/gi;
 
 const COMMON_IGNORE_WORDS = new Set([
@@ -185,7 +185,7 @@ export function standardizeBarcodeReading(rawCode, equipments = []) {
   }
 
   // 1. Limpeza de prefixos de leitores ou etiquetas
-  let clean = text.replace(/^(?:SN|S\/N|NS|N\/S|SER|SERIE|SÉRIE|SERIAL|TAG|IDEC|REF)[:\s\-_]+/i, '').trim();
+  let clean = text.replace(/^(?:SN|S\/N|NS|N\/S|SER|SERIE|SÉRIE|SERIAL|TAG|IDEC|REF|PAT|PATRIMONIO|PATRIMÔNIO|TOMB|TOMBAMENTO)[:\s\-_]+/i, '').trim();
 
   // 2. Análise de código GS1 composto (01)GTIN(21)SERIAL
   const gs1Ai21 = text.match(/\(21\)([^()]+)/);
@@ -193,17 +193,19 @@ export function standardizeBarcodeReading(rawCode, equipments = []) {
     return gs1Ai21[1].trim();
   }
 
-  // 3. Tratamento para Bombas de Infusão com Modelo + Separador + Número de Série
-  // Ex: "ST550T2-2104010003" ou "LF2001*2104010003" ou "BI-12345/01"
+  // 3. Tratamento para Códigos compostos (Modelo + Separador + Número de Série ou Patrimônio)
+  // Ex: "ST550T2-2104010003" ou "LF2001*2104010003" ou "PAT-012345" ou "BI-12345/01"
   if (clean.includes('-') || clean.includes('*') || clean.includes('/') || clean.includes('_')) {
     const parts = clean.split(/[-*\/_]/).map(p => p.trim()).filter(Boolean);
     
-    // Se alguma parte bater com uma série ou tag cadastrada no plano atual
+    // Se alguma parte bater com uma série, tag ou patrimônio cadastrado no plano atual
     if (equipments && equipments.length > 0) {
       for (const p of parts) {
         const found = equipments.find(e => 
           (e.serie && e.serie.toUpperCase() === p.toUpperCase()) ||
-          (e.tag && e.tag.toUpperCase() === p.toUpperCase())
+          (e.tag && e.tag.toUpperCase() === p.toUpperCase()) ||
+          (e.patrimonio && e.patrimonio.toUpperCase() === p.toUpperCase()) ||
+          (e.codigoBarras && e.codigoBarras.toUpperCase() === p.toUpperCase())
         );
         if (found) return p;
       }
