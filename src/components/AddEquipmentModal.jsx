@@ -622,18 +622,32 @@ export default function AddEquipmentModal({
               </datalist>
             </div>
 
-            {/* Identificadores: Tag, Série e Código de Barras */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            {/* Identificadores: Tag, Patrimônio, Série e Código de Barras */}
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
               <div>
                 <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1">
                   <Tag className="w-3.5 h-3.5 text-blue-500" />
-                  <span>Tag / Patrimônio</span>
+                  <span>Tag / IDEC</span>
                 </label>
                 <input
                   type="text"
                   value={tag}
                   onChange={(e) => setTag(e.target.value)}
-                  placeholder="Ex: CAL-0108"
+                  placeholder="Ex: SVPHL-0010"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-300 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1">
+                  <Tag className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>Patrimônio</span>
+                </label>
+                <input
+                  type="text"
+                  value={patrimonio}
+                  onChange={(e) => setPatrimonio(e.target.value)}
+                  placeholder="Ex: 045812"
                   className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-300 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
                 />
               </div>
@@ -654,8 +668,8 @@ export default function AddEquipmentModal({
 
               <div>
                 <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1">
-                  <Barcode className="w-3.5 h-3.5 text-emerald-500" />
-                  <span>Código de Barras</span>
+                  <Barcode className="w-3.5 h-3.5 text-purple-500" />
+                  <span>Cód. Barras</span>
                 </label>
                 <input
                   type="text"
