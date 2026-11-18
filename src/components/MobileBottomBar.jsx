@@ -1,9 +1,10 @@
 import React from 'react';
-import { Camera, ListFilter, Smartphone, Sparkles, Cpu, CheckSquare, PlusCircle } from 'lucide-react';
+import { Camera, ListFilter, Smartphone, Truck, PlusCircle } from 'lucide-react';
 
 export default function MobileBottomBar({
   onOpenScanner,
-  onOpenSerialScan,
+  onNavigateToDevolucao,
+  cartBadgeCount = 0,
   onOpenInstall,
   onOpenAddEquipment,
   activeFilter,
@@ -35,16 +36,23 @@ export default function MobileBottomBar({
         </span>
       </button>
 
-      {/* Digitalizar Foto OCR Button */}
+      {/* Botão Devolução aos Setores (Substituindo Foto OCR) */}
       <button
         type="button"
-        onClick={onOpenSerialScan}
-        className="flex flex-col items-center justify-center px-2 py-1 text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 active:scale-95 transition"
-        title="Leitura por Foto OCR"
+        onClick={onNavigateToDevolucao}
+        className="flex flex-col items-center justify-center px-2 py-1 text-slate-600 dark:text-slate-400 hover:text-emerald-500 dark:hover:text-emerald-400 active:scale-95 transition"
+        title="Carrinho e Devolução aos Setores"
       >
-        <Cpu className="w-5 h-5" />
-        <span className="text-[10px] font-bold mt-0.5">
-          Foto OCR
+        <div className="relative">
+          <Truck className="w-5 h-5 text-emerald-500" />
+          {cartBadgeCount > 0 && (
+            <span className="absolute -top-1.5 -right-2.5 text-[9px] font-black px-1.5 py-0.2 rounded-full bg-emerald-500 text-white shadow-xs animate-pulse">
+              {cartBadgeCount}
+            </span>
+          )}
+        </div>
+        <span className="text-[10px] font-bold mt-0.5 text-emerald-600 dark:text-emerald-400">
+          Devolução
         </span>
       </button>
 
@@ -85,11 +93,11 @@ export default function MobileBottomBar({
       <button
         type="button"
         onClick={onOpenInstall}
-        className="flex flex-col items-center justify-center px-2 py-1 text-slate-600 dark:text-slate-400 hover:text-emerald-500 dark:hover:text-emerald-400 active:scale-95 transition"
+        className="flex flex-col items-center justify-center px-2 py-1 text-slate-600 dark:text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 active:scale-95 transition"
         title="Baixar Aplicativo Android / APK"
       >
-        <Smartphone className="w-5 h-5 text-emerald-500" />
-        <span className="text-[10px] font-extrabold mt-0.5 text-emerald-600 dark:text-emerald-400">
+        <Smartphone className="w-5 h-5 text-blue-500" />
+        <span className="text-[10px] font-extrabold mt-0.5 text-blue-600 dark:text-blue-400">
           Baixar APK
         </span>
       </button>

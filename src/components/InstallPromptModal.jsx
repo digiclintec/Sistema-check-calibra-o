@@ -15,10 +15,18 @@ import {
   AlertTriangle,
   FolderDown,
   Layers,
-  Zap
+  Zap,
+  Truck,
+  ArrowRight
 } from 'lucide-react';
 
-export default function InstallPromptModal({ isOpen, onClose, deferredPrompt }) {
+export default function InstallPromptModal({ 
+  isOpen, 
+  onClose, 
+  deferredPrompt,
+  cartBadgeCount = 0,
+  onNavigateToDevolucao
+}) {
   const [platform, setPlatform] = useState('android'); // 'android' | 'ios'
   const [downloadStarted, setDownloadStarted] = useState(false);
   const [showChromeGuide, setShowChromeGuide] = useState(false);
@@ -106,6 +114,36 @@ export default function InstallPromptModal({ isOpen, onClose, deferredPrompt }) 
               <strong className="block text-amber-300 font-bold mb-0.5">Aberto pelo WhatsApp ou Instagram?</strong>
               Para instalar sem erros, toque nos <strong>3 pontinhos (⋮)</strong> no topo do WhatsApp e escolha <strong>"Abrir no Chrome"</strong> ou baixe o APK direto abaixo.
             </div>
+          </div>
+        )}
+
+        {/* Atalho direto para Devolução de Bombas se houver itens no carrinho */}
+        {cartBadgeCount > 0 && onNavigateToDevolucao && (
+          <div className="mx-4 sm:mx-5 my-3 p-3.5 bg-gradient-to-r from-emerald-950/70 via-slate-900 to-blue-950/50 border border-emerald-500/40 rounded-2xl flex items-center justify-between gap-3 shadow-lg shadow-emerald-950/30 animate-fade-in">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
+                <Truck className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-white truncate flex items-center gap-1.5">
+                  <span>Última Remessa: {cartBadgeCount} {cartBadgeCount === 1 ? 'bomba pronta' : 'bombas prontas'}</span>
+                </p>
+                <p className="text-[11px] text-slate-300 truncate">
+                  Bomba(s) bipada(s) já na carga do carrinho
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onNavigateToDevolucao();
+              }}
+              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shrink-0 flex items-center gap-1.5 shadow-md shadow-emerald-600/30 active:scale-95 transition"
+            >
+              <span>Ir para Devolução</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
           </div>
         )}
 

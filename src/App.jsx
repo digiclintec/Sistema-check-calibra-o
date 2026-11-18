@@ -21,7 +21,9 @@ import {
   GitMerge,
   RotateCcw,
   User,
-  Zap
+  Zap,
+  Truck,
+  ArrowRight
 } from 'lucide-react';
 
 import LoginScreen from './components/LoginScreen';
@@ -52,6 +54,7 @@ import AbruptChangeConfirmModal from './components/AbruptChangeConfirmModal';
 import AlreadyScannedAlertModal from './components/AlreadyScannedAlertModal';
 import EditEquipmentModal from './components/EditEquipmentModal';
 import AddEquipmentModal from './components/AddEquipmentModal';
+import { addEquipmentToCart, addMultipleEquipmentsToCart, getCartSeries } from './utils/cartStorage';
 
 import { parseSpreadsheetFile, exportToExcel } from './utils/sheetParser';
 import { SAMPLE_EQUIPMENT } from './utils/sampleData';
@@ -218,6 +221,21 @@ export default function App() {
       }
     } catch (e) {}
   }, [isScannerOpen]);
+
+  // Contagem reativa de bombas na fila/carga do carrinho de devolução
+  const [cartSeriesCount, setCartSeriesCount] = useState(() => {
+    return getCartSeries(activePlanId).length;
+  });
+
+  useEffect(() => {
+    setCartSeriesCount(getCartSeries(activePlanId).length);
+    const handleCartUpdated = () => {
+      setCartSeriesCount(getCartSeries(activePlanId).length);
+    };
+    window.addEventListener('calibracheck_cart_updated', handleCartUpdated);
+    return () => window.removeEventListener('calibracheck_cart_updated', handleCartUpdated);
+  }, [activePlanId]);
+
   const [isSerialScanOpen, setIsSerialScanOpen] = useState(false);
   const [massActionModal, setMassActionModal] = useState({ isOpen: false, action: 'check_all' });
   const [manualCheckModal, setManualCheckModal] = useState({ isOpen: false, equipment: null, modality: 'calibracao', nextState: true });
@@ -1414,7 +1432,15 @@ export default function App() {
 
     setEquipments(updated);
 
-    // Envia ao servidor via endpoint em lote com payload detalhado e modalidades
+    // Adiciona automaticamente todas as bombas conferidas diretamente à carga do carrinho de devolução
+    const checkedItems = updated.filter(item => {
+      const id = String(item.id || '').toLowerCase();
+      const code = String(item.codigoBarras || '').toLowerCase();
+      const tag = String(item.tag || '').toLowerCase();
+      const serie = String(item.serie || '').toLowerCase();
+      return idSet.has(id) || idSet.has(code) || idSet.has(tag) || idSet.has(serie);
+    });
+    addMultipleEquipmentsToCart(activePlanId, checkedItems);
     try {
       fetch('/api/batch-check', {
         method: 'POST',
@@ -1699,6 +1725,9 @@ export default function App() {
     updated[targetIndex] = copy;
 
     setEquipments(updated);
+
+    // Adiciona automaticamente a bomba conferida diretamente à carga do carrinho de devolução
+    addEquipmentToCart(activePlanId, copy);
     const reasonLabel = bestMatch.isExact ? '100% Exato' : `${bestMatch.matchingDigits} dígitos iguais`;
     showToast('success', `Check [${appliedLabels}] confirmado: ${targetItem.equipamento} (${targetItem.tag || targetItem.serie}) [${reasonLabel}]`);
 
@@ -2131,6 +2160,7 @@ export default function App() {
         serviceConfig={serviceConfig}
         onOpenAddEquipment={(targetPlanId, code, mode) => setAddEquipmentModal({ isOpen: true, planId: targetPlanId || activePlanId, initialCode: code || '', initialMode: mode || 'manual' })}
         stagedBadgeCount={scannerStagedCount}
+        cartBadgeCount={cartSeriesCount}
       />
 
       {/* Main Content Area */}
@@ -2256,6 +2286,38 @@ export default function App() {
               onSelectFilter={setActiveFilter}
               activeModality={activeModality}
             />
+
+            {/* Banner de Atalho para Devolução aos Setores quando houver bombas na remessa */}
+            {cartSeriesCount > 0 && (
+              <div className="bg-gradient-to-r from-emerald-950/70 via-slate-900 to-blue-950/50 border border-emerald-500/40 rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg shadow-emerald-950/30 animate-fade-in">
+                <div className="flex items-center gap-3 w-full sm:w-auto min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
+                    <Truck className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black uppercase tracking-wider text-emerald-400">
+                        Última Remessa
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-[10px] font-mono font-bold">
+                        {cartSeriesCount} {cartSeriesCount === 1 ? 'bomba' : 'bombas'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-300 font-medium truncate sm:whitespace-normal">
+                      Bombas bipadas e prontas no carrinho para devolução aos setores.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveMainTab('devolucao')}
+                  className="w-full sm:w-auto px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shrink-0 flex items-center justify-center gap-2 shadow-md shadow-emerald-600/30 active:scale-95 transition"
+                >
+                  <span>Devolver aos Setores</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
 
             {/* Equipment Table with Search & Scanner Bar (Mobile cards + Desktop table) */}
             <EquipmentTable
@@ -2424,6 +2486,8 @@ export default function App() {
         isOpen={isInstallModalOpen}
         onClose={() => setIsInstallModalOpen(false)}
         deferredPrompt={deferredPrompt}
+        cartBadgeCount={cartSeriesCount}
+        onNavigateToDevolucao={() => setActiveMainTab('devolucao')}
       />
 
       {/* Modal de Confirmação para Alteração Abrupta / Exclusão / Substituição */}
@@ -2495,7 +2559,8 @@ export default function App() {
       {/* Floating Mobile Bottom Action Bar (Thumb-friendly for Android & iOS) */}
       <MobileBottomBar
         onOpenScanner={() => setIsScannerOpen(true)}
-        onOpenSerialScan={() => setIsSerialScanOpen(true)}
+        onNavigateToDevolucao={() => setActiveMainTab('devolucao')}
+        cartBadgeCount={cartSeriesCount}
         onOpenInstall={() => setIsInstallModalOpen(true)}
         onOpenAddEquipment={() => setAddEquipmentModal({ isOpen: true, planId: activePlanId, initialCode: '', initialMode: 'manual' })}
         activeFilter={activeFilter}

@@ -60,7 +60,8 @@ export default function Navbar({
   googleSheetWebhookUrl = '',
   serviceConfig = null,
   onOpenAddEquipment = null,
-  stagedBadgeCount = 0
+  stagedBadgeCount = 0,
+  cartBadgeCount = 0
 }) {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const moreMenuRef = useRef(null);
@@ -247,6 +248,11 @@ export default function Navbar({
                 >
                   <Truck className="w-3.5 h-3.5 shrink-0" />
                   <span>Carrinho & Devolução</span>
+                  {cartBadgeCount > 0 && (
+                    <span className="ml-1 text-[10px] font-black px-1.5 py-0.2 rounded-full bg-emerald-500 text-white shadow-xs animate-pulse">
+                      {cartBadgeCount}
+                    </span>
+                  )}
                 </button>
               )}
 
@@ -597,6 +603,11 @@ export default function Navbar({
                 <Truck className="w-3.5 h-3.5 shrink-0" />
                 <span className="truncate hidden sm:inline">Carrinho & Devolução</span>
                 <span className="truncate sm:hidden">Carrinho</span>
+                {cartBadgeCount > 0 && (
+                  <span className="ml-0.5 text-[9px] font-black px-1.5 py-0.2 rounded-full bg-emerald-500 text-white shadow-xs">
+                    {cartBadgeCount}
+                  </span>
+                )}
               </button>
             )}
 

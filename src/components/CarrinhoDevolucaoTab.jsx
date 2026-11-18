@@ -259,6 +259,28 @@ export default function CarrinhoDevolucaoTab({
     }
   }, [STORAGE_SERIES_KEY, STORAGE_PACKED_KEY, STORAGE_RETURNED_KEY, equipments]);
 
+  // Sincroniza dinamicamente quando novas bombas forem conferidas e enviadas diretamente ao carrinho
+  useEffect(() => {
+    const handleCartUpdated = (e) => {
+      try {
+        const saved = localStorage.getItem(STORAGE_SERIES_KEY);
+        const parsedSeries = saved ? JSON.parse(saved) : [];
+        setScannedSeries(parsedSeries);
+        scannedSeriesRef.current = parsedSeries;
+      } catch (err) {}
+
+      try {
+        const savedPacked = localStorage.getItem(STORAGE_PACKED_KEY);
+        const parsedPacked = savedPacked ? new Set(JSON.parse(savedPacked)) : new Set();
+        setCartPackedIds(parsedPacked);
+        cartPackedIdsRef.current = parsedPacked;
+      } catch (err) {}
+    };
+
+    window.addEventListener('calibracheck_cart_updated', handleCartUpdated);
+    return () => window.removeEventListener('calibracheck_cart_updated', handleCartUpdated);
+  }, [STORAGE_SERIES_KEY, STORAGE_PACKED_KEY]);
+
   const saveSeriesState = (newSeries) => {
     scannedSeriesRef.current = newSeries;
     setScannedSeries(newSeries);
