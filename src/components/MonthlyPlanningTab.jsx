@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Calendar, 
   FileSpreadsheet, 
@@ -115,7 +115,7 @@ export default function MonthlyPlanningTab({
   };
 
   // Carrega ao entrar na aba Arkmeds
-  React.useEffect(() => {
+  useEffect(() => {
     if (activeSubTab === 'arkmeds' && arkmedsPlans.length === 0) {
       loadArkmedsPlans();
     }
