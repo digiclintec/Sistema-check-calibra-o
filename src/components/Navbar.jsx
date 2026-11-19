@@ -27,7 +27,8 @@ import {
   FileSpreadsheet,
   UserPlus,
   Database,
-  Search
+  Search,
+  Lock
 } from 'lucide-react';
 
 export default function Navbar({ 
@@ -64,7 +65,8 @@ export default function Navbar({
   onOpenAddEquipment = null,
   stagedBadgeCount = 0,
   cartBadgeCount = 0,
-  onOpenArkmedsSync = null
+  onOpenArkmedsSync = null,
+  onCloseActivePlan = null
 }) {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [openMenuFolder, setOpenMenuFolder] = useState('gerenciamento');
@@ -188,7 +190,7 @@ export default function Navbar({
                 >
                   {monthlyPlans.map(p => (
                     <option key={p.id} value={p.id} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-semibold">
-                      📋 {p.title || `Plano ${p.ano || ''}`}
+                      {p.status === 'encerrado' ? '🔒 [Encerrado] ' : '📋 '}{p.title || `Plano ${p.ano || ''}`} ({p.percent || 0}%)
                     </option>
                   ))}
                   <option disabled className="bg-slate-200 dark:bg-slate-800 text-slate-500">──────────</option>
@@ -492,6 +494,19 @@ export default function Navbar({
                             <Building2 className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
                             <span>Gerenciar Hospitais</span>
                           </button>
+
+                          {onCloseActivePlan && (
+                            <button
+                              onClick={() => {
+                                setShowMoreMenu(false);
+                                onCloseActivePlan();
+                              }}
+                              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-xs font-bold hover:bg-rose-50 dark:hover:bg-rose-950/40 transition text-rose-600 dark:text-rose-400 rounded-lg text-left"
+                            >
+                              <Lock className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                              <span>Encerrar Plano Atual</span>
+                            </button>
+                          )}
 
                           {isMaster && (
                             <button

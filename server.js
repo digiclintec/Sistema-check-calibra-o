@@ -844,6 +844,13 @@ app.get('/api/plans', (req, res) => {
     return {
       id: p.id,
       title: p.title || p.fileName || 'Planejamento de Calibração',
+      status: p.status || (p.statusEncerramento === 'encerrado' ? 'encerrado' : (checked === total && total > 0 ? 'concluido' : 'em_andamento')),
+      statusEncerramento: p.statusEncerramento || (p.status === 'encerrado' ? 'encerrado' : 'aberto'),
+      dataEncerramento: p.dataEncerramento || null,
+      encerradoPor: p.encerradoPor || null,
+      notasEncerramento: p.notasEncerramento || '',
+      dataReabertura: p.dataReabertura || null,
+      reabertoPor: p.reabertoPor || null,
       tipo: p.tipo || (p.ano ? 'anual' : 'mensal'),
       ano: p.ano || (p.mes && p.mes.match(/\d{4}/) ? p.mes.match(/\d{4}/)[0] : '2026'),
       mes: p.mes || 'Novembro/2026',
@@ -989,6 +996,79 @@ app.post('/api/plans/update', (req, res) => {
   res.json({
     success: true,
     message: 'Plano atualizado com sucesso.',
+    plan
+  });
+});
+
+// Encerrar / Finalizar um plano de calibração (com registro de auditoria)
+app.post('/api/plans/close', (req, res) => {
+  const { hospitalId, planId, userEmail, userName, notes } = req.body || {};
+  const db = readDb();
+  const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
+  const hospIdx = (db.hospitals || []).findIndex(h => h.id === targetId);
+
+  if (hospIdx === -1) {
+    return res.status(404).json({ success: false, message: 'Hospital não encontrado.' });
+  }
+
+  const hospital = db.hospitals[hospIdx];
+  const plan = (hospital.plans || []).find(p => p.id === planId);
+  if (!plan) {
+    return res.status(404).json({ success: false, message: 'Planejamento não encontrado.' });
+  }
+
+  const nowIso = new Date().toISOString();
+  const operatorName = userName ? `${userName} (${userEmail || ''})`.trim() : (userEmail || 'Técnico Responsável');
+
+  plan.status = 'encerrado';
+  plan.statusEncerramento = 'encerrado';
+  plan.dataEncerramento = nowIso;
+  plan.encerradoPor = operatorName;
+  if (notes) plan.notasEncerramento = String(notes).trim();
+  plan.lastUpdated = Date.now();
+  hospital.lastUpdated = Date.now();
+  db.lastUpdated = Date.now();
+  saveDb(db);
+
+  res.json({
+    success: true,
+    message: `Planejamento "${plan.title}" encerrado com sucesso!`,
+    plan
+  });
+});
+
+// Reabrir um plano de calibração previamente encerrado
+app.post('/api/plans/reopen', (req, res) => {
+  const { hospitalId, planId, userEmail, userName } = req.body || {};
+  const db = readDb();
+  const targetId = hospitalId || db.activeHospitalId || db.hospitals?.[0]?.id;
+  const hospIdx = (db.hospitals || []).findIndex(h => h.id === targetId);
+
+  if (hospIdx === -1) {
+    return res.status(404).json({ success: false, message: 'Hospital não encontrado.' });
+  }
+
+  const hospital = db.hospitals[hospIdx];
+  const plan = (hospital.plans || []).find(p => p.id === planId);
+  if (!plan) {
+    return res.status(404).json({ success: false, message: 'Planejamento não encontrado.' });
+  }
+
+  const nowIso = new Date().toISOString();
+  const operatorName = userName ? `${userName} (${userEmail || ''})`.trim() : (userEmail || 'Técnico Responsável');
+
+  plan.status = 'em_andamento';
+  plan.statusEncerramento = 'aberto';
+  plan.dataReabertura = nowIso;
+  plan.reabertoPor = operatorName;
+  plan.lastUpdated = Date.now();
+  hospital.lastUpdated = Date.now();
+  db.lastUpdated = Date.now();
+  saveDb(db);
+
+  res.json({
+    success: true,
+    message: `Planejamento "${plan.title}" reaberto com sucesso para novas conferências.`,
     plan
   });
 });

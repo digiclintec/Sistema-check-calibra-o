@@ -24,7 +24,11 @@ import {
   Zap,
   Truck,
   ArrowRight,
-  Database
+  Database,
+  Trophy,
+  Lock,
+  CheckCheck,
+  ShieldCheck
 } from 'lucide-react';
 
 import LoginScreen from './components/LoginScreen';
@@ -57,6 +61,7 @@ import EditEquipmentModal from './components/EditEquipmentModal';
 import AddEquipmentModal from './components/AddEquipmentModal';
 import ArkmedsSyncModal from './components/ArkmedsSyncModal';
 import ConsultaAparelhoTab from './components/ConsultaAparelhoTab';
+import ClosePlanModal from './components/ClosePlanModal.jsx';
 import { standardizeBarcodeReading } from './utils/idecParser.js';
 import { addEquipmentToCart, addMultipleEquipmentsToCart, getCartSeries } from './utils/cartStorage';
 
@@ -277,6 +282,12 @@ export default function App() {
   });
   const [serviceConfigModal, setServiceConfigModal] = useState({ isOpen: false, isInitialSetup: false });
   const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
+  const [closePlanModal, setClosePlanModal] = useState({ isOpen: false, plan: null, action: 'close' });
+
+  // Plano ativo atual para visualização e encerramento
+  const currentActivePlan = useMemo(() => {
+    return monthlyPlans.find(p => p.id === activePlanId) || null;
+  }, [monthlyPlans, activePlanId]);
 
   // Custom Sector Colors (Map of normalizedSectorKey -> hex)
   const [isSectorColorModalOpen, setIsSectorColorModalOpen] = useState(false);
@@ -675,6 +686,69 @@ export default function App() {
       }
     } catch (err) {
       showToast('error', 'Falha ao excluir plano.');
+    }
+  };
+
+  // Abertura do modal de encerramento / reabertura segura de plano
+  const handleOpenClosePlanModal = (plan, action = 'close') => {
+    if (!plan) return;
+    setClosePlanModal({
+      isOpen: true,
+      plan,
+      action
+    });
+  };
+
+  // Confirmação segura de encerramento de plano (com código aleatório validado no modal)
+  const handleConfirmClosePlan = async (planId, notes) => {
+    try {
+      const res = await fetch('/api/plans/close', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hospitalId: activeHospitalId,
+          planId,
+          userEmail: currentUser?.email,
+          userName: currentUser?.name,
+          notes
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('success', data.message || 'Planejamento encerrado com sucesso!');
+        loadMonthlyPlans(activeHospitalId);
+        loadHospitals();
+      } else {
+        showToast('error', data.message || 'Erro ao encerrar planejamento.');
+      }
+    } catch (err) {
+      showToast('error', 'Falha na conexão ao encerrar planejamento.');
+    }
+  };
+
+  // Reabertura segura de plano encerrado
+  const handleConfirmReopenPlan = async (planId) => {
+    try {
+      const res = await fetch('/api/plans/reopen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hospitalId: activeHospitalId,
+          planId,
+          userEmail: currentUser?.email,
+          userName: currentUser?.name
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('info', data.message || 'Planejamento reaberto com sucesso!');
+        loadMonthlyPlans(activeHospitalId);
+        loadHospitals();
+      } else {
+        showToast('error', data.message || 'Erro ao reabrir planejamento.');
+      }
+    } catch (err) {
+      showToast('error', 'Falha na conexão ao reabrir planejamento.');
     }
   };
 
@@ -2220,6 +2294,7 @@ export default function App() {
         monthlyPlans={monthlyPlans}
         activePlanId={activePlanId}
         onSwitchPlan={handleSwitchPlan}
+        onCloseActivePlan={currentActivePlan && currentActivePlan.status !== 'encerrado' ? () => handleOpenClosePlanModal(currentActivePlan, 'close') : null}
         onOpenMergeModal={() => setIsMergeModalOpen(true)}
         activeModality={activeModality}
         onChangeModality={setActiveModality}
@@ -2324,6 +2399,7 @@ export default function App() {
             onCreatePlan={handleCreatePlan}
             onUpdatePlan={handleUpdatePlan}
             onDeletePlan={handleDeletePlan}
+            onOpenClosePlanModal={handleOpenClosePlanModal}
             hospitalName={activeHospital?.name}
             activeHospitalId={activeHospital?.id}
             onRefreshData={syncWithServer}
@@ -2376,7 +2452,77 @@ export default function App() {
           /* Active Spreadsheet View */
           <div className="space-y-4 sm:space-y-6 w-full">
             
+            {/* Banner Especial de Meta Concluída (100% dos Aparelhos Conferidos) */}
+            {stats.total > 0 && stats.percent === 100 && currentActivePlan?.status !== 'encerrado' && (
+              <div className="bg-gradient-to-r from-emerald-950/80 via-slate-900 to-teal-950/70 border-2 border-emerald-500/50 rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl shadow-emerald-950/40 animate-fade-in relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+                <div className="flex items-center gap-3.5 relative z-10">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/50 flex items-center justify-center text-emerald-400 shrink-0 shadow-inner">
+                    <Trophy className="w-6 h-6 text-emerald-400" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1">
+                        <Sparkles className="w-3.5 h-3.5" />
+                        Meta Concluída! 100% dos Aparelhos Conferidos
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-[11px] font-mono font-bold">
+                        {stats.checked}/{stats.total} checados
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-300 font-medium mt-0.5">
+                      Todos os equipamentos deste planejamento foram conferidos. Você já pode encerrar e finalizar este plano com segurança.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleOpenClosePlanModal(currentActivePlan, 'close')}
+                  className="relative z-10 w-full md:w-auto px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-extrabold text-xs shrink-0 flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/30 active:scale-95 transition"
+                >
+                  <Lock className="w-4 h-4" />
+                  <span>Encerrar Este Planejamento</span>
+                </button>
+              </div>
+            )}
 
+            {/* Banner de Plano Encerrado */}
+            {currentActivePlan?.status === 'encerrado' && (
+              <div className="bg-slate-900/90 border border-emerald-500/40 rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md animate-fade-in">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+                    <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1">
+                        <Lock className="w-3.5 h-3.5" />
+                        Planejamento Encerrado
+                      </span>
+                      {currentActivePlan.dataEncerramento && (
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          em {new Date(currentActivePlan.dataEncerramento).toLocaleDateString('pt-BR')} às {new Date(currentActivePlan.dataEncerramento).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Este plano foi concluído e encerrado{currentActivePlan.encerradoPor ? ` por ${currentActivePlan.encerradoPor}` : ''}.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenClosePlanModal(currentActivePlan, 'reopen')}
+                    className="px-3.5 py-1.5 rounded-xl border border-slate-700 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold transition flex items-center gap-1.5"
+                    title="Reabrir este planejamento com código de segurança"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Reabrir Plano</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Stats Cards & Progress */}
             <StatsCards
@@ -2763,6 +2909,15 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Modal Seguro de Encerramento/Reabertura de Plano (Código Aleatório de 4 Dígitos) */}
+      <ClosePlanModal
+        isOpen={closePlanModal.isOpen}
+        onClose={() => setClosePlanModal(prev => ({ ...prev, isOpen: false }))}
+        plan={closePlanModal.plan}
+        action={closePlanModal.action}
+        onConfirmClose={closePlanModal.action === 'reopen' ? handleConfirmReopenPlan : handleConfirmClosePlan}
+      />
 
       {/* Floating Mobile Bottom Action Bar (Thumb-friendly for Android & iOS) */}
       <MobileBottomBar
