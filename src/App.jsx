@@ -93,7 +93,13 @@ export default function App() {
 
   // Modalidade de Serviço / Equipe Ativa (Calibração, Preventiva, Segurança Elétrica, Visão Geral)
   const [activeModality, setActiveModality] = useState(() => {
-    return localStorage.getItem(MODALITY_KEY) || 'calibracao';
+    try {
+      const saved = localStorage.getItem(MODALITY_KEY);
+      if (!saved || saved === 'externa' || saved === 'manutencao_externa') return 'geral';
+      return saved;
+    } catch (e) {
+      return 'geral';
+    }
   });
 
   // User session state
@@ -845,8 +851,21 @@ export default function App() {
     localStorage.setItem(SOUND_KEY, String(soundEnabled));
   }, [soundEnabled]);
 
+  // Auto-recuperação de cache legado no Android/WebView onde 'externa' ficou gravado
   useEffect(() => {
-    localStorage.setItem(MODALITY_KEY, activeModality);
+    try {
+      const saved = localStorage.getItem(MODALITY_KEY);
+      if (saved === 'externa' || saved === 'manutencao_externa') {
+        localStorage.setItem(MODALITY_KEY, 'geral');
+        setActiveModality('geral');
+      }
+    } catch (e) {}
+  }, []);
+
+  useEffect(() => {
+    if (activeModality && activeModality !== 'externa' && activeModality !== 'manutencao_externa') {
+      localStorage.setItem(MODALITY_KEY, activeModality);
+    }
   }, [activeModality]);
 
   // Toast auto-dismiss (duração prolongada para 8s se houver botão de ação/desfazer)
@@ -1119,6 +1138,9 @@ export default function App() {
   // Statistics calculation baseada na modalidade / equipe ativa e configuração de serviços
   const stats = useMemo(() => {
     const total = equipments.length;
+    const totalBipados = equipments.filter(e => Boolean(
+      e.checado || e.check_calibracao || e.check_preventiva || e.check_seguranca || e.check_externa
+    )).length;
     const checked = equipments.filter(e => isEquipmentChecked(e, activeModality, serviceConfig)).length;
     const pending = total - checked;
     const externa = equipments.filter(e => Boolean(e.check_externa)).length;
@@ -1136,7 +1158,7 @@ export default function App() {
     });
 
     const percent = total > 0 ? Math.round((checked / total) * 100) : 0;
-    return { total, checked, pending, expired, expiringSoon, percent, externa };
+    return { total, checked, pending, expired, expiringSoon, percent, externa, totalBipados };
   }, [equipments, activeModality, serviceConfig]);
 
   // Quantidade de bombas bipadas salvas no cache da fila do scanner (para exibição de badge)

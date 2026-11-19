@@ -298,12 +298,10 @@ export default function ScannerModal({
 
   const handleSelectStandardComplete = () => {
     setSelectedModalities(configuredStandardModalities);
-    if (onChangeModality) onChangeModality('geral');
   };
 
   const handleSelectExternalMaintenance = () => {
     setSelectedModalities(['externa']);
-    if (onChangeModality) onChangeModality('externa');
   };
 
   // Altura customizável e arrastável: Câmera vs Lista de Bombas
@@ -375,25 +373,17 @@ export default function ScannerModal({
   // Funções de alternar / definir exatamente os tipos a bipar
   const handleToggleModality = (modKey) => {
     setSelectedModalities(prev => {
-      let next;
       if (prev.includes(modKey)) {
         if (prev.length === 1) return prev; // Mantém ao menos uma modalidade ativa
-        next = prev.filter(m => m !== modKey);
+        return prev.filter(m => m !== modKey);
       } else {
-        next = [...prev, modKey];
+        return [...prev, modKey];
       }
-      if (next.length === 1 && onChangeModality) {
-        onChangeModality(next[0]);
-      }
-      return next;
     });
   };
 
   const handleSetExactModalities = (mods) => {
     setSelectedModalities(mods);
-    if (mods.length === 1 && onChangeModality) {
-      onChangeModality(mods[0]);
-    }
   };
 
   // Feedback visual do toque para focar (Tap to Focus)

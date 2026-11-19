@@ -19,7 +19,7 @@ import {
 import { MODALITIES } from '../utils/modalities';
 
 export default function StatsCards({ stats, activeFilter, onSelectFilter, activeModality = 'calibracao' }) {
-  const { total, checked, pending, expired, expiringSoon, percent, externa = 0 } = stats;
+  const { total, checked, pending, expired, expiringSoon, percent, externa = 0, totalBipados } = stats;
   const currentMod = MODALITIES[activeModality] || MODALITIES.calibracao;
 
   const validInHouse = Math.max(0, checked - externa);
@@ -62,10 +62,10 @@ export default function StatsCards({ stats, activeFilter, onSelectFilter, active
       progressGradient: 'bg-gradient-to-r from-amber-600 to-orange-500'
     },
     externa: {
-      checkedTitle: 'Manutenção Externa',
-      checkedSubtext: `${percent}% recolhidas p/ conserto/calibração terceirizada`,
-      pendingTitle: 'Bombas no Hospital',
-      pendingSubtext: 'Permanecem na unidade hospitalar',
+      checkedTitle: 'Total Bipados',
+      checkedSubtext: `${percent}% já atendidos e separados`,
+      pendingTitle: 'Falta Bipar',
+      pendingSubtext: 'Aguardando conferência',
       progressGradient: 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-500'
     },
     geral: {
@@ -76,12 +76,14 @@ export default function StatsCards({ stats, activeFilter, onSelectFilter, active
       progressGradient: 'bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-500'
     }
   }[activeModality] || {
-    checkedTitle: 'Checados / OK',
+    checkedTitle: 'Total Bipados',
     checkedSubtext: `${percent}% da meta concluída`,
-    pendingTitle: 'Pendentes de Bipagem',
+    pendingTitle: 'Falta Bipar',
     pendingSubtext: 'Aguardando conferência',
     progressGradient: 'bg-gradient-to-r from-blue-600 to-indigo-500'
   };
+
+  const isBipadosView = activeModality === 'externa' || activeModality === 'geral';
 
   const cards = [
     {
@@ -98,8 +100,8 @@ export default function StatsCards({ stats, activeFilter, onSelectFilter, active
     },
     {
       id: 'checados',
-      label: modalityLabels.checkedTitle,
-      value: checked,
+      label: isBipadosView ? 'Total Bipados' : modalityLabels.checkedTitle,
+      value: isBipadosView ? (totalBipados ?? checked) : checked,
       subtext: modalityLabels.checkedSubtext,
       icon: CheckCircle2,
       color: activeModality === 'preventiva' ? 'emerald' : (activeModality === 'seguranca' ? 'amber' : (activeModality === 'externa' ? 'purple' : 'blue')),
