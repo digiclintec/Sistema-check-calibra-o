@@ -238,50 +238,41 @@ export default function ConsultaAparelhoTab({
     <div className="w-full max-w-7xl mx-auto px-3 sm:px-6 py-4 space-y-6">
       
       {/* ============================================================
-          BANNER DA PLATAFORMA DE CONSULTA UNIVERSAL
+          CARD DE BUSCA ARKMEDS (CLEAN, MODERNO E DIRETO AO PONTO)
       ============================================================ */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-950 rounded-3xl p-5 sm:p-7 text-white shadow-2xl relative overflow-hidden border border-blue-500/30">
-        <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950 rounded-2xl sm:rounded-3xl p-4 sm:p-6 text-white shadow-xl relative overflow-hidden border border-slate-700/60 dark:border-slate-800">
+        <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
         
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
+        {/* Cabeçalho limpo */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10 mb-4">
           <div>
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <span className="px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-blue-500/20 text-blue-300 border border-blue-400/30 flex items-center gap-1.5">
-                <Database className="w-3.5 h-3.5 text-cyan-400" />
-                Plataforma de Consulta Completa
+            <h1 className="text-lg sm:text-xl font-bold tracking-tight text-white flex items-center gap-2">
+              <Search className="w-5 h-5 text-cyan-400" />
+              <span>Consulta de Equipamentos</span>
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/30">
+                Arkmeds
               </span>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                Toda a Rede Hospitalar
-              </span>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                Ordens de Serviço (O.S.) & Visitas
-              </span>
-            </div>
-            
-            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white flex items-center gap-2">
-              Dossiê & Ficha Técnica do Aparelho
             </h1>
-            
-            <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-2xl leading-relaxed">
-              Consulte <strong>qualquer equipamento</strong> da rede por Tag, Número de Série, QR Code ou ID Arkmeds. Acesse o histórico completo de manutenções, planos de calibração e <strong>todas as Ordens de Serviço com download do PDF oficial</strong>.
+            <p className="text-xs text-slate-400 mt-0.5">
+              Busca direta por <strong className="text-slate-200">IDEC</strong>, <strong className="text-slate-200">QR Code</strong> ou <strong className="text-slate-200">Número de Série (NS)</strong>.
             </p>
           </div>
 
-          <div className="flex items-center gap-2 self-start md:self-auto">
-            {onOpenScanner && (
-              <button
-                onClick={onOpenScanner}
-                className="px-4 py-2.5 rounded-2xl font-bold text-xs sm:text-sm bg-cyan-400 hover:bg-cyan-300 text-slate-950 transition shadow-lg flex items-center gap-2 active:scale-95"
-              >
-                <Scan className="w-4 h-4 text-slate-950" />
-                <span>Escanear Câmera</span>
-              </button>
-            )}
-          </div>
+          {onOpenScanner && (
+            <button
+              type="button"
+              onClick={onOpenScanner}
+              className="self-start sm:self-auto px-3.5 py-2 rounded-xl font-bold text-xs bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition shadow-md flex items-center gap-1.5 active:scale-95 shrink-0"
+              title="Ler QR Code ou código com a câmera"
+            >
+              <Scan className="w-4 h-4 text-slate-950" />
+              <span>Escanear Câmera</span>
+            </button>
+          )}
         </div>
 
-        {/* BARRA DE PESQUISA UNIVERSAL */}
-        <div className="mt-5 relative z-10">
+        {/* Barra de Pesquisa */}
+        <div className="relative z-10">
           <form 
             onSubmit={(e) => {
               e.preventDefault();
@@ -296,8 +287,8 @@ export default function ConsultaAparelhoTab({
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Buscar por IDEC (ex: SVHL-0015), Tag (UTIAHL-0119), Série, Patrimônio, QR Code..."
-                className="w-full pl-10 pr-24 py-3 rounded-2xl bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder-slate-400 border-2 border-transparent focus:border-cyan-400 focus:outline-none text-xs sm:text-sm shadow-md font-medium"
+                placeholder="Digite o IDEC, QR Code ou Número de Série (NS)..."
+                className="w-full pl-10 pr-20 py-2.5 sm:py-3 rounded-xl bg-white dark:bg-slate-950 text-slate-900 dark:text-white placeholder-slate-400 border border-slate-300 dark:border-slate-700 focus:border-cyan-400 focus:outline-none text-xs sm:text-sm font-medium shadow-inner"
               />
               {searchTerm && (
                 <button
@@ -306,7 +297,7 @@ export default function ConsultaAparelhoTab({
                     setSearchTerm('');
                     setSearchError('');
                   }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 px-2 py-1 rounded-md"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 px-2 py-1"
                 >
                   Limpar
                 </button>
@@ -316,44 +307,34 @@ export default function ConsultaAparelhoTab({
             <button
               type="submit"
               disabled={isSearchingArkmeds || !searchTerm.trim()}
-              className="px-6 py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 shadow-lg active:scale-95 shrink-0"
+              className="px-5 py-2.5 sm:py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 shadow-md active:scale-95 shrink-0"
             >
               {isSearchingArkmeds ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Consultando Rede...</span>
+                  <span>Buscando...</span>
                 </>
               ) : (
                 <>
                   <Search className="w-4 h-4" />
-                  <span>Consultar Aparelho</span>
+                  <span>Buscar</span>
                 </>
               )}
             </button>
           </form>
 
-          {/* Quick chips para teste rápido */}
-          <div className="flex items-center gap-2 mt-3 text-[11px] text-slate-300 flex-wrap">
-            <span className="opacity-75">Consultar exemplos:</span>
-            {[
-              { label: 'Bomba Yonah (IDEC SVHL-0015)', val: 'SVHL-0015' },
-              { label: 'Monitor UTI (Tag UTIAHL-0119)', val: 'UTIAHL-0119' },
-              { label: 'Série CN23950450', val: 'CN23950450' },
-              { label: 'QR Token 001005', val: '001005' },
-              { label: 'ID Arkmeds #3243', val: '3243' }
-            ].map(item => (
-              <button
-                key={item.val}
-                type="button"
-                onClick={() => {
-                  setSearchTerm(item.val);
-                  handleSearch(item.val);
-                }}
-                className="px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/20 text-white font-mono text-[10px] transition border border-white/10"
-              >
-                {item.label}
-              </button>
-            ))}
+          {/* Formatos de busca aceitos */}
+          <div className="flex items-center gap-2 mt-2.5 text-[11px] text-slate-400 flex-wrap">
+            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Buscar por:</span>
+            <span className="px-2 py-0.5 rounded-lg bg-white/5 border border-white/10 text-slate-300 text-[11px] font-mono">
+              🏷️ IDEC
+            </span>
+            <span className="px-2 py-0.5 rounded-lg bg-white/5 border border-white/10 text-slate-300 text-[11px] font-mono">
+              📱 QR Code
+            </span>
+            <span className="px-2 py-0.5 rounded-lg bg-white/5 border border-white/10 text-slate-300 text-[11px] font-mono">
+              🔢 Número de Série (NS)
+            </span>
           </div>
         </div>
       </div>

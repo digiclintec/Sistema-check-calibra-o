@@ -53,7 +53,8 @@ export default function EquipmentTable({
   sectorColors = {},
   onOpenSectorColors = null,
   onEditEquipment = null,
-  onOpenAddEquipment = null
+  onOpenAddEquipment = null,
+  onNavigateToConsulta = null
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSector, setSelectedSector] = useState('ALL');
@@ -345,8 +346,8 @@ export default function EquipmentTable({
         {/* Row 3: Quick Action Tools (Digitalizar Foto OCR & Ações em Massa com Senha) */}
         <div className="pt-2 border-t border-slate-200/60 dark:border-slate-800/60 flex flex-wrap items-center justify-between gap-2 w-full">
           
-          {/* Digitalizar Foto OCR Button & Adicionar ao Plano */}
-          <div className="flex items-center gap-2">
+          {/* Adicionar ao Plano, Consultar Arkmeds & Digitalizar Foto OCR */}
+          <div className="flex items-center gap-2 flex-wrap">
             {onOpenAddEquipment && (
               <button
                 type="button"
@@ -355,7 +356,21 @@ export default function EquipmentTable({
                 title="Adicionar mais equipamentos ao plano da planilha (Manual, Anexar Excel ou Colar em Lote)"
               >
                 <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                <span>+ Adicionar ao Plano</span>
+                <span className="hidden sm:inline">+ Adicionar ao Plano</span>
+                <span className="sm:hidden">+ Item</span>
+              </button>
+            )}
+
+            {onNavigateToConsulta && (
+              <button
+                type="button"
+                onClick={onNavigateToConsulta}
+                className="py-1.5 px-3 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md shadow-cyan-500/20 active:scale-95 transition"
+                title="Consultar Aparelho no Arkmeds por IDEC, QR Code ou Número de Série (NS)"
+              >
+                <Search className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span className="hidden sm:inline">Consulta Arkmeds</span>
+                <span className="sm:hidden">Buscar Arkmeds</span>
               </button>
             )}
 

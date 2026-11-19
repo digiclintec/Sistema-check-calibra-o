@@ -2604,6 +2604,7 @@ export default function App() {
               onOpenSectorColors={() => setIsSectorColorModalOpen(true)}
               onEditEquipment={(eq) => setEditEquipmentModal({ isOpen: true, equipment: eq })}
               onOpenAddEquipment={(targetPlanId, code, mode) => setAddEquipmentModal({ isOpen: true, planId: activePlanId, initialCode: code || '', initialMode: mode || 'manual' })}
+              onNavigateToConsulta={() => setActiveMainTab('consulta')}
             />
 
           </div>

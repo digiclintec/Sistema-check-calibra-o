@@ -329,11 +329,11 @@ export default function Navbar({
           {/* LADO DIREITO: Ações Rápidas, Menu e Perfil */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 ml-auto">
             
-            {/* Botão Frontal: Buscar Aparelho */}
+            {/* Botão Frontal: Buscar Aparelho (Desktop/Tablet) */}
             <button
               type="button"
               onClick={() => onChangeMainTab && onChangeMainTab('consulta')}
-              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition active:scale-95 shrink-0 ${
+              className={`hidden md:flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition active:scale-95 shrink-0 ${
                 activeMainTab === 'consulta'
                   ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/30 ring-1 ring-cyan-400'
                   : 'bg-cyan-50 dark:bg-cyan-950/50 hover:bg-cyan-100 dark:hover:bg-cyan-900/40 text-cyan-700 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800/80'
@@ -341,8 +341,7 @@ export default function Navbar({
               title="Buscar e Consultar Aparelho por IDEC, Tag, Série ou Patrimônio"
             >
               <Search className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400 shrink-0" />
-              <span className="hidden sm:inline">Buscar Aparelho</span>
-              <span className="sm:hidden">Buscar</span>
+              <span>Buscar Aparelho</span>
             </button>
 
             {/* Botão Primário: Bipar na Câmera (Sempre visível em todos os tamanhos!) */}
